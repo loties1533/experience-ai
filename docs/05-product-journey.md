@@ -25,6 +25,12 @@ Ce n'est **pas** un happy path : chaque battement nomme **⚠ ce qui peut casser
 
 **Qui / quand / quoi.** Hugo, 28 ans, organise l'EVG de son pote Max dans ~6 semaines. Ils seront 8, budget approximatif ~200 €/pers. Il ouvre Experience AI le soir, sur son téléphone, après avoir galéré sur plusieurs onglets. Il **sait** : la date approx., le budget par tête, que Max aime le sport et la fête. Il **ne sait pas** : où, quoi, comment contenter 8 personnes. **Son besoin ce soir** : dégrossir un plan qu'il pourra soumettre au groupe.
 
+**L'entrée (minute 0-2).** Pas de landing à dix options, pas de formulaire : un **écran unique, une seule invitation ouverte** — *« Raconte-moi ce que tu veux organiser. »* Hugo tape sa vraie phrase, spontanée : *« On est 8, on part à Bordeaux pour l'EVG de Max, budget 350 €/pers, on veut faire la fête et un truc sport. »* Tout le parcours découle de cette phrase.
+
+**Ce que ce doc NE tranche PAS — le prototype le tranchera** (décider ça à la table = deviner) :
+- la **forme de restitution** du parcours (timeline ? cartes ? chat ? liste ? mix ?) → **question n°1 à tester** ;
+- entrée **libre** (champ ouvert) vs **guidée** (quelques options) — à confronter au réel.
+
 | Battement | Le produit répond | ⚠ Ce qui peut casser (à tester) |
 |---|---|---|
 | Hugo arrive | Une phrase dit ce que fait le produit | ⚠ Comprend-il en 5 s, ou reste-t-il perplexe ? |
