@@ -24,6 +24,7 @@ import votesRoutes from './routes/votes.js';
 import photosRoutes from './routes/photos.js';
 import preferencesRoutes from './routes/preferences.js';
 import collaboratorsRoutes from './routes/collaborators.js';
+import parcoursRoutes from './routes/parcours.js';
 
 // ---- Fail-fast : variables critiques obligatoires ----
 // Si JWT_SECRET est absent, jwt.sign/verify échouera silencieusement à l'exécution.
@@ -90,6 +91,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/votes', votesRoutes);
 app.use('/api/photos', photosRoutes);
 app.use('/api/preferences', preferencesRoutes);
+app.use('/api/parcours', parcoursRoutes);
 
 // Healthcheck pour s'assurer que le backend tourne
 app.get('/api/health', (req, res) => {

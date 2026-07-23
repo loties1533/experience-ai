@@ -12,7 +12,7 @@
 | R1 — Modèle de domaine | Traduction de [06-modele-conceptuel](06-modele-conceptuel.md) en TypeScript pur (Zod + invariants + tests), zéro Prisma | Terminé |
 | R2 — Persistance | Schéma Prisma déduit du domaine, migration, dépôt Parcours | Terminé |
 | R3 — Cœur | Parcours = état adressable + opérations de modification ciblée (logique pure) | Terminé |
-| R4 — Entrée orientée envie | Brief en langage naturel, dialogue minimal, reformulation avant génération | À venir |
+| R4 — Entrée orientée envie | Brief en langage naturel, dialogue minimal, reformulation avant génération | Terminé |
 | R5 — Mémoire simple | Préférences utilisateur | À venir |
 | R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | À venir |
 
@@ -22,13 +22,13 @@
 > divergerait). Une carte = une tâche livrable ; on coche au fil de l'eau,
 > la revue de sprint raconte le reste.
 
-**R4 — Entrée orientée envie** *(prochain)*
-- [ ] Schéma Zod du **brief** (intention + contexte extraits du dialogue)
-- [ ] Service `agents/intake` : dialogue minimal (ne poser que les questions nécessaires), sortie LLM validée/sanitisée
-- [ ] Reformulation du brief compris, affichable avant génération
-- [ ] Service `agents/generation` : brief → Parcours complet (justification par élément, budget ventilé)
-- [ ] Interprétation NL → `DemandeModification` (« change le resto du jour 3 »), le domaine reste seule autorité
-- [ ] Routes `parcours` (créer / lire / modifier / lister / supprimer) branchées sur le dépôt, authz sur chaque route
+**R4 — Entrée orientée envie** *(terminé le 23/07)*
+- [x] Schéma Zod du **brief** (intention + contexte extraits du dialogue)
+- [x] Service `agents/intake` : dialogue minimal (ne poser que les questions nécessaires), sortie LLM validée/sanitisée
+- [x] Reformulation du brief compris, affichable avant génération
+- [x] Service `agents/generation` : brief → Parcours complet (justification par élément)
+- [x] Interprétation NL → `DemandeModification` (« change le resto du jour 3 »), le domaine reste seule autorité
+- [x] Routes `parcours` (créer / lire / modifier / lister / supprimer) branchées sur le dépôt, authz sur chaque route
 
 **R5 — Mémoire simple**
 - [ ] Préférences utilisateur (schéma + dépôt) injectées dans le brief
@@ -86,6 +86,25 @@
   graphe voulu. L'interprétation en langage naturel (« change le resto du
   jour 3 » → DemandeModification) est volontairement au sprint R4 : elle
   produira ces demandes, le domaine restant la seule autorité.
+
+### Revue R4 (terminé le 23/07)
+- **Deux IA distinctes**, actées dans le [doc 08](08-architecture-ia.md) réécrit :
+  l'orchestrateur (`agents/generation.ts`, brief → parcours complet) et l'agent
+  Modification (`agents/modification.ts`, phrase → une demande ciblée, incapable
+  de régénérer l'ensemble). Plus l'intake (`agents/brief.ts` + `agents/intake.ts`) :
+  cadrage, questions nécessaires uniquement, reformulation validée avant génération
+  (cycle du doc 05, étapes 1→4).
+- Méfiance systématique envers le LLM : sorties validées par Zod, ids attribués
+  côté serveur, refs inventées écartées, le domaine applique ou refuse.
+- Routes `/api/parcours` (dialogue, génération, lecture, liste, modifications,
+  suppression) : authz partout, rate-limit IA, entrées Zod. La modification
+  accepte une demande structurée (front) ou une phrase (agent).
+- 10 tests agents (LLM mocké, frontière de validation réelle) ; 343 tests verts
+  sur toute la suite (préexistants inclus), typecheck OK.
+- Relecture : les échecs de `test:all` sans variables d'env (JWT_SECRET absent)
+  sont préexistants et environnementaux — rien à voir avec la refonte ; la
+  suite passe entière avec les variables fournies. Budget « ventilé » reporté :
+  le prix par élément existe, la ventilation d'affichage viendra avec le front (R6).
 
 ---
 
