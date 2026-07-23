@@ -16,7 +16,31 @@
 | R5 — Mémoire simple | Préférences utilisateur | À venir |
 | R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | À venir |
 
-### Revue R1 (en cours)
+### Board — backlog par sprint
+
+> Le board vit ici (ADR-0006 : le repo fait foi — pas de Trello séparé qui
+> divergerait). Une carte = une tâche livrable ; on coche au fil de l'eau,
+> la revue de sprint raconte le reste.
+
+**R4 — Entrée orientée envie** *(prochain)*
+- [ ] Schéma Zod du **brief** (intention + contexte extraits du dialogue)
+- [ ] Service `agents/intake` : dialogue minimal (ne poser que les questions nécessaires), sortie LLM validée/sanitisée
+- [ ] Reformulation du brief compris, affichable avant génération
+- [ ] Service `agents/generation` : brief → Parcours complet (justification par élément, budget ventilé)
+- [ ] Interprétation NL → `DemandeModification` (« change le resto du jour 3 »), le domaine reste seule autorité
+- [ ] Routes `parcours` (créer / lire / modifier / lister / supprimer) branchées sur le dépôt, authz sur chaque route
+
+**R5 — Mémoire simple**
+- [ ] Préférences utilisateur (schéma + dépôt) injectées dans le brief
+- [ ] Route préférences (lecture / mise à jour)
+
+**R6 — Bascule & nettoyage**
+- [ ] Front basculé sur les routes `parcours`
+- [ ] **Suppression** du modèle Pack (routes trips/votes, services pack, tables) — jamais deux modèles qui cohabitent
+- [ ] Cache des appels externes (maîtrise des coûts)
+- [ ] Recette manuelle de bout en bout
+
+### Revue R1 (terminé le 23/07)
 - 23/07 — Module `server/domaine/parcours/` créé : `schema.ts` (agrégat complet
   du doc 06, invariants 1-2 portés par Zod), `invariants.ts` (dépendants
   transitifs pour le recalcul ciblé, détection de conflits d'horaires durs,
