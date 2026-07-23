@@ -37,14 +37,3 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ error: 'Token invalide' });
   }
 }
-
-// Utilisé sur les routes IA — sauvegarde le pack si connecté, sans bloquer si non
-export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
-  const token = extraireToken(req);
-  if (token) {
-    try {
-      req.user = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
-    } catch { /* token invalide → on continue sans user (auth optionnelle) */ }
-  }
-  next();
-}

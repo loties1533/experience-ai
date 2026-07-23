@@ -2,7 +2,7 @@
   "name": "tripgenie",
   "version": "1.0.0",
   "type": "module",
-  "description": "AI Travel Curator — plans clé en main via scoring multi-critères",
+  "description": "Experience AI — cadrage d'une envie, génération et modification ciblée d'un parcours",
   "main": "dist-server/index.js",
   "scripts": {
     "start": "node dist-server/index.js",
@@ -19,16 +19,13 @@
     "client:dev": "cd client-react && npm run dev",
     "build": "cd client-react && npm install --include=dev && npm run build",
     "client:build": "cd client-react && npm run build",
-    "test": "vitest run tests/api.test.ts tests/golden_path.test.ts tests/scoring.test.ts tests/middleware.test.ts",
+    "test": "vitest run",
     "test:all": "vitest run",
     "test:unit": "vitest run tests/unit/",
     "test:services": "vitest run tests/services/",
     "test:security": "vitest run tests/security/",
-    "test:integration": "vitest run tests/integration/",
-    "test:vitest": "vitest run tests/api.test.ts",
-    "test:scoring": "vitest run tests/scoring.test.ts tests/unit/scoring-party.test.ts",
     "test:middleware": "vitest run tests/middleware.test.ts",
-    "test:coverage": "vitest run --coverage tests/api.test.ts tests/golden_path.test.ts tests/scoring.test.ts tests/middleware.test.ts tests/unit/scoring-party.test.ts tests/unit/smartSearch-hotel.test.ts tests/services/foursquare.test.ts tests/services/yelp.test.ts tests/security/input-validation.test.ts tests/integration/generate-restaurants.test.ts",
+    "test:coverage": "vitest run --coverage",
     "diagrams": "npx @mermaid-js/mermaid-cli -i /tmp/erd.mmd -o docs/assets/diagrams/erd.png -b white --width 900 && npx @mermaid-js/mermaid-cli -i /tmp/seq_generate.mmd -o docs/assets/diagrams/seq_generate.png -b white --width 1000 && npx @mermaid-js/mermaid-cli -i /tmp/seq_auth.mmd -o docs/assets/diagrams/seq_auth.png -b white --width 900 && npx @mermaid-js/mermaid-cli -i /tmp/arch.mmd -o docs/assets/diagrams/architecture.png -b white --width 1000 && npx @mermaid-js/mermaid-cli -i /tmp/scoring.mmd -o docs/assets/diagrams/scoring.png -b white --width 900 && npx @mermaid-js/mermaid-cli -i /tmp/llm_fallback.mmd -o docs/assets/diagrams/llm_fallback.png -b white --width 800"
   },
   "dependencies": {

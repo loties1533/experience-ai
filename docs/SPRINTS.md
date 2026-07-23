@@ -36,7 +36,7 @@
 
 **R6 — Bascule & nettoyage** *(en cours)*
 - [x] Front basculé sur les routes `parcours` (R6a, 23/07)
-- [ ] **Suppression** du modèle Pack (routes trips/votes, services pack, tables) — jamais deux modèles qui cohabitent
+- [x] **Suppression** du modèle Pack (routes trips/votes, services pack, tables) — jamais deux modèles qui cohabitent
 - [ ] Cache des appels externes (maîtrise des coûts)
 - [ ] Recette manuelle de bout en bout
 
@@ -137,6 +137,38 @@
   navigateur en 375 px et en bureau.
 - Reste au sprint R6b : suppression du modèle Pack côté serveur (routes
   trips/votes/ai, services pack, tables), cache et recette de bout en bout.
+
+### Revue R6b — suppression du modèle Pack (23/07)
+- **Un seul modèle de domaine.** Routes supprimées : `trips`, `votes`,
+  `collaborators`, `ai`, ainsi que l'ancienne route `preferences` de TripGenie.
+  Il ne reste que `auth`, `parcours` et `photos`.
+- Services partis avec elles : `claude/pack.ts`, `claude/chat.ts`,
+  `claude/analyze.ts`, `scoring.ts`, `liens.ts`, `mocks.ts` et le helper
+  `lib/tripAccess.ts`. `lib/types.ts` et `lib/constants.ts` sont réduits à ce
+  qui sert encore (JWT, connecteurs externes) : le vocabulaire de l'ancien
+  modèle (modes, ratios de budget, statuts de voyage) est parti avec lui.
+- Le repli « aucun fournisseur IA » ne fabrique plus de fausse réponse à la
+  forme attendue : il rend une indisponibilité explicite, que la validation Zod
+  de l'appelant refuse proprement. Mieux vaut un refus lisible qu'un contenu
+  inventé.
+- Tables supprimées (migration `suppression_modele_pack`, écrite à la main —
+  base indisponible au moment du nettoyage) : `trips`, `packs`, `trip_votes`,
+  `trip_collaborators` et `user_preferences`. Restent `users`, `parcours` et
+  `preferences_parcours`. `user_preferences` n'était plus lue que par l'ancienne
+  route : la mémoire du produit vit dans `preferences_parcours` depuis R5.
+- Tests : les suites qui ne testaient que du legacy sont supprimées ; celles qui
+  testaient l'**authentification** à travers `/api/trips` ont été **réécrites**
+  sur `/api/parcours` (middleware, tokens JWT, isolation inter-utilisateurs), et
+  la suite de validation des entrées couvre désormais les routes parcours
+  (dialogue, génération, modification, préférences). 189 tests verts, typecheck
+  serveur et client OK, lint sans erreur.
+- Conservé volontairement : les connecteurs de données réelles (Foursquare,
+  Yelp, PredictHQ, météo, photo, recherche web, `smartSearch`) et leurs tests.
+  Ils ne portaient pas le modèle Pack — ce sont des sources de données que la
+  génération de parcours réutilisera pour sortir du tout-LLM. Ils ne sont
+  appelés par aucune route pour l'instant : à rebrancher, sinon à supprimer.
+- Reste au sprint R6c : cache des appels externes, recette manuelle de bout en
+  bout, et réécriture du README (il décrit encore le produit TripGenie).
 
 ---
 

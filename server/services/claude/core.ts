@@ -1,9 +1,8 @@
 import 'dotenv/config';
-import * as Mocks from '../mocks.js';
 import { callClaude, callOpenRouter, callGemini, callOllama } from '../providers.js';
 import { CLE_ANTHROPIC, CLE_OPENROUTER } from '../../lib/keys.js';
 
-export const SYSTEM_PROMPT = `Tu es TripGenie, expert voyage. Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte avant ou après.`;
+export const SYSTEM_PROMPT = `Tu es un expert du voyage. Réponds UNIQUEMENT en JSON valide, sans markdown, sans texte avant ou après.`;
 
 type ContexteIA = 'onboarding' | 'destinations' | 'pack';
 
@@ -125,11 +124,10 @@ export async function callAI(
     try { return await callOpenRouter(systemPrompt, userPrompt); } catch (e) { erreursProviders.push(`OpenRouter: ${(e as Error).message}`); }
   }
 
-  // MODE SECOURS — aucun fournisseur IA disponible → données génériques
+  // MODE SECOURS — aucun fournisseur disponible. On ne fabrique plus de fausse
+  // réponse « à la forme attendue » : l'appelant valide sa sortie (Zod) et
+  // préfère un refus explicite à un contenu inventé.
   console.error('Échecs fournisseurs IA :', JSON.stringify(erreursProviders, null, 2));
-  console.error(`Repli générique activé — contexte : ${context}. Aucun fournisseur IA disponible.`);
-  if (context === 'onboarding')   return JSON.stringify(Mocks.MOCK_ONBOARDING);
-  if (context === 'destinations') return JSON.stringify(Mocks.MOCK_DESTINATIONS);
-  if (context === 'pack')         return JSON.stringify(Mocks.MOCK_PACK);
-  return JSON.stringify({ response: 'Service temporairement limité. Réessayez dans 1 minute.', isMock: true });
+  console.error(`Aucun fournisseur disponible — contexte : ${context}.`);
+  return JSON.stringify({ indisponible: true, message: 'Service temporairement indisponible, réessayez dans une minute.' });
 }

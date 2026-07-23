@@ -1,5 +1,5 @@
 import { searchWeb } from './tools/webSearch.js';
-import { callAI, parseJSON } from './claude/index.js';
+import { callAI, parseJSON } from './claude/core.js';
 import { predictHQEventsSearch } from './predictHQ.js';
 import type { TravelMode, HotelLinks } from '../lib/types.js';
 import { encoderURL } from '../lib/url.js';

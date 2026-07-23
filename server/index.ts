@@ -1,4 +1,4 @@
-// TRIPGENIE — server/index.ts (Point d'entrée backend)
+// EXPERIENCE AI — server/index.ts (Point d'entrée backend)
 
 import 'dotenv/config';
 import express from 'express';
@@ -18,12 +18,7 @@ import { openapiSpec } from './docs/openapi.js';
 
 // Routes
 import authRoutes from './routes/auth.js';
-import tripsRoutes from './routes/trips.js';
-import aiRoutes from './routes/ai.js';
-import votesRoutes from './routes/votes.js';
 import photosRoutes from './routes/photos.js';
-import preferencesRoutes from './routes/preferences.js';
-import collaboratorsRoutes from './routes/collaborators.js';
 import parcoursRoutes from './routes/parcours.js';
 
 // ---- Fail-fast : variables critiques obligatoires ----
@@ -85,12 +80,7 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // ---- Routes API ----
 app.use('/api/auth', authRoutes);
-app.use('/api/trips', tripsRoutes);
-app.use('/api/trips', collaboratorsRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/votes', votesRoutes);
 app.use('/api/photos', photosRoutes);
-app.use('/api/preferences', preferencesRoutes);
 app.use('/api/parcours', parcoursRoutes);
 
 // Healthcheck pour s'assurer que le backend tourne
@@ -117,7 +107,7 @@ app.use(
   swaggerCsp,
   swaggerUi.serve,
   swaggerUi.setup(openapiSpec, {
-    customSiteTitle: 'TripGenie API — Documentation',
+    customSiteTitle: 'Experience AI — Documentation de l\'API',
     swaggerOptions: { persistAuthorization: true, displayRequestDuration: true },
   }),
 );

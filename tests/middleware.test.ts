@@ -1,7 +1,7 @@
 // =============================================
-// TRIPGENIE — tests/middleware.test.ts
-// Tests du middleware d'authentification JWT
-// requireAuth et optionalAuth
+// EXPERIENCE AI — tests/middleware.test.ts
+// Tests du middleware d'authentification JWT (requireAuth), exercé sur
+// /api/parcours — les routes protégées du produit depuis la refonte.
 // =============================================
 
 import { describe, it, expect, vi } from 'vitest';
@@ -11,8 +11,7 @@ import app from '../server/index.js';
 
 process.env.JWT_SECRET = 'test-jwt-secret-for-vitest';
 
-const TEST_USER = { id: 'aabbccdd-0000-0000-0000-aabbccddee00', email: 'pilot@tripgenie.test', name: 'Test Pilot' };
-const TEST_TRIP_ID = '550e8400-e29b-41d4-a716-446655440000';
+const TEST_USER = { id: 'aabbccdd-0000-0000-0000-aabbccddee00', email: 'pilot@experience.test', name: 'Test Pilot' };
 
 // ---- Mocks ----
 vi.mock('express-rate-limit', () => ({
@@ -25,41 +24,40 @@ vi.mock('../server/middleware/limiter.js', () => {
   return { aiGenerateLimiter: passthrough, aiChatLimiter: passthrough, authLimiter: passthrough };
 });
 
-// Mock Prisma : GET /api/trips utilise prisma.trip.findMany.
+// Mock Prisma : GET /api/parcours passe par le dépôt → prisma.parcours.findMany.
 const { prismaMock } = vi.hoisted(() => ({
-  prismaMock: { trip: { findMany: vi.fn(), findFirst: vi.fn() } } as any,
+  prismaMock: { parcours: { findMany: vi.fn(), findFirst: vi.fn() } } as any,
 }));
 vi.mock('../server/db/prisma.js', () => ({ default: prismaMock }));
-prismaMock.trip.findMany.mockResolvedValue([]);
-prismaMock.trip.findFirst.mockResolvedValue(null);
+prismaMock.parcours.findMany.mockResolvedValue([]);
+prismaMock.parcours.findFirst.mockResolvedValue(null);
 
 // ============================================================
-// requireAuth — routes protégées (/api/trips nécessite auth)
+// requireAuth — routes protégées (/api/parcours nécessite auth)
 // ============================================================
 
-describe('🔒 requireAuth middleware', () => {
+describe('requireAuth — accès aux routes protégées', () => {
 
   it('401 si aucun token fourni', async () => {
-    const res = await request(app).get('/api/trips');
+    const res = await request(app).get('/api/parcours');
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/manquant|invalide/i);
   });
 
   it('401 si token JWT expiré', async () => {
-    // On signe un token avec une expiration passée (-1 seconde)
     const expiredToken = jwt.sign(TEST_USER, process.env.JWT_SECRET as string, { expiresIn: -1 });
 
     const res = await request(app)
-      .get('/api/trips')
+      .get('/api/parcours')
       .set('Authorization', `Bearer ${expiredToken}`);
 
     expect(res.status).toBe(401);
     expect(res.body.error).toMatch(/expir/i);
   });
 
-  it('401 si token JWT malformé (string aléatoire)', async () => {
+  it('401 si token JWT malformé (chaîne aléatoire)', async () => {
     const res = await request(app)
-      .get('/api/trips')
+      .get('/api/parcours')
       .set('Authorization', 'Bearer ceci.nest.pas.un.jwt');
 
     expect(res.status).toBe(401);
@@ -70,7 +68,7 @@ describe('🔒 requireAuth middleware', () => {
     const wrongToken = jwt.sign(TEST_USER, 'mauvais-secret', { expiresIn: '1d' });
 
     const res = await request(app)
-      .get('/api/trips')
+      .get('/api/parcours')
       .set('Authorization', `Bearer ${wrongToken}`);
 
     expect(res.status).toBe(401);
@@ -81,56 +79,31 @@ describe('🔒 requireAuth middleware', () => {
     const validToken = jwt.sign(TEST_USER, process.env.JWT_SECRET as string, { expiresIn: '1d' });
 
     const res = await request(app)
-      .get('/api/trips')
+      .get('/api/parcours')
       .set('Authorization', `Bearer ${validToken}`);
 
     expect(res.status).toBe(200);
-  });
-});
-
-// ============================================================
-// optionalAuth — routes IA accessibles sans auth
-// (génération fonctionne connecté ET déconnecté)
-// ============================================================
-
-describe('🔓 optionalAuth middleware', () => {
-
-  vi.mock('../server/services/claude/index.js', () => ({
-    chatIntake:          vi.fn().mockResolvedValue({ response: 'OK', chips: [], extractedData: {}, isReady: false }),
-    assemblerPack:        vi.fn(),
-    analyzeRequest:      vi.fn(),
-    suggestDestinations: vi.fn().mockResolvedValue({ destinations: [] }),
-    chatModify:          vi.fn(),
-  }));
-
-  it('200 sur /api/ai/onboarding SANS token (optionalAuth ne bloque pas)', async () => {
-    const res = await request(app)
-      .post('/api/ai/onboarding')
-      .send({ userMessage: 'Je veux aller à Lisbonne', currentData: {} });
-
-    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.parcours)).toBe(true);
   });
 
-  it('200 sur /api/ai/onboarding AVEC token valide', async () => {
+  it('200 si le token vient du cookie httpOnly', async () => {
     const validToken = jwt.sign(TEST_USER, process.env.JWT_SECRET as string, { expiresIn: '1d' });
 
     const res = await request(app)
-      .post('/api/ai/onboarding')
-      .set('Authorization', `Bearer ${validToken}`)
-      .send({ userMessage: 'Je veux aller à Lisbonne', currentData: {} });
+      .get('/api/parcours')
+      .set('Cookie', `tg_token=${validToken}`);
 
     expect(res.status).toBe(200);
   });
 
-  it('200 sur /api/ai/onboarding même avec token expiré (optionalAuth silencieux)', async () => {
-    const expiredToken = jwt.sign(TEST_USER, process.env.JWT_SECRET as string, { expiresIn: -1 });
+  it('le dépôt ne voit que l\'utilisateur du token (isolation)', async () => {
+    const validToken = jwt.sign(TEST_USER, process.env.JWT_SECRET as string, { expiresIn: '1d' });
+    prismaMock.parcours.findMany.mockClear();
 
-    const res = await request(app)
-      .post('/api/ai/onboarding')
-      .set('Authorization', `Bearer ${expiredToken}`)
-      .send({ userMessage: 'Voyage à Rome', currentData: {} });
+    await request(app).get('/api/parcours').set('Authorization', `Bearer ${validToken}`);
 
-    // optionalAuth ignore les tokens invalides sans bloquer
-    expect(res.status).toBe(200);
+    expect(prismaMock.parcours.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { user_id: TEST_USER.id } })
+    );
   });
 });

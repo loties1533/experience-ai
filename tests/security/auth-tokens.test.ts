@@ -1,11 +1,12 @@
 // =============================================
-// TRIPGENIE — tests/security/auth-tokens.test.ts
+// EXPERIENCE AI — tests/security/auth-tokens.test.ts
 // Sécurité tokens JWT :
 //   - token expiré
 //   - token forgé (mauvaise signature)
 //   - token sans les bons claims
 //   - accès inter-utilisateurs (isolation)
 //   - token dans cookie vs header Bearer
+// Exercés sur /api/parcours, les routes protégées du produit.
 // =============================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -24,20 +25,19 @@ vi.mock('../../server/middleware/limiter.js', () => {
   return { aiGenerateLimiter: p, aiChatLimiter: p, authLimiter: p };
 });
 
-// Mock Prisma : GET /api/trips → findMany ([]) ; GET /api/trips/:id passe par
-// le contrôle d'accès (trip.findUnique + tripCollaborator.findUnique).
-// Défauts fail-closed → liste vide / voyage inexistant → 404, ce qui suffit aux tests de tokens.
+// Mock Prisma : GET /api/parcours → findMany ([]) ; GET /api/parcours/:id passe
+// par le dépôt (findFirst filtré sur user_id). Défauts fail-closed → liste vide
+// / parcours introuvable → 404, ce qui suffit aux tests de tokens.
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
-    trip: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
-    tripCollaborator: { findUnique: vi.fn() },
+    parcours: { findMany: vi.fn(), findFirst: vi.fn(), deleteMany: vi.fn() },
   } as any,
 }));
 vi.mock('../../server/db/prisma.js', () => ({ default: prismaMock }));
 
-const USER_A = { id: 'user-a-uuid', email: 'a@test.com', name: 'User A' };
-const USER_B = { id: 'user-b-uuid', email: 'b@test.com', name: 'User B' };
-const TRIP_B = 'trip-belongs-to-b';
+const USER_A = { id: '11111111-1111-4111-8111-111111111111', email: 'a@test.com', name: 'User A' };
+const USER_B = { id: '22222222-2222-4222-8222-222222222222', email: 'b@test.com', name: 'User B' };
+const PARCOURS_B = '33333333-3333-4333-8333-333333333333';
 
 function makeToken(payload: object, secret = process.env.JWT_SECRET!, options: jwt.SignOptions = {}) {
   return jwt.sign(payload, secret, { expiresIn: '1d', ...options });
@@ -45,10 +45,9 @@ function makeToken(payload: object, secret = process.env.JWT_SECRET!, options: j
 
 beforeEach(() => {
   vi.clearAllMocks();
-  prismaMock.trip.findMany.mockResolvedValue([]);
-  prismaMock.trip.findFirst.mockResolvedValue(null);            // défauts fail-closed
-  prismaMock.trip.findUnique.mockResolvedValue(null);           // voyage introuvable → 404
-  prismaMock.tripCollaborator.findUnique.mockResolvedValue(null); // aucun droit collaborateur
+  prismaMock.parcours.findMany.mockResolvedValue([]);
+  prismaMock.parcours.findFirst.mockResolvedValue(null);      // parcours d'autrui → introuvable
+  prismaMock.parcours.deleteMany.mockResolvedValue({ count: 0 });
 });
 
 // ============================================================
@@ -58,33 +57,33 @@ describe('JWT — tokens invalides', () => {
 
   it('401 avec token expiré', async () => {
     const expired = jwt.sign(USER_A, process.env.JWT_SECRET!, { expiresIn: -1 });
-    const res = await request(app).get('/api/trips').set('Authorization', `Bearer ${expired}`);
+    const res = await request(app).get('/api/parcours').set('Authorization', `Bearer ${expired}`);
     expect(res.status).toBe(401);
   });
 
   it('401 avec token signé avec un mauvais secret', async () => {
     const forged = jwt.sign(USER_A, 'wrong-secret');
-    const res = await request(app).get('/api/trips').set('Authorization', `Bearer ${forged}`);
+    const res = await request(app).get('/api/parcours').set('Authorization', `Bearer ${forged}`);
     expect(res.status).toBe(401);
   });
 
   it('401 avec token tronqué / corrompu', async () => {
-    const res = await request(app).get('/api/trips').set('Authorization', 'Bearer eyJhbGciOiJIUzI1NiJ9.INVALID.xxx');
+    const res = await request(app).get('/api/parcours').set('Authorization', 'Bearer eyJhbGciOiJIUzI1NiJ9.INVALID.xxx');
     expect(res.status).toBe(401);
   });
 
   it('401 avec token vide', async () => {
-    const res = await request(app).get('/api/trips').set('Authorization', 'Bearer ');
+    const res = await request(app).get('/api/parcours').set('Authorization', 'Bearer ');
     expect(res.status).toBe(401);
   });
 
   it('401 avec header Authorization mal formé', async () => {
-    const res = await request(app).get('/api/trips').set('Authorization', 'InvalidScheme abc123');
+    const res = await request(app).get('/api/parcours').set('Authorization', 'InvalidScheme abc123');
     expect(res.status).toBe(401);
   });
 
   it('401 sans token du tout', async () => {
-    const res = await request(app).get('/api/trips');
+    const res = await request(app).get('/api/parcours');
     expect(res.status).toBe(401);
   });
 
@@ -93,7 +92,7 @@ describe('JWT — tokens invalides', () => {
     const header  = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
     const payload = Buffer.from(JSON.stringify({ id: 'admin', email: 'admin@test.com', iat: Math.floor(Date.now()/1000) })).toString('base64url');
     const noneToken = `${header}.${payload}.`;
-    const res = await request(app).get('/api/trips').set('Authorization', `Bearer ${noneToken}`);
+    const res = await request(app).get('/api/parcours').set('Authorization', `Bearer ${noneToken}`);
     expect(res.status).toBe(401);
   });
 });
@@ -105,40 +104,49 @@ describe('JWT — extraction depuis cookie et header', () => {
 
   it('accepte le token depuis le header Authorization Bearer', async () => {
     const token = makeToken(USER_A);
-    const res = await request(app).get('/api/trips').set('Authorization', `Bearer ${token}`);
-    // 200 ou 404 — pas 401
+    const res = await request(app).get('/api/parcours').set('Authorization', `Bearer ${token}`);
     expect(res.status).not.toBe(401);
   });
 
   it('accepte le token depuis le cookie tg_token', async () => {
     const token = makeToken(USER_A);
-    const res = await request(app).get('/api/trips').set('Cookie', `tg_token=${token}`);
+    const res = await request(app).get('/api/parcours').set('Cookie', `tg_token=${token}`);
     expect(res.status).not.toBe(401);
   });
 });
 
 // ============================================================
-// Isolation inter-utilisateurs (IDOR protection)
+// Isolation inter-utilisateurs (protection IDOR)
 // ============================================================
 describe('JWT — isolation des données entre utilisateurs', () => {
 
-  it('User A ne peut pas accéder au voyage de User B', async () => {
+  it('User A ne peut pas lire le parcours de User B', async () => {
     const tokenA = makeToken(USER_A);
-    // GET /:id : contrôle d'accès → User A n'est ni propriétaire ni collaborateur
-    // du voyage de B → aucun droit → 404 (on ne révèle pas l'existence du voyage).
+    // Le dépôt filtre sur user_id : le parcours de B est simplement introuvable
+    // pour A → 404 (on ne révèle pas son existence).
     const res = await request(app)
-      .get(`/api/trips/${TRIP_B}`)
+      .get(`/api/parcours/${PARCOURS_B}`)
       .set('Authorization', `Bearer ${tokenA}`);
+    expect([403, 404]).toContain(res.status);
+    expect(prismaMock.parcours.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: PARCOURS_B, user_id: USER_A.id } })
+    );
+  });
+
+  it('User B ne peut pas supprimer le parcours de User A', async () => {
+    const tokenB = makeToken(USER_B);
+    const res = await request(app)
+      .delete(`/api/parcours/${PARCOURS_B}`)
+      .set('Authorization', `Bearer ${tokenB}`);
     expect([403, 404]).toContain(res.status);
   });
 
-  it('User B ne peut pas modifier le voyage de User A', async () => {
+  it('une méthode non définie sur la route → 404', async () => {
     const tokenB = makeToken(USER_B);
-    // PATCH n'est pas une route définie (trips = GET/PUT/DELETE) → 404 attendu
     const res = await request(app)
-      .patch(`/api/trips/trip-belongs-to-a`)
+      .patch(`/api/parcours/${PARCOURS_B}`)
       .set('Authorization', `Bearer ${tokenB}`)
-      .send({ status: 'confirmed' });
+      .send({ visibilite: 'partage' });
     expect([403, 404]).toContain(res.status);
   });
 });
@@ -148,17 +156,15 @@ describe('JWT — isolation des données entre utilisateurs', () => {
 // ============================================================
 describe('JWT — claims requis', () => {
 
-  it('token sans "id" → rejeté ou accès refusé', async () => {
-    const noId = makeToken({ email: 'alice@test.com' }); // pas de id
-    // GET /trips : filtre Prisma where user_id → liste vide (fail-closed)
-    const res = await request(app).get('/api/trips').set('Authorization', `Bearer ${noId}`);
-    // Sans id, le serveur peut renvoyer 200 (liste vide) ou 401 — pas de crash 500
+  it('token sans "id" → aucune donnée renvoyée, aucun crash', async () => {
+    const noId = makeToken({ email: 'alice@test.com' });
+    const res = await request(app).get('/api/parcours').set('Authorization', `Bearer ${noId}`);
     expect([200, 401]).toContain(res.status);
   });
 
-  it('token avec id null → rejeté', async () => {
+  it('token avec id null → aucune donnée renvoyée, aucun crash', async () => {
     const nullId = makeToken({ id: null, email: 'alice@test.com' });
-    const res = await request(app).get('/api/trips').set('Authorization', `Bearer ${nullId}`);
+    const res = await request(app).get('/api/parcours').set('Authorization', `Bearer ${nullId}`);
     expect([200, 401]).toContain(res.status);
   });
 });
