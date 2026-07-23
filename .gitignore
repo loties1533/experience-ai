@@ -1,0 +1,42 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+dist/
+dist-server/
+.vercel/
+
+# npm cache
+**/.npm-cache/
+.npm-cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Docs perso / internes
+Dossier_Professionnel*.md
+Dossier_Projet*.md
+MASTER_PLAN.md
+_archives/
+CLAUDE.md
+DEPLOY.md
+README_DEMODAY.md
+docs/*
+!docs/architecture/
+!docs/architecture/**
+!docs/SPRINTS.md
+scripts/
+scripts1/
+
+# OS
+Thumbs.db
+
+# Outillage Claude Code (config locale, jamais sur le repo)
+.claude/
+
+# Dossier RNCP (PDF lourd + source — gardés en local uniquement)
+dossier-rncp/
+RNCP5_DWWM_DOSSIER.md

@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { scroll-behavior: smooth; }
+
+  body {
+    @apply font-sans text-ink;
+    /* Fond neutre clair : le bordeaux reste un accent, pas un aplat */
+    background: #F4F3F1;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /* Carte : fond blanc net, bordure discrète (pas d'effet verre) */
+  .glass {
+    background: #FFFFFF;
+    border: 1px solid rgba(26, 20, 16, 0.12);
+  }
+  .glass-premium {
+    @apply glass;
+  }
+
+  /* Scrollbar masquée */
+  .scroll-hide { scrollbar-width: none; }
+  .scroll-hide::-webkit-scrollbar { display: none; }
+
+  /* Bulles de chat */
+  .bubble-bot {
+    @apply bg-white text-ink rounded-sm px-4 py-3
+           border border-gray-300 text-[15px] leading-relaxed;
+  }
+  .bubble-user {
+    @apply bg-gold text-ink rounded-sm px-4 py-3
+           text-[15px] leading-relaxed font-medium;
+  }
+
+  /* Chip (choix rapide) */
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-sm
+           text-sm font-medium border border-gray-300 text-ink
+           bg-white hover:border-gold hover:bg-gold/5
+           transition-colors cursor-pointer;
+  }
+
+  /* Boutons */
+  .btn-primary {
+    @apply bg-gold hover:bg-gold-dark text-ink font-medium px-6 py-3
+           rounded-sm transition-colors;
+  }
+  .btn-ghost {
+    @apply border border-gray-300 text-ink hover:border-gold hover:bg-gold/5
+           font-medium px-4 py-2 rounded-sm transition-colors;
+  }
+
+  /* Skeleton (chargement) */
+  .skeleton {
+    @apply bg-parchment-dark rounded-sm;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+
+  /* Badge score */
+  .score-badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-sm text-xs font-semibold;
+  }
+
+  /* Badge vérifié (sémantique succès) */
+  .verified {
+    @apply inline-flex items-center gap-1 text-[11px] font-semibold
+           bg-sage/10 text-sage px-2 py-0.5 rounded-sm;
+  }
+
+  /* Onglets */
+  .tab-btn {
+    @apply px-4 py-2 text-sm font-medium text-muted rounded-sm
+           hover:text-ink hover:bg-gray-100 transition-colors;
+  }
+  .tab-btn.active {
+    @apply text-ink bg-white border border-gray-300;
+  }
+}
+
+/* Points « en train d'écrire » */
+.typing-dot {
+  animation: typing 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing {
+  0%, 100% { transform: translateY(0); opacity: 0.4; }
+  50%      { transform: translateY(-4px); opacity: 1; }
+}
+
+/* Apparition d'un message */
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.msg-enter { animation: msgIn 0.25s ease-out forwards; }
+
+/* Zoom lent de l'image d'accueil */
+@keyframes slowZoom {
+  from { transform: scale(1); }
+  to   { transform: scale(1.08); }
+}
+.animate-slow-zoom {
+  animation: slowZoom 20s ease-in-out infinite alternate;
+}
+
+/* Shimmer du skeleton */
+@keyframes shimmer {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
+}

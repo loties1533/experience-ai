@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: tripgenie
+    runtime: node
+    region: frankfurt
+    branch: main
+    buildCommand: npm install && npx tsc && npm run client:build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      # --- Base de données (PostgreSQL via Prisma) ---
+      - key: DATABASE_URL
+        sync: false  # à renseigner dans le dashboard Render
+
+      # --- Auth ---
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+
+      # --- LLM (au moins GEMINI_API_KEY requis — fallback automatique) ---
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+
+      # --- Services externes (optionnels — fallback IA si absent) ---
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: UNSPLASH_ACCESS_KEY
+        sync: false
+      - key: FOURSQUARE_API_KEY
+        sync: false
+      - key: PREDICTHQ_API_KEY
+        sync: false
+      # Open-Meteo : aucune clé requise
+
+      # --- CORS ---
+      - key: CLIENT_URL
+        value: https://tripgenie-api.onrender.com

@@ -1,0 +1,28 @@
+# =============================================
+# TripGenie — Docker Compose
+# 1 seul container : Express sert l'API + React
+# =============================================
+#
+# Usage :
+#   docker-compose up --build     ← premier lancement
+#   docker-compose up             ← lancements suivants
+#   docker-compose down           ← arrêt
+#
+# App → http://localhost:3000
+# =============================================
+
+services:
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tripgenie:latest
+    container_name: tripgenie
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env                        # JWT_SECRET, DATABASE_URL, GEMINI_API_KEY...
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped

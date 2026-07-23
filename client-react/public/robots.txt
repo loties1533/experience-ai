@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /$
+Allow: /login
+Disallow: /trips
+Disallow: /trip/
+Disallow: /preferences
+Disallow: /api/

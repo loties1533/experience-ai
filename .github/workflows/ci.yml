@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, clean-main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Tests et TypeScript
+    runs-on: ubuntu-latest
+
+    # Base PostgreSQL ephemere pour les tests (Prisma)
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tripgenie_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/tripgenie_test
+      NODE_ENV: test
+      JWT_SECRET: test-secret-ci
+
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Installer les dependances
+        run: npm ci
+
+      - name: Generer le client Prisma
+        run: npx prisma generate
+
+      - name: Appliquer les migrations sur la base de test
+        run: npx prisma migrate deploy
+
+      - name: Verifier le typage TypeScript
+        run: npx tsc --noEmit
+
+      - name: Lancer la suite de tests
+        run: npm run test:all

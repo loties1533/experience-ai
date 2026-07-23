@@ -1,0 +1,4 @@
+flowchart LR
+    Pack["vol · hôtel · events<br/>activités · prix"] --> N["normalisation<br/>vers 0..1"]
+    N --> W["MODE_WEIGHTS selon le mode<br/>relax : calme 35% + hôtel 30%<br/>party : activités 35%<br/>student : prix 45%"]
+    W --> T["score.total 0–1<br/>déterministe — zéro IA"]

@@ -1,0 +1,9 @@
+flowchart LR
+    Req["callAI()"] --> C{"Claude Haiku"}
+    C -->|"OK"| Out["Réponse JSON"]
+    C -->|"échec"| G{"Gemini 2.0 Flash"}
+    G -->|"OK"| Out
+    G -->|"échec"| O{"OpenRouter — 7 modèles gratuits"}
+    O -->|"OK"| Out
+    O -->|"échec"| M["Mocks statiques — isMock=true"]
+    M --> Out

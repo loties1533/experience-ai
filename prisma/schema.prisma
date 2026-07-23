@@ -1,0 +1,137 @@
+// =============================================
+// TRIPGENIE — prisma/schema.prisma
+// Branche mvp-DEMODAY : ORM Prisma sur PostgreSQL (local Docker pour la démo).
+//
+// Mapping 1:1 avec les 6 tables historiques (server/db/schema.sql) :
+//   users, trips, packs, trip_votes, user_preferences, trip_collaborators
+//
+// CHOIX CLÉ — champs nommés en snake_case :
+//   Le contrat d'API public (frontend React + server/lib/types + tests) est
+//   intégralement en snake_case (pack_data, user_id, return_date, created_at...).
+//   On nomme donc les champs Prisma EN snake_case → Prisma renvoie directement
+//   le bon format, sans aucune couche de transformation camelCase↔snake_case.
+//   Source de vérité unique : colonne SQL = champ Prisma = clé JSON d'API.
+//
+// Autres choix :
+// - @db.Uuid partout → types FK alignés avec l'ancien schéma
+// - mode/status : String (la validation Zod aux frontières garantit les valeurs)
+// - onDelete: Cascade → reproduit les ON DELETE CASCADE de l'ancien schéma
+// - @updatedAt → remplace les "updated_at = NOW()" manuels
+// =============================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ---- USERS ----
+model User {
+  id         String   @id @default(uuid()) @db.Uuid
+  email      String   @unique
+  password   String
+  name       String?
+  avatar_url String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @updatedAt @db.Timestamptz(6)
+
+  trips          Trip[]
+  preferences    UserPreference?
+  collaborations TripCollaborator[]
+
+  @@map("users")
+}
+
+// ---- TRIPS (itinéraires sauvegardés) ----
+model Trip {
+  id          String    @id @default(uuid()) @db.Uuid
+  user_id     String    @db.Uuid
+  title       String
+  destination String
+  country     String?
+  origin      String?
+  departure   DateTime? @db.Date
+  return_date DateTime? @db.Date
+  travelers   Int       @default(1)
+  budget      String?
+  mode        String?
+  premium     Boolean   @default(false)
+  status      String    @default("draft")
+  score       Float?
+  pack_data   Json?
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @updatedAt @db.Timestamptz(6)
+
+  user          User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  packs         Pack[]
+  collaborators TripCollaborator[]
+
+  @@index([user_id])
+  @@index([mode])
+  @@map("trips")
+}
+
+// ---- PACKS (options générées — top 3 par recherche) ----
+model Pack {
+  id         String   @id @default(uuid()) @db.Uuid
+  trip_id    String   @db.Uuid
+  rank       Int      @default(1)
+  score      Float?
+  pack_data  Json
+  selected   Boolean  @default(true)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  trip  Trip       @relation(fields: [trip_id], references: [id], onDelete: Cascade)
+  votes TripVote[]
+
+  @@index([trip_id])
+  @@map("packs")
+}
+
+// ---- VOTES CONSENSUS (votes publics sur les items d'un pack) ----
+model TripVote {
+  id         String   @id @default(uuid()) @db.Uuid
+  pack_id    String   @db.Uuid
+  item_id    String
+  voter_name String   @default("Anonyme")
+  vote_type  Boolean
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  pack Pack @relation(fields: [pack_id], references: [id], onDelete: Cascade)
+
+  @@index([pack_id])
+  @@map("trip_votes")
+}
+
+// ---- PRÉFÉRENCES UTILISATEUR (relation 1-1) ----
+model UserPreference {
+  user_id         String   @id @db.Uuid
+  default_mode    String   @default("party")
+  default_premium Boolean  @default(false)
+  preferred_prefs String[]
+  home_city       String?
+  currency        String   @default("EUR")
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+// ---- COLLABORATEURS DE VOYAGE (many-to-many trips ↔ users) ----
+model TripCollaborator {
+  trip_id    String   @db.Uuid
+  user_id    String   @db.Uuid
+  role       String   @default("viewer")
+  invited_at DateTime @default(now()) @db.Timestamptz(6)
+
+  trip Trip @relation(fields: [trip_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([trip_id, user_id])
+  @@index([user_id])
+  @@map("trip_collaborators")
+}

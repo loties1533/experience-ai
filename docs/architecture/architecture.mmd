@@ -1,0 +1,24 @@
+flowchart TB
+    subgraph Client["Couche Présentation — React 18 + Vite"]
+        UI["Pages + Composants"]
+        Store["Zustand — 4 stores"]
+        Api["lib/api.ts — fetch credentials:include"]
+    end
+    subgraph Server["Couche Logique Métier — Node.js + Express 4"]
+        Idx["index.ts — Helmet · CORS · cookieParser · morgan"]
+        MW["middleware — requireAuth + rateLimit"]
+        Routes["routes/*.ts — auth · trips · ai · votes · photos · preferences · collaborators"]
+        Svc["services/*.ts — pipeline IA · scoring · smartSearch"]
+        Prisma["db/prisma.ts — client singleton"]
+    end
+    DB[("PostgreSQL 16 — 6 tables")]
+    Ext["APIs externes — Claude · Gemini · OpenRouter · Tavily · Foursquare/Yelp · PredictHQ · Open-Meteo · Unsplash"]
+
+    UI --> Store --> Api
+    Api -->|"HTTPS · cookie httpOnly JWT"| Idx
+    Idx --> MW --> Routes
+    Routes --> Svc
+    Routes --> Prisma
+    Svc --> Prisma
+    Svc --> Ext
+    Prisma -->|"requêtes typées"| DB

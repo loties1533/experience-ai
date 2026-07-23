@@ -1,0 +1,23 @@
+flowchart TB
+    USER["<b>USER</b><br/>id (PK)<br/>email · password<br/>name · avatar_url"]
+    PREF["<b>PREFERENCES</b><br/>default_mode · default_premium<br/>currency · home_city<br/>preferred_prefs"]
+    TRIP["<b>TRIP</b><br/>id (PK)<br/>destination · origin<br/>departure · return_date<br/>travelers · mode · premium · status"]
+    PACK["<b>PACK</b><br/>id (PK)<br/>rank · score<br/>selected · pack_data"]
+    VOTE["<b>VOTE</b><br/>id (PK)<br/>item_id<br/>voter_name · vote_type"]
+
+    CONFIG{{"CONFIGURER"}}
+    CREER{{"CRÉER"}}
+    COLLAB{{"COLLABORER<br/><i>rôle</i>"}}
+    CONTENIR{{"CONTENIR"}}
+    RECEVOIR{{"RECEVOIR"}}
+
+    USER ---|"0,1"| CONFIG ---|"1,1"| PREF
+    USER ---|"0,n"| CREER ---|"1,1"| TRIP
+    USER ---|"0,n"| COLLAB ---|"0,n"| TRIP
+    TRIP ---|"0,n"| CONTENIR ---|"1,1"| PACK
+    PACK ---|"0,n"| RECEVOIR ---|"1,1"| VOTE
+
+    classDef entity fill:#f3f1ec,stroke:#5b5346,stroke-width:1.5px,color:#23211d;
+    classDef assoc fill:#e7e3da,stroke:#6b6051,stroke-width:1px,color:#3f3a31;
+    class USER,PREF,TRIP,PACK,VOTE entity;
+    class CONFIG,CREER,COLLAB,CONTENIR,RECEVOIR assoc;
