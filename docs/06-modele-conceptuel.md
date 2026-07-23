@@ -32,11 +32,11 @@ Le **Parcours** est l'objet central. Tout le reste lui appartient. Un parcours n
 Il porte :
 - **Intention** — le *pourquoi* (envie / passion / objectif). Point de départ, jamais une destination.
 - **Contexte** — avec qui, durée, lieu(x). Co-égal à l'intention.
-- **Participants** — de 1 à N, avec des **Rôles** (l'organisateur peut ≠ participant).
+- **Participants** — de 1 à N, avec des **Rôles** (l'organisateur peut ≠ participant). Un participant **n'est pas forcément un utilisateur du produit** (Léa n'a pas de compte, elle existe pourtant dans le parcours).
 - **Budget** — **individuel ou partagé**. Sert de contrainte pilotante.
 - **Ambiance / Ton** — propriété transverse qui teinte tous les éléments.
 - **Visibilité** — privé / partagé / surprise (certains participants ne voient pas).
-- **Historique** — le journal des modifications (permet d'annuler).
+- **Historique** — le journal des modifications (permet d'annuler), **y compris les arbitrages** de l'utilisateur (option écartée = mémorisée). *Un arbitrage est pour l'instant un événement de l'Historique, pas un objet métier — question laissée ouverte tant que plusieurs journeys ne réclament pas plus (voir Questions ouvertes).*
 - **Timeline** — la suite ordonnée de **Moments**.
 
 ## Les entités
@@ -56,16 +56,46 @@ La matière concrète d'un moment. Il a un **type** (activité, resto, transport
   - *souple* (ambiance, niveau, rythme → oriente sans exclure).
 - **Alternative** — une option de remplacement d'un élément (plan B).
 - **Réservation** — un **lien externe** vers un service tiers. **Jamais un achat dans le produit** (Constitution #5).
-- **Rôle** — la fonction d'un participant : organisateur / participant / héros.
+- **Rôle** — la fonction d'un participant, définie par ses **responsabilités métier** (pas des « permissions » techniques — la technique les déduira plus tard) :
+  - *organisateur* — responsable du parcours : décide, modifie, supprime ;
+  - *participant* — contribue : propose, vote, ajuste ce qui lui est délégué ;
+  - *héros* — celui pour qui le parcours existe ; peut être exclu de la visibilité (surprise) ; ne décide pas.
 - **Justification (Note IA)** — le *pourquoi* d'un élément (cohérence et confiance).
 
 ## Les invariants (toujours vrais)
 1. Un Parcours a **toujours** une Intention et un Contexte.
 2. Chaque Élément porte une **justification**.
-3. Modifier un Élément **ne recalcule que ses dépendances** — jamais tout le parcours.
+3. **La portée d'un recalcul = la portée de la dépendance.** Modifier un Élément ne recalcule que ses dépendances directes ; modifier une donnée globale (budget, durée, participants) recalcule ce qui en dépend — potentiellement tout, et c'est cohérent.
 4. Une Réservation **n'est jamais un achat** in-app.
 5. Un Parcours n'a **ni durée ni format fixes** (soirée, EVG, festival, séjour = même modèle).
 6. L'utilisateur garde le dernier mot : tout élément est acceptable / refusable / remplaçable.
+7. **Un arbitrage est définitif** : une option écartée par l'utilisateur n'est jamais reproposée (sauf demande explicite).
+8. Toute modification s'exerce dans le cadre des **responsabilités du rôle** de son auteur.
+
+## Règle de primauté des invariants
+Quand une histoire casse un invariant, la première question n'est plus « comment changer le domaine ? » mais : **le journey est-il légitime, ou l'invariant protège-t-il quelque chose de plus important ?** Les invariants sont la Constitution du domaine ; ce sont parfois les histoires qui doivent s'adapter. (Sinon, les fondations bougent sans arrêt.)
+
+## Statut du modèle & critère de sortie
+Le domaine est déclaré **stable** (pas parfait) lorsque :
+- les 6 journeys passent sans contradiction majeure ;
+- aucun nouvel agrégat ou concept métier n'apparaît ;
+- les corrections restantes sont des raffinements (nommage, formulation, précision) ;
+- deux passes complètes de crash-test n'ont révélé aucune nouvelle fissure critique.
+
+**À partir de ce moment : on n'améliore plus le domaine, on commence l'architecture.**
+
+Journal des passes :
+- **Passe 1** (2026-07-23) — 3 fissures critiques : responsabilités absentes des rôles, arbitrage sans lieu de mémoire, invariant 3 contradictoire. → Corrigées (invariants 3, 7, 8 + Rôle enrichi).
+- **Passe 2** (2026-07-23, post-corrections, 6 journeys) — aucune fissure critique ; 1 raffinement (participant ≠ utilisateur du produit). → Intégré.
+- **Passe 3** (2026-07-23, confirmation sur les 8 invariants) — rien de nouveau. → **DOMAINE DÉCLARÉ STABLE POUR LE MVP.**
+
+> « Stable » ne veut pas dire figé : un domaine n'est jamais terminé (accessibilité, événements récurrents, pro… viendront peut-être). Ça veut dire : **suffisamment solide pour construire.**
+
+## Règle d'évolution du domaine (à partir de maintenant)
+Toute modification du domaine doit être justifiée **par du code ou par un utilisateur réel** — plus par une discussion théorique.
+- ❌ « J'ai pensé à un nouveau cas. »
+- ✅ « En implémentant cette fonctionnalité, le modèle ne permet pas… »
+- ✅ « Trois utilisateurs ont rencontré ce problème. »
 
 ## Traçabilité vers les histoires (ce que le modèle rend possible)
 - « change juste le resto du jour 3 » → adressage Élément + dépendances *(Thomas, Karim)*.
