@@ -9,8 +9,8 @@
 
 | Sprint | Objectif | Statut |
 |--------|----------|--------|
-| R1 — Modèle de domaine | Traduction de [06-modele-conceptuel](06-modele-conceptuel.md) en TypeScript pur (Zod + invariants + tests), zéro Prisma | En cours |
-| R2 — Persistance | Schéma Prisma déduit du domaine, migration, dépôt Parcours | À venir |
+| R1 — Modèle de domaine | Traduction de [06-modele-conceptuel](06-modele-conceptuel.md) en TypeScript pur (Zod + invariants + tests), zéro Prisma | Terminé |
+| R2 — Persistance | Schéma Prisma déduit du domaine, migration, dépôt Parcours | Terminé |
 | R3 — Cœur | Parcours = état adressable + agent Modification (recalcul ciblé des dépendances) | À venir |
 | R4 — Entrée orientée envie | Brief en langage naturel, dialogue minimal, reformulation avant génération | À venir |
 | R5 — Mémoire simple | Préférences utilisateur | À venir |
@@ -28,6 +28,22 @@
   vraies dates (les millisecondes faussaient l'ordre). 13 tests verts.
   Dette connue et assumée : `detecterConflits` est en O(n²) — sans enjeu à
   l'échelle d'un parcours (quelques dizaines d'éléments).
+
+### Revue R2 (terminé le 23/07)
+- Décision de traduction actée dans l'[ADR-0007](decisions/ADR-0007.md) : une
+  table `parcours` (projections + `contenu` JSONB), le dépôt comme seule
+  frontière — Zod à chaque lecture, projections dérivées à chaque écriture.
+- Table `Parcours` ajoutée au schéma Prisma (migration
+  `20260723170456_ajout_table_parcours`, appliquée), sans toucher aux tables
+  Pack (suppression au sprint R6).
+- Dépôt `server/depots/depotParcours.ts` : sauvegarder (refus d'écraser le
+  parcours d'autrui), charger (rejette une ligne corrompue), lister, supprimer.
+- 7 tests unitaires sur le dépôt (Prisma mocké, comme les tests existants) ;
+  20 tests verts au total, typecheck OK.
+- Relecture : dette assumée — la vérification de propriété puis l'upsert font
+  deux requêtes non atomiques ; fenêtre théorique uniquement (il faudrait
+  connaître l'UUID d'un parcours d'autrui pendant sa création), à revoir si
+  l'app devient multi-instance.
 
 ---
 

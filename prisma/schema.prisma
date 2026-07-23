@@ -41,8 +41,28 @@ model User {
   trips          Trip[]
   preferences    UserPreference?
   collaborations TripCollaborator[]
+  parcours       Parcours[]
 
   @@map("users")
+}
+
+// ---- PARCOURS (refonte Experience AI — ADR-0007) ----
+// L'agrégat complet vit dans `contenu` (validé par ParcoursSchema à chaque
+// lecture, dans server/depots/depotParcours.ts — seule porte d'accès).
+// Les autres colonnes sont des projections dérivées à l'écriture.
+model Parcours {
+  id         String   @id @db.Uuid
+  user_id    String   @db.Uuid
+  intention  String
+  visibilite String   @default("prive")
+  contenu    Json
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("parcours")
 }
 
 // ---- TRIPS (itinéraires sauvegardés) ----
