@@ -1,0 +1,53 @@
+# Experience AI — mémoire projet (CLAUDE.md)
+
+> Copie repensée de TripGenie. Phase actuelle : **CONCEPTION PRODUIT — pas de code encore.**
+> Règle d'or : **produit d'abord, technique ensuite.** Zéro code tant que les étapes 1→5 (voir Méthode) ne sont pas claires.
+
+## Le produit en une phrase
+**Transformer une intention en parcours personnalisé.**
+Une intention (envie / passion / objectif) + un contexte → un **parcours** cohérent de moments.
+Le voyage n'est qu'un *format* de parcours (soirée, EVG, festival, séjour NBA, journée gastro…).
+
+## Vocabulaire (à respecter partout)
+- **Parcours** = ce que le produit *construit* (l'objet, la structure). Remplace « voyage ».
+- **Expérience** = ce que l'utilisateur *vit* (le ressenti).
+- **Parcours = Intention + Contexte + Moments + Items.**
+- Le contexte (seul / couple / famille / amis…) est **co-égal à l'intention**.
+- Jamais « l'IA / les agents » comme argument produit. Le produit = le parcours ; les agents ne sont qu'un moyen.
+
+## Méthode de travail (ordre imposé — ne pas sauter d'étape)
+1. Définir ce qu'est un parcours — ✅ **verrouillé**
+2. Personas (par **intention + contexte**, pas par démographie) — ⬅️ **on est ici**
+3. Parcours utilisateurs de bout en bout (4-5)
+4. Modèle de données (déduit des parcours)
+5. Capacités du MVP + périmètre restreint
+6. Seulement là : technique (Prisma, Express, agents, cache…)
+
+## Définition verrouillée
+> Une expérience, c'est un **parcours personnalisé** : un ensemble **cohérent** de moments construit autour d'une **intention** et d'un **contexte**.
+
+## Où sont les docs
+- **Produit / fondations** → Google Drive, dossier « le Founder Book » : Founder Book, Capacités produit, Pourquoi l'utilisateur revient, Product Architecture, Qu'est-ce qu'un parcours, Audit code vs cible.
+- **Ingénierie / plan** → ce repo : `docs/SPRINTS.md`, `docs/architecture/`.
+- **Décisions durables & état** → mémoire Claude (`~/.claude/.../memory/`).
+
+## Conventions de code (dormantes jusqu'à l'étape 6)
+- TypeScript strict. Fonctions **courtes, une responsabilité**, nommage FR explicite (comme l'existant : `construirePromptPack`, `calculerNuits`).
+- **Zod** à toutes les entrées. **Ne jamais faire confiance à la sortie du LLM** (valider / sanitizer).
+- Composants front petits ; logique extraite des composants.
+- Sécu : authz sur chaque route, Helmet, rate-limit (déjà en place).
+- **Pas de code mort** : on supprime, on ne commente pas.
+- Migration `Pack` → `Parcours` : **construire le nouveau → basculer → SUPPRIMER l'ancien.** Jamais deux modèles qui cohabitent.
+- **Tests (Vitest)** pour toute logique nouvelle (le modèle et l'agent de modif = logique pure → très testables).
+
+## Definition of Done (chaque sprint de build)
+tests verts · typecheck OK · entrées validées · aucun code mort · petit diff relu · `docs/SPRINTS.md` à jour.
+
+## Économie de tokens (règles de session)
+- Tâches **ciblées** (une capacité / un fichier), jamais « refais tout ».
+- **Nommer les fichiers** concernés ; lire le doc pertinent, pas tout le repo.
+- Petits diffs. Mettre à jour mémoire + SPRINTS au fil de l'eau.
+- Ce fichier reste **court** : il pointe vers les docs détaillés, il ne les recopie pas.
+
+## Commits (préférence utilisateur)
+Messages naturels en français, signés au nom d'Alexis. **Aucune trace d'IA** (pas de `Co-Authored-By`, pas d'emoji IA).

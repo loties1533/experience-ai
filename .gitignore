@@ -21,13 +21,15 @@ Dossier_Professionnel*.md
 Dossier_Projet*.md
 MASTER_PLAN.md
 _archives/
-CLAUDE.md
 DEPLOY.md
 README_DEMODAY.md
 docs/*
+!docs/*.md
 !docs/architecture/
 !docs/architecture/**
 !docs/SPRINTS.md
+!docs/decisions/
+!docs/decisions/**
 scripts/
 scripts1/
 

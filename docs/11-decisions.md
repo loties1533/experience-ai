@@ -1,0 +1,15 @@
+# 11 — Décisions (index des ADR)
+
+Les décisions structurantes sont des **ADR** (Architecture Decision Records), une par fichier, dans [`decisions/`](decisions/).
+Chaque ADR tient sur une page : **Contexte · Décision · Alternatives envisagées · Pourquoi · Conséquences.**
+
+> Une décision actée ne se rediscute pas ailleurs : on lit son ADR.
+
+| ADR | Titre | Date | Statut |
+|---|---|---|---|
+| [0001](decisions/ADR-0001.md) | « Parcours » remplace « Voyage / Trip » | 2026-07-23 | Accepté |
+| [0002](decisions/ADR-0002.md) | Conserver Express (pas de migration Next.js) | 2026-07-23 | Accepté |
+| [0003](decisions/ADR-0003.md) | Les agents sont des modules, pas des microservices | 2026-07-23 | Accepté |
+| [0004](decisions/ADR-0004.md) | Le parcours est modifiable élément par élément | 2026-07-23 | Accepté |
+| [0005](decisions/ADR-0005.md) | Le contexte est un objet de premier niveau | 2026-07-23 | Accepté |
+| [0006](decisions/ADR-0006.md) | Le repo est la source de vérité (docs as code) | 2026-07-23 | Accepté |
