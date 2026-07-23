@@ -1,0 +1,139 @@
+import { z } from 'zod';
+
+// Traduction directe de docs/06-modele-conceptuel.md — aucune dépendance technique.
+// Les invariants 1 (intention + contexte obligatoires) et 2 (justification par
+// élément) sont portés par les schémas eux-mêmes ; les autres par invariants.ts.
+
+export const RoleSchema = z.enum(['organisateur', 'participant', 'heros']);
+
+export const VisibiliteSchema = z.enum(['prive', 'partage', 'surprise']);
+
+export const TypeElementSchema = z.enum([
+  'activite',
+  'restaurant',
+  'transport',
+  'hebergement',
+  'evenement',
+  'temps_libre',
+]);
+
+export const StatutElementSchema = z.enum(['propose', 'accepte', 'a_remplacer']);
+
+export const IntentionSchema = z.object({
+  texte: z.string().min(1, 'une intention ne peut pas être vide'),
+  motsCles: z.array(z.string().min(1)).default([]),
+});
+
+export const ContexteSchema = z.object({
+  avecQui: z.enum(['solo', 'couple', 'famille', 'amis', 'groupe']),
+  duree: z.object({
+    valeur: z.number().positive(),
+    unite: z.enum(['heures', 'jours']),
+  }),
+  lieux: z.array(z.string().min(1)).default([]),
+});
+
+export const ParticipantSchema = z.object({
+  id: z.string().min(1),
+  nom: z.string().min(1),
+  role: RoleSchema,
+});
+
+export const BudgetSchema = z.object({
+  mode: z.enum(['individuel', 'partage']),
+  montantTotal: z.number().nonnegative().optional(),
+  devise: z.string().length(3).default('EUR'),
+});
+
+export const PlageHoraireSchema = z
+  .object({
+    debut: z.iso.datetime(),
+    fin: z.iso.datetime(),
+  })
+  .refine((p) => p.debut < p.fin, { message: 'le début doit précéder la fin' });
+
+export const ContrainteSchema = z.discriminatedUnion('nature', [
+  z.object({
+    nature: z.literal('dure'),
+    description: z.string().min(1),
+    plage: PlageHoraireSchema,
+  }),
+  z.object({
+    nature: z.literal('filtre'),
+    description: z.string().min(1),
+  }),
+  z.object({
+    nature: z.literal('souple'),
+    description: z.string().min(1),
+  }),
+]);
+
+export const AlternativeSchema = z.object({
+  id: z.string().min(1),
+  nom: z.string().min(1),
+  description: z.string().optional(),
+  prix: z.number().nonnegative().optional(),
+});
+
+export const ReservationSchema = z.object({
+  lienExterne: z.url(),
+  fournisseur: z.string().optional(),
+});
+
+export const ElementSchema = z.object({
+  id: z.string().min(1),
+  type: TypeElementSchema,
+  nom: z.string().min(1),
+  lieu: z.string().optional(),
+  plage: PlageHoraireSchema.optional(),
+  prix: z.number().nonnegative().optional(),
+  justification: z.string().min(1, 'chaque élément porte une justification'),
+  statut: StatutElementSchema.default('propose'),
+  estAncre: z.boolean().default(false),
+  dependDe: z.array(z.string().min(1)).default([]),
+  alternatives: z.array(AlternativeSchema).default([]),
+  contraintes: z.array(ContrainteSchema).default([]),
+  reservation: ReservationSchema.optional(),
+});
+
+export const MomentSchema = z.object({
+  id: z.string().min(1),
+  titre: z.string().min(1),
+  plage: PlageHoraireSchema.optional(),
+  elements: z.array(ElementSchema).default([]),
+});
+
+export const ModificationSchema = z.object({
+  date: z.iso.datetime(),
+  description: z.string().min(1),
+  elementId: z.string().optional(),
+});
+
+export const ParcoursSchema = z.object({
+  id: z.string().min(1),
+  intention: IntentionSchema,
+  contexte: ContexteSchema,
+  participants: z.array(ParticipantSchema).min(1),
+  budget: BudgetSchema,
+  ambiance: z.string().optional(),
+  visibilite: VisibiliteSchema.default('prive'),
+  historique: z.array(ModificationSchema).default([]),
+  timeline: z.array(MomentSchema).default([]),
+});
+
+export type Role = z.infer<typeof RoleSchema>;
+export type Visibilite = z.infer<typeof VisibiliteSchema>;
+export type TypeElement = z.infer<typeof TypeElementSchema>;
+export type StatutElement = z.infer<typeof StatutElementSchema>;
+export type Intention = z.infer<typeof IntentionSchema>;
+export type Contexte = z.infer<typeof ContexteSchema>;
+export type Participant = z.infer<typeof ParticipantSchema>;
+export type Budget = z.infer<typeof BudgetSchema>;
+export type PlageHoraire = z.infer<typeof PlageHoraireSchema>;
+export type Contrainte = z.infer<typeof ContrainteSchema>;
+export type Alternative = z.infer<typeof AlternativeSchema>;
+export type Reservation = z.infer<typeof ReservationSchema>;
+export type Element = z.infer<typeof ElementSchema>;
+export type Moment = z.infer<typeof MomentSchema>;
+export type Modification = z.infer<typeof ModificationSchema>;
+export type Parcours = z.infer<typeof ParcoursSchema>;

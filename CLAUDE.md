@@ -1,7 +1,7 @@
 # Experience AI — mémoire projet (CLAUDE.md)
 
-> Copie repensée de TripGenie. Phase actuelle : **CONCEPTION PRODUIT — pas de code encore.**
-> Règle d'or : **produit d'abord, technique ensuite.** Zéro code tant que les étapes 1→5 (voir Méthode) ne sont pas claires.
+> Copie repensée de TripGenie. Phase actuelle : **BUILD (étape 6)** — les étapes produit 1→5 sont verrouillées (docs 00→13 + ADR).
+> Règle d'or : **produit d'abord, technique ensuite.** Toute évolution du modèle passe d'abord par `docs/06-modele-conceptuel.md`.
 
 ## Le produit en une phrase
 **Transformer une intention en parcours personnalisé.**
@@ -16,18 +16,18 @@ Le voyage n'est qu'un *format* de parcours (soirée, EVG, festival, séjour NBA,
 - Jamais « l'IA / les agents » comme argument produit. Le produit = le parcours ; les agents ne sont qu'un moyen.
 
 ## Méthode de travail (ordre imposé — ne pas sauter d'étape)
-1. Définir ce qu'est un parcours — ✅ **verrouillé**
-2. Personas (par **intention + contexte**, pas par démographie) — ⬅️ **on est ici**
-3. Parcours utilisateurs de bout en bout (4-5)
-4. Modèle de données (déduit des parcours)
-5. Capacités du MVP + périmètre restreint
-6. Seulement là : technique (Prisma, Express, agents, cache…)
+1. Définir ce qu'est un parcours — ✅ (`docs/03`)
+2. Personas par **intention + contexte** — ✅ (`docs/04`)
+3. Parcours utilisateurs de bout en bout — ✅ (`docs/05`)
+4. Modèle de données (déduit des parcours) — ✅ (`docs/06`)
+5. Capacités du MVP + périmètre restreint — ✅ (`docs/07`)
+6. Technique — ⬅️ **on est ici** : plan de refonte dans `docs/SPRINTS.md` (sprint R1 : domaine `server/domaine/parcours/`)
 
 ## Définition verrouillée
 > Une expérience, c'est un **parcours personnalisé** : un ensemble **cohérent** de moments construit autour d'une **intention** et d'un **contexte**.
 
 ## Où sont les docs
-- **Produit / fondations** → Google Drive, dossier « le Founder Book » : Founder Book, Capacités produit, Pourquoi l'utilisateur revient, Product Architecture, Qu'est-ce qu'un parcours, Audit code vs cible.
+- **Produit / fondations** → ce repo : `docs/00` → `docs/13` + `docs/decisions/` (le repo fait foi, ADR-0006 ; Drive = partage/présentation uniquement).
 - **Ingénierie / plan** → ce repo : `docs/SPRINTS.md`, `docs/architecture/`.
 - **Décisions durables & état** → mémoire Claude (`~/.claude/.../memory/`).
 

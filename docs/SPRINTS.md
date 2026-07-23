@@ -1,4 +1,31 @@
-# TripGenie — Suivi Agile (sprints, revues et rétrospectives)
+# Suivi Agile — Experience AI (refonte) puis TripGenie (historique)
+
+## Refonte Experience AI — plan de build
+
+> Démarré le 23 juillet 2026, une fois les étapes produit 1→5 verrouillées
+> (docs 00→13 + ADR 0001→0006). Les sprints suivent les phases de la
+> [roadmap](09-roadmap.md). Migration `Pack` → `Parcours` : construire le
+> nouveau → basculer → supprimer l'ancien.
+
+| Sprint | Objectif | Statut |
+|--------|----------|--------|
+| R1 — Modèle de domaine | Traduction de [06-modele-conceptuel](06-modele-conceptuel.md) en TypeScript pur (Zod + invariants + tests), zéro Prisma | En cours |
+| R2 — Persistance | Schéma Prisma déduit du domaine, migration, dépôt Parcours | À venir |
+| R3 — Cœur | Parcours = état adressable + agent Modification (recalcul ciblé des dépendances) | À venir |
+| R4 — Entrée orientée envie | Brief en langage naturel, dialogue minimal, reformulation avant génération | À venir |
+| R5 — Mémoire simple | Préférences utilisateur | À venir |
+| R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | À venir |
+
+### Revue R1 (en cours)
+- 23/07 — Module `server/domaine/parcours/` créé : `schema.ts` (agrégat complet
+  du doc 06, invariants 1-2 portés par Zod), `invariants.ts` (dépendants
+  transitifs pour le recalcul ciblé, détection de conflits d'horaires durs,
+  validation structurelle). 12 tests unitaires verts (`tests/unit/parcours.test.ts`),
+  typecheck OK. Aucun code existant touché.
+
+---
+
+# TripGenie — Suivi Agile historique (sprints, revues et rétrospectives)
 
 Projet mené en solo selon une approche Scrum, découpé en six sprints d'environ une
 semaine. N'étant pas en équipe, j'ai tenu tour à tour les rôles de chef de projet,
