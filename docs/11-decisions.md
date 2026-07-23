@@ -13,3 +13,5 @@ Chaque ADR tient sur une page : **Contexte · Décision · Alternatives envisag�
 | [0004](decisions/ADR-0004.md) | Le parcours est modifiable élément par élément | 2026-07-23 | Accepté |
 | [0005](decisions/ADR-0005.md) | Le contexte est un objet de premier niveau | 2026-07-23 | Accepté |
 | [0006](decisions/ADR-0006.md) | Le repo est la source de vérité (docs as code) | 2026-07-23 | Accepté |
+| [0007](decisions/ADR-0007.md) | EVG/EVJF = premier vertical de validation (pas le cœur) | 2026-07-23 | Accepted for MVP — revisit après validation marché |
+| [0008](decisions/ADR-0008.md) | B2C one-shot pour valider → B2B agences en cible | 2026-07-23 | Accepted for MVP — revisit après validation marché |
