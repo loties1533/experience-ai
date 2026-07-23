@@ -22,6 +22,12 @@
   transitifs pour le recalcul ciblé, détection de conflits d'horaires durs,
   validation structurelle). 12 tests unitaires verts (`tests/unit/parcours.test.ts`),
   typecheck OK. Aucun code existant touché.
+- 23/07 — Relecture critique du module (logique / dette / clean code) :
+  détection des boucles de dépendances étendue aux cycles indirects
+  (resto → bar → resto), comparaisons d'horaires passées de chaînes ISO à de
+  vraies dates (les millisecondes faussaient l'ordre). 13 tests verts.
+  Dette connue et assumée : `detecterConflits` est en O(n²) — sans enjeu à
+  l'échelle d'un parcours (quelques dizaines d'éléments).
 
 ---
 

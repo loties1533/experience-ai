@@ -14,7 +14,21 @@ function tousLesElements(parcours: Parcours): Element[] {
 }
 
 function plagesSeChevauchent(a: PlageHoraire, b: PlageHoraire): boolean {
-  return a.debut < b.fin && b.debut < a.fin;
+  return Date.parse(a.debut) < Date.parse(b.fin) && Date.parse(b.debut) < Date.parse(a.fin);
+}
+
+/** Tout ce dont un élément dépend, directement ou par ricochet. */
+function dependancesTransitives(elements: Element[], elementId: string): Set<string> {
+  const parId = new Map(elements.map((e) => [e.id, e]));
+  const vues = new Set<string>();
+  const aExplorer = [...(parId.get(elementId)?.dependDe ?? [])];
+  while (aExplorer.length > 0) {
+    const courant = aExplorer.pop() as string;
+    if (vues.has(courant)) continue;
+    vues.add(courant);
+    aExplorer.push(...(parId.get(courant)?.dependDe ?? []));
+  }
+  return vues;
 }
 
 /** Plages non négociables d'un élément : la sienne + ses contraintes dures. */
@@ -92,8 +106,9 @@ export function validerParcours(parcours: Parcours): string[] {
         erreurs.push(`l'élément « ${element.nom} » dépend d'un élément inconnu (${dependance})`);
       }
     }
-    if (element.dependDe.includes(element.id)) {
-      erreurs.push(`l'élément « ${element.nom} » dépend de lui-même`);
+    // Une boucle (directe ou par ricochet) rendrait le recalcul ciblé sans fin.
+    if (dependancesTransitives(elements, element.id).has(element.id)) {
+      erreurs.push(`la chaîne de dépendances de « ${element.nom} » boucle sur elle-même`);
     }
     if (element.type === 'temps_libre' && element.reservation) {
       erreurs.push(`un temps libre ne se réserve pas (« ${element.nom} »)`);

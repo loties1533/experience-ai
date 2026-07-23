@@ -147,6 +147,23 @@ describe('validerParcours — cohérence structurelle', () => {
     expect(validerParcours(parcoursMinimal())).toEqual([]);
   });
 
+  it('signale une boucle de dépendances (directe ou par ricochet)', () => {
+    const parcours = parcoursMinimal({
+      timeline: [
+        {
+          id: 'm1',
+          titre: 'Soirée',
+          elements: [
+            element('resto', { dependDe: ['bar'] }),
+            element('bar', { dependDe: ['resto'] }),
+          ],
+        },
+      ],
+    });
+    const erreurs = validerParcours(parcours);
+    expect(erreurs.some((e) => e.includes('boucle'))).toBe(true);
+  });
+
   it('signale une dépendance vers un élément inconnu', () => {
     const parcours = parcoursMinimal({
       timeline: [

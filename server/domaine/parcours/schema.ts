@@ -50,7 +50,10 @@ export const PlageHoraireSchema = z
     debut: z.iso.datetime(),
     fin: z.iso.datetime(),
   })
-  .refine((p) => p.debut < p.fin, { message: 'le début doit précéder la fin' });
+  // Comparer en dates, pas en chaînes : « 20:00:00.500Z » suit « 20:00:00Z ».
+  .refine((p) => Date.parse(p.debut) < Date.parse(p.fin), {
+    message: 'le début doit précéder la fin',
+  });
 
 export const ContrainteSchema = z.discriminatedUnion('nature', [
   z.object({
