@@ -3,6 +3,11 @@
 Les décisions structurantes sont des **ADR** (Architecture Decision Records), une par fichier, dans [`decisions/`](decisions/).
 Chaque ADR tient sur une page : **Contexte · Décision · Alternatives envisagées · Pourquoi · Conséquences.**
 
+**À partir de l'ADR-0009, trois champs supplémentaires sont obligatoires :**
+- **Hypothèse testée** — qu'est-ce que cette décision parie ?
+- **Condition d'invalidation** — qu'est-ce qui prouverait qu'on a tort ?
+- **Preuve de confirmation** — preuve *utilisateur* (interviews, tests, usage) ou preuve *technique* (le code révèle une impossibilité). Rien d'autre — une décision sans preuve possible n'est pas une décision, c'est une opinion.
+
 > Une décision actée ne se rediscute pas ailleurs : on lit son ADR.
 
 | ADR | Titre | Date | Statut |
