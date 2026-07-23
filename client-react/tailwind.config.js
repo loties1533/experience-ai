@@ -4,19 +4,22 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"DM Sans"', 'sans-serif'],
+        sans:    ['"Open Sans"', 'sans-serif'],
+        heading: ['Poppins', 'sans-serif'],
       },
+      // Palette « aventure » (UI/UX Pro Max : adventure orange + map teal)
       colors: {
-        gold:      { DEFAULT: '#E3A72C', light: '#F6E6BE', dark: '#916312' }, // accent jaune chaud (soleil) — DEFAULT en fond, dark pour le texte lisible
-        ink:       { DEFAULT: '#1A1410', light: '#3D3228' },                  // texte
-        parchment: { DEFAULT: '#FAF7F2', dark: '#F0EBE0' },                   // surfaces claires
-        muted:     '#7A6E62',                                                 // texte secondaire
-        sage:      '#5A7A5E',                                                 // sémantique : succès
-        coral:     '#C0634A',                                                 // sémantique : danger
+        soleil: { DEFAULT: '#EA580C', light: '#FED7AA', dark: '#C2410C' }, // primaire — orange coucher de soleil
+        lagon:  { DEFAULT: '#0891B2', light: '#CFFAFE', dark: '#0E7490' }, // secondaire — teal carte
+        sable:  { DEFAULT: '#FFF7ED', dark: '#FDF0E3' },                   // surfaces claires
+        encre:  { DEFAULT: '#0F172A', light: '#334155' },                  // texte
+        brume:  '#64748B',                                                 // texte secondaire
+        sauge:  '#16A34A',                                                 // sémantique : succès
+        corail: '#DC2626',                                                 // sémantique : danger
       },
       boxShadow: {
-        'card':    '0 4px 24px rgba(26,20,16,0.08)',
-        'card-lg': '0 12px 48px rgba(26,20,16,0.14)',
+        'card':    '0 4px 24px rgba(15,23,42,0.06)',
+        'card-lg': '0 12px 48px rgba(15,23,42,0.12)',
       },
     },
   },

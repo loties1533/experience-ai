@@ -1,166 +1,140 @@
-import { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
-import { useAuthStore } from '../store'
-import { getPreferences, savePreferences } from '../lib/api'
+import { chargerPreferences, sauvegarderPreferences, type PreferencesParcours } from '../lib/api'
 
-const MODES = [
-  { value: 'party',    label: 'Fête' },
-  { value: 'student',  label: 'Étudiant' },
-  { value: 'group',    label: 'Groupe' },
-  { value: 'relax',    label: 'Détente' },
-  { value: 'surprise', label: 'Surprise' },
-]
-const INTERESTS  = ['gastronomie', 'culture', 'nightlife', 'nature', 'shopping', 'sport', 'plage', 'histoire']
+// Mémoire simple : ce qu'on retient d'un parcours à l'autre. Des préférences
+// SOUPLES — elles orientent la construction, l'envie du moment prime toujours.
 
-export default function PreferencesPage() {
-  const { user }    = useAuthStore()
-  const navigate    = useNavigate()
-  const [chargement, setChargement] = useState(true)
-  const [enregistrement, setEnregistrement]   = useState(false)
+const RYTHMES = [
+  { valeur: 'detendu', libelle: 'Détendu', aide: 'peu d’éléments, de la respiration' },
+  { valeur: 'equilibre', libelle: 'Équilibré', aide: 'un bon compromis' },
+  { valeur: 'intense', libelle: 'Intense', aide: 'dense, on ne s’arrête pas' },
+] as const
 
-  const [homeCity, setHomeCity]   = useState('')
-  const [mode, setMode]           = useState('party')
-  const [premium, setPremium]     = useState(false)
-  const [interests, setInterests] = useState<string[]>([])
+const VIDE: PreferencesParcours = { ambiances: [], contraintes: [], lieuxFavoris: [] }
 
-  // Pas connecté → login
-  useEffect(() => {
-    if (!user) navigate('/login')
-  }, [user])
+/** Champ de liste : saisie séparée par des virgules → tableau. */
+function ChampListe({ id, libelle, aide, valeurs, onChange }: {
+  id: string; libelle: string; aide: string; valeurs: string[]; onChange: (v: string[]) => void
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-semibold text-encre">{libelle}</label>
+      <p className="text-xs text-brume mb-1.5">{aide}</p>
+      <input
+        id={id}
+        value={valeurs.join(', ')}
+        onChange={(e) => onChange(e.target.value.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 10))}
+        className="w-full bg-white border border-encre/15 rounded-xl px-4 py-3 text-sm text-encre
+                   placeholder:text-brume focus:outline-none focus:border-soleil transition-colors"
+      />
+    </div>
+  )
+}
 
-  // Chargement des préférences existantes
-  useEffect(() => {
-    if (!user) return
-    getPreferences()
-      .then(({ preferences }) => {
-        if (preferences) {
-          setHomeCity(preferences.home_city ?? '')
-          setMode(preferences.default_mode ?? 'party')
-          setPremium(preferences.default_premium ?? false)
-          setInterests(preferences.preferred_prefs ?? [])
-        }
-      })
-      .catch(() => {})
-      .finally(() => setChargement(false))
-  }, [user])
-
-  const basculerInteret = (i: string) =>
-    setInterests(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i])
-
-  const enregistrer = async () => {
-    setEnregistrement(true)
-    try {
-      await savePreferences({
-        home_city:       homeCity,
-        default_mode:    mode,
-        default_premium: premium,
-        preferred_prefs: interests,
-      })
-      toast.success('Préférences enregistrées')
-    } catch (e: any) {
-      toast.error(e.message || 'Erreur lors de l\'enregistrement')
-    } finally {
-      setEnregistrement(false)
-    }
-  }
-
-  const classeInput = `w-full bg-white border border-parchment-dark
-    rounded-sm px-4 py-3 text-sm text-ink placeholder:text-muted
-    focus:outline-none focus:border-gold/50 focus:ring-2 focus:ring-gold/10 transition-all`
+export default function Preferences() {
+  const { data, isLoading } = useQuery({ queryKey: ['preferences'], queryFn: chargerPreferences })
 
   return (
     <PageLayout>
-      <Seo title="Préférences" path="/preferences" noindex />
-      <div className="max-w-lg mx-auto py-12">
-        <div
-          className="glass rounded-sm p-8 border border-gold/20 shadow-card-lg">
+      <Seo title="Préférences" noindex path="/preferences" />
+      <div className="max-w-xl mx-auto">
+        <h1 className="text-2xl font-bold text-encre">Mes préférences</h1>
+        <p className="text-brume text-sm mt-1">
+          Ce qu'on retient d'un parcours à l'autre. Ces préférences orientent les propositions —
+          ton envie du moment reste prioritaire.
+        </p>
 
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-ink">Mes préférences</h1>
-          </div>
-
-          {chargement
-            ? <div className="py-12 flex justify-center">
-                <span className="w-6 h-6 border-2 border-gold/30 border-t-gold-dark rounded-full animate-spin" />
-              </div>
-            : <div className="space-y-5">
-                {/* Ville de départ */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-muted mb-2">Ville de départ</label>
-                  <input value={homeCity} onChange={e => setHomeCity(e.target.value)}
-                    placeholder="Ex : Bordeaux" className={classeInput} />
-                </div>
-
-                {/* Mode par défaut */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-muted mb-2">Mode de voyage par défaut</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {MODES.map(m => (
-                      <button key={m.value} onClick={() => setMode(m.value)}
-                        className={`py-2.5 rounded-sm text-sm font-medium border transition-all
-                          ${mode === m.value
-                            ? 'bg-gold text-ink border-gold'
-                            : 'bg-ink/5 border-ink/10 text-muted hover:border-gold/40'}`}>
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Niveau de prix (axe indépendant du mode) */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-muted mb-2">Niveau de confort par défaut</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { value: false, label: 'Classique' },
-                      { value: true,  label: 'Premium' },
-                    ].map(n => (
-                      <button key={String(n.value)} onClick={() => setPremium(n.value)}
-                        className={`py-2.5 rounded-sm text-sm font-medium border transition-all
-                          ${premium === n.value
-                            ? 'bg-gold text-ink border-gold'
-                            : 'bg-ink/5 border-ink/10 text-muted hover:border-gold/40'}`}>
-                        {n.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Centres d'intérêt */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-muted mb-2">Centres d'intérêt</label>
-                  <div className="flex flex-wrap gap-2">
-                    {INTERESTS.map(i => (
-                      <button key={i} onClick={() => basculerInteret(i)}
-                        className={`px-3 py-1.5 rounded-sm text-sm font-medium border transition-all capitalize
-                          ${interests.includes(i)
-                            ? 'bg-sage/30 border-sage text-sage'
-                            : 'bg-ink/5 border-ink/10 text-muted hover:border-gold/40'}`}>
-                        {i}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button onClick={enregistrer} disabled={enregistrement}
-                  className="btn-primary w-full mt-2 flex items-center justify-center gap-2">
-                  {enregistrement
-                    ? <span className="w-4 h-4 border-2 border-ink/30 border-t-ink rounded-full animate-spin" />
-                    : 'Enregistrer mes préférences'}
-                </button>
-              </div>
-          }
-
-          <p className="text-center text-xs text-muted mt-5">
-            <Link to="/" className="hover:text-ink transition-colors">
-              ← Retour à l'accueil
-            </Link>
-          </p>
-        </div>
+        {isLoading ? (
+          <div className="mt-6 space-y-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-16" />)}</div>
+        ) : (
+          // Monté une fois les données là : le formulaire part directement des
+          // bonnes valeurs, sans synchronisation après coup.
+          <Formulaire initiales={{ ...VIDE, ...(data?.preferences ?? {}) }} />
+        )}
       </div>
     </PageLayout>
+  )
+}
+
+function Formulaire({ initiales }: { initiales: PreferencesParcours }) {
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState<PreferencesParcours>(initiales)
+
+  const enregistrement = useMutation({
+    mutationFn: sauvegarderPreferences,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['preferences'] })
+      toast.success('Préférences enregistrées')
+    },
+    onError: (e) => toast.error((e as Error).message),
+  })
+
+  return (
+          <form
+            className="carte p-6 mt-6 space-y-5"
+            onSubmit={(e) => { e.preventDefault(); enregistrement.mutate(form) }}
+          >
+            <ChampListe
+              id="ambiances" libelle="Ambiances que j'aime"
+              aide="séparées par des virgules — ex. : festif, nature, gastronomique"
+              valeurs={form.ambiances}
+              onChange={(ambiances) => setForm((f) => ({ ...f, ambiances }))}
+            />
+
+            <fieldset>
+              <legend className="text-sm font-semibold text-encre">Rythme préféré</legend>
+              <p className="text-xs text-brume mb-1.5">la densité des moments</p>
+              <div className="flex flex-wrap gap-2">
+                {RYTHMES.map((r) => (
+                  <button
+                    key={r.valeur} type="button" title={r.aide}
+                    aria-pressed={form.rythme === r.valeur}
+                    onClick={() => setForm((f) => ({ ...f, rythme: f.rythme === r.valeur ? undefined : r.valeur }))}
+                    className={`min-h-[44px] px-4 rounded-xl text-sm font-medium border transition-colors cursor-pointer ${
+                      form.rythme === r.valeur
+                        ? 'bg-soleil text-white border-soleil'
+                        : 'bg-white text-encre border-encre/15 hover:border-soleil'
+                    }`}
+                  >
+                    {r.libelle}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <ChampListe
+              id="contraintes" libelle="Contraintes récurrentes"
+              aide="ex. : végétarien, mobilité réduite, pas de vol de nuit"
+              valeurs={form.contraintes}
+              onChange={(contraintes) => setForm((f) => ({ ...f, contraintes }))}
+            />
+
+            <ChampListe
+              id="lieux" libelle="Lieux favoris"
+              aide="villes ou régions où tu aimes retourner"
+              valeurs={form.lieuxFavoris}
+              onChange={(lieuxFavoris) => setForm((f) => ({ ...f, lieuxFavoris }))}
+            />
+
+            <div>
+              <label htmlFor="budget" className="block text-sm font-semibold text-encre">Budget habituel</label>
+              <p className="text-xs text-brume mb-1.5">en euros, laissé vide si ça dépend</p>
+              <input
+                id="budget" type="number" min={1} inputMode="numeric"
+                value={form.budgetHabituel ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, budgetHabituel: e.target.value ? Number(e.target.value) : undefined }))}
+                className="w-full bg-white border border-encre/15 rounded-xl px-4 py-3 text-sm text-encre
+                           focus:outline-none focus:border-soleil transition-colors"
+              />
+            </div>
+
+            <button type="submit" className="btn-primaire w-full" disabled={enregistrement.isPending}>
+              {enregistrement.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </form>
   )
 }

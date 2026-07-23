@@ -14,7 +14,7 @@
 | R3 — Cœur | Parcours = état adressable + opérations de modification ciblée (logique pure) | Terminé |
 | R4 — Entrée orientée envie | Brief en langage naturel, dialogue minimal, reformulation avant génération | Terminé |
 | R5 — Mémoire simple | Préférences utilisateur | Terminé |
-| R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | À venir |
+| R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | En cours (R6a fait) |
 
 ### Board — backlog par sprint
 
@@ -34,8 +34,8 @@
 - [x] Préférences utilisateur (schéma + dépôt) injectées dans la génération
 - [x] Routes GET/PUT `/api/parcours/preferences`
 
-**R6 — Bascule & nettoyage**
-- [ ] Front basculé sur les routes `parcours`
+**R6 — Bascule & nettoyage** *(en cours)*
+- [x] Front basculé sur les routes `parcours` (R6a, 23/07)
 - [ ] **Suppression** du modèle Pack (routes trips/votes, services pack, tables) — jamais deux modèles qui cohabitent
 - [ ] Cache des appels externes (maîtrise des coûts)
 - [ ] Recette manuelle de bout en bout
@@ -118,6 +118,25 @@
 - Relecture : choix assumé — des préférences illisibles rendent `null` au lieu
   de bloquer (la mémoire ne doit jamais empêcher de générer). L'ancienne route
   `preferences` de TripGenie vit encore ; elle part au sprint R6 avec Pack.
+
+### Revue R6a — reprise du front (23/07)
+- Direction visuelle produite avec la skill **UI/UX Pro Max** et figée dans
+  `design-system/experience-ai/MASTER.md` : style Aurora UI assagi, palette
+  « aventure » (orange coucher de soleil + teal carte), Poppins / Open Sans.
+- Pages reconstruites sur les routes `/api/parcours` : `Envie` (dialogue de
+  cadrage + confirmation avant génération), `MesParcours`, `ParcoursDetail`
+  (timeline, justification visible, actions par élément, modification en
+  langage naturel, historique), `Preferences`, `Login`.
+- Les éléments dépendants renvoyés par le domaine (`elementsARegenerer`) sont
+  **surlignés** dans la timeline : la modification ciblée devient visible.
+- Checklist UI Pro Max passée : cibles tactiles ≥ 44 px, libellés de champ
+  explicites, focus clavier visible, `prefers-reduced-motion` respecté,
+  squelettes de chargement, états vides guidés, icônes SVG (aucun emoji).
+- Code mort supprimé (pages Home/Trips/TripDetail, composants results/ et
+  chat/) ; typecheck, lint et build du client verts ; rendu vérifié au
+  navigateur en 375 px et en bureau.
+- Reste au sprint R6b : suppression du modèle Pack côté serveur (routes
+  trips/votes/ai, services pack, tables), cache et recette de bout en bout.
 
 ---
 

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,86 +7,92 @@
   html { scroll-behavior: smooth; }
 
   body {
-    @apply font-sans text-ink;
-    /* Fond neutre clair : le bordeaux reste un accent, pas un aplat */
-    background: #F4F3F1;
+    @apply font-sans text-encre;
+    background: #FFF7ED;
     min-height: 100vh;
+  }
+
+  h1, h2, h3 { @apply font-heading; }
+
+  /* Navigation clavier : focus toujours visible */
+  :focus-visible {
+    outline: 2px solid #EA580C;
+    outline-offset: 2px;
   }
 }
 
 @layer components {
-  /* Carte : fond blanc net, bordure discrète (pas d'effet verre) */
-  .glass {
-    background: #FFFFFF;
-    border: 1px solid rgba(26, 20, 16, 0.12);
-  }
-  .glass-premium {
-    @apply glass;
+  /* Fond aurora : deux nappes de couleur très diluées, animées lentement */
+  .aurora {
+    background:
+      radial-gradient(60% 50% at 15% 10%, rgba(234, 88, 12, 0.12), transparent 70%),
+      radial-gradient(50% 45% at 85% 20%, rgba(8, 145, 178, 0.10), transparent 70%),
+      #FFF7ED;
+    background-size: 160% 160%;
+    animation: aurore 12s ease-in-out infinite alternate;
   }
 
-  /* Scrollbar masquée */
-  .scroll-hide { scrollbar-width: none; }
-  .scroll-hide::-webkit-scrollbar { display: none; }
-
-  /* Bulles de chat */
-  .bubble-bot {
-    @apply bg-white text-ink rounded-sm px-4 py-3
-           border border-gray-300 text-[15px] leading-relaxed;
+  /* Carte */
+  .carte {
+    @apply bg-white border border-encre/10 rounded-xl shadow-card;
   }
-  .bubble-user {
-    @apply bg-gold text-ink rounded-sm px-4 py-3
+
+  /* Bulles du dialogue */
+  .bulle-produit {
+    @apply bg-white text-encre rounded-xl rounded-bl-sm px-4 py-3
+           border border-encre/10 text-[15px] leading-relaxed;
+  }
+  .bulle-utilisateur {
+    @apply bg-soleil text-white rounded-xl rounded-br-sm px-4 py-3
            text-[15px] leading-relaxed font-medium;
   }
 
   /* Chip (choix rapide) */
   .chip {
-    @apply inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-sm
-           text-sm font-medium border border-gray-300 text-ink
-           bg-white hover:border-gold hover:bg-gold/5
+    @apply inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full
+           text-sm font-medium border border-encre/15 text-encre
+           bg-white hover:border-soleil hover:bg-soleil/5
            transition-colors cursor-pointer;
   }
 
   /* Boutons */
-  .btn-primary {
-    @apply bg-gold hover:bg-gold-dark text-ink font-medium px-6 py-3
-           rounded-sm transition-colors;
+  .btn-primaire {
+    @apply bg-soleil hover:bg-soleil-dark text-white font-semibold px-6 py-3
+           rounded-xl transition-colors cursor-pointer
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  .btn-ghost {
-    @apply border border-gray-300 text-ink hover:border-gold hover:bg-gold/5
-           font-medium px-4 py-2 rounded-sm transition-colors;
+  .btn-secondaire {
+    @apply border border-encre/15 text-encre hover:border-lagon hover:bg-lagon/5
+           font-medium px-4 py-2 rounded-xl transition-colors cursor-pointer
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
+
+  /* Badges de statut d'élément */
+  .badge-statut {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold;
+  }
+  .badge-accepte    { @apply badge-statut bg-sauge/10 text-sauge; }
+  .badge-propose    { @apply badge-statut bg-lagon/10 text-lagon-dark; }
+  .badge-a-remplacer{ @apply badge-statut bg-soleil/10 text-soleil-dark; }
 
   /* Skeleton (chargement) */
   .skeleton {
-    @apply bg-parchment-dark rounded-sm;
+    @apply bg-sable-dark rounded-xl;
     animation: shimmer 1.8s ease-in-out infinite;
   }
 
-  /* Badge score */
-  .score-badge {
-    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-sm text-xs font-semibold;
-  }
+  .scroll-hide { scrollbar-width: none; }
+  .scroll-hide::-webkit-scrollbar { display: none; }
+}
 
-  /* Badge vérifié (sémantique succès) */
-  .verified {
-    @apply inline-flex items-center gap-1 text-[11px] font-semibold
-           bg-sage/10 text-sage px-2 py-0.5 rounded-sm;
-  }
-
-  /* Onglets */
-  .tab-btn {
-    @apply px-4 py-2 text-sm font-medium text-muted rounded-sm
-           hover:text-ink hover:bg-gray-100 transition-colors;
-  }
-  .tab-btn.active {
-    @apply text-ink bg-white border border-gray-300;
-  }
+/* Nappe aurora — lente, coupée si l'utilisateur préfère éviter le mouvement */
+@keyframes aurore {
+  from { background-position: 0% 0%; }
+  to   { background-position: 100% 100%; }
 }
 
 /* Points « en train d'écrire » */
-.typing-dot {
-  animation: typing 1.2s ease-in-out infinite;
-}
+.typing-dot { animation: typing 1.2s ease-in-out infinite; }
 .typing-dot:nth-child(2) { animation-delay: 0.2s; }
 .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
@@ -102,17 +108,11 @@
 }
 .msg-enter { animation: msgIn 0.25s ease-out forwards; }
 
-/* Zoom lent de l'image d'accueil */
-@keyframes slowZoom {
-  from { transform: scale(1); }
-  to   { transform: scale(1.08); }
-}
-.animate-slow-zoom {
-  animation: slowZoom 20s ease-in-out infinite alternate;
-}
-
-/* Shimmer du skeleton */
 @keyframes shimmer {
   0%, 100% { opacity: 0.5; }
   50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora, .typing-dot, .msg-enter, .skeleton { animation: none; }
 }

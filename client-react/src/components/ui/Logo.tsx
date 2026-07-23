@@ -1,6 +1,6 @@
-// Logo TripGenie — boussole + monogramme T (voyage + marque).
-// Emblème vectoriel unique, réutilisé partout (header, footer, chat, chargement).
-// La couleur suit `currentColor` : on la pilote via une classe Tailwind (ex. text-gold-dark).
+// Logo Experience AI — un parcours : des moments reliés par un chemin.
+// Emblème vectoriel unique, réutilisé partout (en-tête, pied de page, connexion).
+// La couleur suit `currentColor` : on la pilote via une classe Tailwind (ex. text-soleil).
 export default function Logo({ size = 40, className = '' }: { size?: number; className?: string }) {
   return (
     <svg
@@ -10,25 +10,19 @@ export default function Logo({ size = 40, className = '' }: { size?: number; cla
       fill="none"
       className={className}
       role="img"
-      aria-label="TripGenie"
+      aria-label="Experience AI"
     >
-      {/* Cadran de la boussole */}
-      <circle cx="24" cy="24" r="17.5" stroke="currentColor" strokeWidth="2.4" />
-      <circle cx="24" cy="24" r="12.5" stroke="currentColor" strokeWidth="0.8" opacity="0.5" />
-      {/* Monogramme T au centre */}
-      <text
-        x="24"
-        y="31"
-        fontFamily="Georgia, 'Times New Roman', serif"
-        fontSize="20"
-        fontWeight="700"
-        fill="currentColor"
-        textAnchor="middle"
-      >
-        T
-      </text>
-      {/* Aiguille nord */}
-      <path d="M24 7 L25.6 11 L22.4 11 Z" fill="currentColor" />
+      {/* Le chemin : une trajectoire souple, pas une ligne droite */}
+      <path
+        d="M11 34 C 17 34, 17 24, 24 24 C 31 24, 31 14, 37 14"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+      {/* Les moments : un départ, une étape, une arrivée pleine */}
+      <circle cx="11" cy="34" r="4" stroke="currentColor" strokeWidth="2.4" fill="none" />
+      <circle cx="24" cy="24" r="2.6" fill="currentColor" opacity="0.55" />
+      <circle cx="37" cy="14" r="4.5" fill="currentColor" />
     </svg>
   )
 }
