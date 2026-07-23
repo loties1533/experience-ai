@@ -11,7 +11,7 @@
 |--------|----------|--------|
 | R1 — Modèle de domaine | Traduction de [06-modele-conceptuel](06-modele-conceptuel.md) en TypeScript pur (Zod + invariants + tests), zéro Prisma | Terminé |
 | R2 — Persistance | Schéma Prisma déduit du domaine, migration, dépôt Parcours | Terminé |
-| R3 — Cœur | Parcours = état adressable + agent Modification (recalcul ciblé des dépendances) | À venir |
+| R3 — Cœur | Parcours = état adressable + opérations de modification ciblée (logique pure) | Terminé |
 | R4 — Entrée orientée envie | Brief en langage naturel, dialogue minimal, reformulation avant génération | À venir |
 | R5 — Mémoire simple | Préférences utilisateur | À venir |
 | R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | À venir |
@@ -44,6 +44,24 @@
   deux requêtes non atomiques ; fenêtre théorique uniquement (il faudrait
   connaître l'UUID d'un parcours d'autrui pendant sa création), à revoir si
   l'app devient multi-instance.
+
+### Revue R3 (terminé le 23/07)
+- `server/domaine/parcours/modifications.ts` : quatre demandes validées par Zod
+  (remplacer / supprimer / ajouter / changer le statut) et `appliquerModification`,
+  pure et immuable — le parcours d'origine n'est jamais muté.
+- **Pensé pour le front** : adressage stable (un remplacement garde l'id de
+  l'élément remplacé), `elementsARegenerer` dit exactement quoi rafraîchir,
+  chaque description et chaque erreur est affichable telle quelle.
+- Toute modification qui rendrait le parcours incohérent est **refusée avant
+  application** (validerParcours en aval) ; les acceptées sont journalisées
+  dans l'historique (base de l'annulation, prévue V2).
+- 13 tests rattachés aux invariants 3 et 6 et à l'histoire de Thomas
+  (« change juste le resto ») ; 126 tests verts au total, typecheck OK.
+- Relecture : choix assumé — un remplaçant porte **ses propres** dépendances
+  (il n'hérite pas de celles du remplacé), c'est à la demande de décrire le
+  graphe voulu. L'interprétation en langage naturel (« change le resto du
+  jour 3 » → DemandeModification) est volontairement au sprint R4 : elle
+  produira ces demandes, le domaine restant la seule autorité.
 
 ---
 
