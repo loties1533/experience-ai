@@ -13,7 +13,7 @@
 | R2 — Persistance | Schéma Prisma déduit du domaine, migration, dépôt Parcours | Terminé |
 | R3 — Cœur | Parcours = état adressable + opérations de modification ciblée (logique pure) | Terminé |
 | R4 — Entrée orientée envie | Brief en langage naturel, dialogue minimal, reformulation avant génération | Terminé |
-| R5 — Mémoire simple | Préférences utilisateur | À venir |
+| R5 — Mémoire simple | Préférences utilisateur | Terminé |
 | R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | À venir |
 
 ### Board — backlog par sprint
@@ -30,9 +30,9 @@
 - [x] Interprétation NL → `DemandeModification` (« change le resto du jour 3 »), le domaine reste seule autorité
 - [x] Routes `parcours` (créer / lire / modifier / lister / supprimer) branchées sur le dépôt, authz sur chaque route
 
-**R5 — Mémoire simple**
-- [ ] Préférences utilisateur (schéma + dépôt) injectées dans le brief
-- [ ] Route préférences (lecture / mise à jour)
+**R5 — Mémoire simple** *(terminé le 23/07)*
+- [x] Préférences utilisateur (schéma + dépôt) injectées dans la génération
+- [x] Routes GET/PUT `/api/parcours/preferences`
 
 **R6 — Bascule & nettoyage**
 - [ ] Front basculé sur les routes `parcours`
@@ -105,6 +105,19 @@
   sont préexistants et environnementaux — rien à voir avec la refonte ; la
   suite passe entière avec les variables fournies. Budget « ventilé » reporté :
   le prix par élément existe, la ventilation d'affichage viendra avec le front (R6).
+
+### Revue R5 (terminé le 23/07)
+- Mémoire simple (doc 07) : `domaine/preferences.ts` (schéma Zod — ambiances,
+  rythme, contraintes récurrentes, lieux favoris, budget habituel), table
+  `preferences_parcours` (migration `ajout_preferences_parcours`, même principe
+  agrégat JSON que l'ADR-0007), dépôt `depotPreferences.ts`.
+- Injection dans l'orchestrateur : les préférences sont des contraintes
+  SOUPLES — « le brief prime toujours » est écrit dans le prompt même.
+- Routes GET/PUT `/api/parcours/preferences` (déclarées avant `/:id`).
+- 5 tests ; 348 verts au total, typecheck OK.
+- Relecture : choix assumé — des préférences illisibles rendent `null` au lieu
+  de bloquer (la mémoire ne doit jamais empêcher de générer). L'ancienne route
+  `preferences` de TripGenie vit encore ; elle part au sprint R6 avec Pack.
 
 ---
 

@@ -10,6 +10,7 @@ import {
   type Parcours,
 } from '../domaine/parcours/index.js';
 import type { Brief } from './brief.js';
+import type { PreferencesParcours } from '../domaine/preferences.js';
 
 // L'ORCHESTRATEUR (IA n°1) : brief confirmé → parcours complet, en une passe.
 // À ne pas confondre avec l'agent Modification (IA n°2, modification.ts) qui
@@ -52,9 +53,17 @@ const SortieGenerationSchema = z.object({
     .min(1),
 });
 
-export async function genererParcours(brief: Brief): Promise<Parcours> {
+export async function genererParcours(
+  brief: Brief,
+  preferences: PreferencesParcours | null = null
+): Promise<Parcours> {
+  // Mémoire simple (sprint R5) : les préférences orientent, le brief prime.
+  const blocPreferences = preferences
+    ? `\nPréférences connues de l'utilisateur (souples — le brief prime toujours) :
+${JSON.stringify(preferences, null, 2)}`
+    : '';
   const prompt = `Construis un parcours pour ce brief :
-${JSON.stringify(brief, null, 2)}`;
+${JSON.stringify(brief, null, 2)}${blocPreferences}`;
 
   const brut = await callAI(prompt, SYSTEM_GENERATION, 'pack');
   const sortie = SortieGenerationSchema.safeParse(parseJSON(brut));

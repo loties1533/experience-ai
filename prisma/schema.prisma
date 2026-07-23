@@ -42,8 +42,22 @@ model User {
   preferences    UserPreference?
   collaborations TripCollaborator[]
   parcours       Parcours[]
+  preferences_parcours PreferenceParcours?
 
   @@map("users")
+}
+
+// ---- PRÉFÉRENCES DE PARCOURS (refonte — mémoire simple, sprint R5) ----
+// Même principe que la table parcours (ADR-0007) : contenu JSON validé par
+// Zod aux frontières (server/depots/depotPreferences.ts, seule porte d'accès).
+model PreferenceParcours {
+  user_id    String   @id @db.Uuid
+  contenu    Json
+  updated_at DateTime @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("preferences_parcours")
 }
 
 // ---- PARCOURS (refonte Experience AI — ADR-0007) ----

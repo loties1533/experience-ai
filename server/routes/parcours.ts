@@ -11,6 +11,8 @@ import {
   listerParcours,
   supprimerParcours,
 } from '../depots/depotParcours.js';
+import { chargerPreferences, sauvegarderPreferences } from '../depots/depotPreferences.js';
+import { PreferencesParcoursSchema } from '../domaine/preferences.js';
 import { BriefSchema, BriefPartielSchema } from '../agents/brief.js';
 import { avancerDialogue } from '../agents/intake.js';
 import { genererParcours } from '../agents/generation.js';
@@ -63,7 +65,7 @@ router.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { brief } = req.body as z.infer<typeof CorpsGenerationSchema>;
-      const parcours = await genererParcours(brief);
+      const parcours = await genererParcours(brief, await chargerPreferences(req.user!.id));
       await sauvegarderParcours(req.user!.id, parcours);
       res.status(201).json({ parcours });
     } catch (err) {
@@ -80,6 +82,29 @@ router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunct
     next(err);
   }
 });
+
+// ---- Préférences (mémoire simple, sprint R5) ----
+// Déclarées AVANT /:id pour que « preferences » ne soit pas lu comme un id.
+router.get('/preferences', requireAuth, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    res.json({ preferences: await chargerPreferences(req.user!.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put(
+  '/preferences',
+  requireAuth,
+  validateBody(PreferencesParcoursSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      res.json({ preferences: await sauvegarderPreferences(req.user!.id, req.body) });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // ---- GET /api/parcours/:id ----
 router.get(
