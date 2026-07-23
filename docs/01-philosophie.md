@@ -12,6 +12,8 @@ Phrases fondatrices :
 
 L'abondance a créé un nouveau manque : non plus l'accès à l'information, mais le **sens** et la **cohérence**. Tant que les gens auront des envies et manqueront de temps pour les concrétiser, un produit qui transforme une intention en parcours cohérent aura une raison d'être. Les modèles d'IA changeront ; cette raison d'être, non.
 
+> **Les documents servent à accélérer les décisions, pas à les remplacer.** Un document qui n'aide plus à décider ou à construire doit être simplifié ou supprimé. (Le cadre de décision est désormais gelé : plus aucune nouvelle règle tant qu'un problème réel ne l'exige.)
+
 ## Vision
 Un futur où l'on ne commence plus par « où veux-tu aller ? » mais par « **qu'as-tu envie de vivre ?** ». L'IA devient un architecte de parcours : elle comprend l'envie, propose des idées inattendues, et construit une expérience cohérente adaptée au budget, au temps et au contexte.
 
