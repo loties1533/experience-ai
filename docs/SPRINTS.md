@@ -304,6 +304,15 @@ inscription, dialogue, génération, modification. Trois défauts, dont un bloqu
   contrainte négative (« pas de paintball ») a été perdue au profit d'une autre.
   Le code est en cause nulle part — c'est la qualité du prompt d'intake.
 
+### Revue R6f — migrations propres (24/07)
+
+L'historique des migrations rejouait TripGenie à chaque base neuve : `init`
+créait `trips`/`packs`/`trip_votes`/… pour que `suppression_modele_pack` les
+détruise trois étapes plus loin. Les 6 migrations sont écrasées par **une seule
+`init_experience_ai`** qui crée directement les 4 tables du produit (users,
+parcours, preferences_parcours, partages_parcours). Sans donnée de production,
+c'est sans risque ; la base locale de dev se resynchronise par `migrate reset`.
+
 ### Revue R6e — ménage des résidus TripGenie (24/07)
 
 Le projet est né d'une copie de TripGenie : la plomberie réutilisée était juste
