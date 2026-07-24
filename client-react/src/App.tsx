@@ -5,6 +5,7 @@ import { Toaster } from 'sonner'
 import Envie from './pages/Envie'
 import MesParcours from './pages/MesParcours'
 import ParcoursDetail from './pages/ParcoursDetail'
+import ParcoursPartage from './pages/ParcoursPartage'
 import Login from './pages/Login'
 import Preferences from './pages/Preferences'
 
@@ -23,6 +24,8 @@ export default function App() {
           <Route path="/"              element={<Envie />} />
           <Route path="/parcours"      element={<MesParcours />} />
           <Route path="/parcours/:id"  element={<ParcoursDetail />} />
+          {/* Le parcours vu par le groupe : seule page accessible sans compte */}
+          <Route path="/partage/:jeton" element={<ParcoursPartage />} />
           <Route path="/login"         element={<Login />} />
           <Route path="/preferences"   element={<Preferences />} />
         </Routes>

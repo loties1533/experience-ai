@@ -4,9 +4,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
+import AvisGroupe from '../components/AvisGroupe'
+import PanneauPartage from '../components/PanneauPartage'
 import {
   chargerParcours, modifierParcours,
-  type Parcours, type Element, type DemandeModification,
+  type Parcours, type Element, type DemandeSurElement,
 } from '../lib/api'
 
 // La boucle qui fait la valeur (doc 05, étapes 6 ↔ 7) : explorer moment par
@@ -34,7 +36,7 @@ export default function ParcoursDetail() {
   })
 
   const modification = useMutation({
-    mutationFn: (corps: { demande: DemandeModification } | { phrase: string }) =>
+    mutationFn: (corps: { demande: DemandeSurElement } | { phrase: string }) =>
       modifierParcours(id as string, corps),
     onSuccess: (reponse) => {
       queryClient.setQueryData(['parcours', id], { parcours: reponse.parcours })
@@ -135,6 +137,8 @@ export default function ParcoursDetail() {
                       </p>
                       {/* La justification : la cohérence visible (Constitution #4) */}
                       <p className="text-sm text-encre-light mt-2 italic">« {element.justification} »</p>
+                      {/* Ce que le groupe en pense — ça éclaire, ça ne décide pas */}
+                      <AvisGroupe parcours={parcours} element={element} />
                     </div>
 
                     {/* L'utilisateur garde le dernier mot (Constitution #6) */}
@@ -184,6 +188,9 @@ export default function ParcoursDetail() {
           {modification.isPending ? 'Modification…' : 'Modifier'}
         </button>
       </form>
+
+      {/* Partager au groupe pour pouvoir décider ensemble (doc 07) */}
+      <PanneauPartage parcoursId={parcours.id} />
 
       {/* Historique */}
       {parcours.historique.length > 0 && (
