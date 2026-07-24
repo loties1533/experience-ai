@@ -21,7 +21,9 @@ Réponds UNIQUEMENT en JSON valide, l'une de ces cinq formes :
 - {"type": "ajouter_element", "momentId": string, "element": {"id": "sera-remplace", "type": ..., "nom": ..., "justification": string}}
 - {"type": "changer_statut", "elementId": string, "statut": "propose"|"accepte"|"a_remplacer"}
 - {"type": "ecarter_alternative", "elementId": string, "alternativeId": string} (l'utilisateur tranche : cette option ne lui sera plus proposée)
-Utilise UNIQUEMENT les ids listés. Chaque élément proposé porte une justification (pourquoi il sert l'intention).`;
+Utilise UNIQUEMENT les ids listés. Chaque élément proposé porte une justification (pourquoi il sert l'intention).
+Quand tu remplaces un élément qui a un prix, donne TOUJOURS le prix du remplaçant (en euros, même ordre de grandeur sauf si la demande implique le contraire) : un parcours sans prix fausse le budget.
+Ne mets jamais deux options dans un même "nom" (pas de « X ou Y ») : choisis-en une.`;
 
 /**
  * Vue compacte du parcours donnée au LLM : juste de quoi adresser les éléments
@@ -38,8 +40,11 @@ function resumerPourLLM(parcours: Parcours): string {
             const options = alternativesProposables(e)
               .map((a) => `      · ${a.nom} (alternativeId: ${a.id})`)
               .join('\n');
+            // Le prix courant est donné au modèle : sans cet ancrage, un
+            // remplaçant arrivait sans prix et le budget devenait faux.
+            const prix = e.prix !== undefined ? `, prix actuel : ${e.prix} €` : '';
             return (
-              `  - ${e.nom} [${e.type}] (elementId: ${e.id})` +
+              `  - ${e.nom} [${e.type}] (elementId: ${e.id}${prix})` +
               (options ? `\n    options possibles :\n${options}` : '')
             );
           })

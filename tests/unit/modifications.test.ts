@@ -395,3 +395,79 @@ describe('invariant 8 — les responsabilités du rôle de l’auteur', () => {
     if (!resultat.ok) expect(resultat.erreur).toContain('ne faites pas partie');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Le prix survit à un remplacement.
+// Observé en recette : le LLM renvoie un remplaçant sans prix, l'élément passe
+// à « — » et le budget du parcours devient faux sans que rien ne le signale.
+// ---------------------------------------------------------------------------
+describe('le prix d’un élément remplacé', () => {
+  function parcoursAvecPrix(): Parcours {
+    return ParcoursSchema.parse({
+      id: 'p-prix',
+      intention: { texte: 'un EVG à Bordeaux' },
+      contexte: { avecQui: 'amis', duree: { valeur: 3, unite: 'jours' } },
+      participants: [{ id: 'u1', nom: 'Hugo', role: 'organisateur' }],
+      budget: { mode: 'partage' },
+      timeline: [
+        {
+          id: 'm1',
+          titre: 'Samedi',
+          elements: [element('paddle', { nom: 'Paddle sur la Garonne', prix: 280 })],
+        },
+      ],
+    });
+  }
+
+  const remplacantSansPrix = {
+    type: 'remplacer_element',
+    elementId: 'paddle',
+    remplacement: {
+      type: 'activite',
+      nom: 'Visite guidée en bateau',
+      justification: 'moins physique, demandé par l’utilisateur',
+    },
+  } as const;
+
+  it('est hérité quand le remplaçant n’en propose pas', () => {
+    const r = appliquerModification(
+      parcoursAvecPrix(),
+      DemandeModificationSchema.parse(remplacantSansPrix),
+      PAR_ORGANISATEUR
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const remplace = r.parcours.timeline[0].elements[0];
+    expect(remplace.nom).toBe('Visite guidée en bateau');
+    expect(remplace.prix).toBe(280);
+  });
+
+  it('cède la place au prix proposé quand il y en a un', () => {
+    const r = appliquerModification(
+      parcoursAvecPrix(),
+      DemandeModificationSchema.parse({
+        ...remplacantSansPrix,
+        remplacement: { ...remplacantSansPrix.remplacement, prix: 150 },
+      }),
+      PAR_ORGANISATEUR
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.parcours.timeline[0].elements[0].prix).toBe(150);
+  });
+
+  it('reste absent si l’élément remplacé n’avait pas de prix', () => {
+    const sansPrix = ParcoursSchema.parse({
+      ...parcoursAvecPrix(),
+      timeline: [{ id: 'm1', titre: 'Samedi', elements: [element('paddle', { nom: 'Paddle' })] }],
+    });
+    const r = appliquerModification(
+      sansPrix,
+      DemandeModificationSchema.parse(remplacantSansPrix),
+      PAR_ORGANISATEUR
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.parcours.timeline[0].elements[0].prix).toBeUndefined();
+  });
+});

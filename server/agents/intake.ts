@@ -22,6 +22,34 @@ const SortieIntakeSchema = z.object({
   brief: z.unknown(),
 });
 
+/**
+ * Ne jamais faire confiance au LLM : ses extractions passent par Zod. Mais la
+ * validation se fait CHAMP PAR CHAMP, jamais sur l'objet entier.
+ *
+ * Pourquoi : `safeParse` est tout-ou-rien. Un seul champ mal formé — le modèle
+ * écrit `avecQui: "groupe de 8"` là où l'enum attend `"amis"` — faisait perdre
+ * TOUS les autres, pourtant valides. En pratique la ville, le budget et les
+ * dates donnés dans la même phrase disparaissaient, et le dialogue les
+ * redemandait : exactement ce que le produit s'interdit de faire.
+ *
+ * Ici, un champ invalide est le seul à être ignoré ; le dialogue le redemandera.
+ */
+function extraireChampsValides(brut: unknown): BriefPartiel {
+  if (typeof brut !== 'object' || brut === null || Array.isArray(brut)) return {};
+
+  const formes = BriefPartielSchema.shape;
+  const retenu: Record<string, unknown> = {};
+
+  for (const [cle, valeur] of Object.entries(brut as Record<string, unknown>)) {
+    const forme = formes[cle as keyof typeof formes];
+    if (!forme) continue; // champ inventé par le modèle : ignoré
+    const resultat = forme.safeParse(valeur);
+    if (resultat.success && resultat.data !== undefined) retenu[cle] = resultat.data;
+  }
+
+  return retenu as BriefPartiel;
+}
+
 export interface EtapeDialogue {
   /** Question suivante, ou reformulation à valider quand le brief est complet. */
   reponse: string;
@@ -43,10 +71,7 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
     throw new AppError('Je n’ai pas réussi à comprendre, pouvez-vous reformuler ?', 502);
   }
 
-  // Ne jamais faire confiance au LLM : ses extractions passent par Zod,
-  // et ce qui ne valide pas est simplement ignoré (le dialogue redemandera).
-  const extraction = BriefPartielSchema.safeParse(sortie.data.brief);
-  const brief: BriefPartiel = { ...briefActuel, ...(extraction.success ? extraction.data : {}) };
+  const brief: BriefPartiel = { ...briefActuel, ...extraireChampsValides(sortie.data.brief) };
 
   const complet = BriefSchema.safeParse(brief);
   if (complet.success) {

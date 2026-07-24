@@ -127,9 +127,14 @@ export function appliquerModification(
       const cible = trouverElement(parcours, demande.elementId);
       if (!cible) return { ok: false, erreur: `Aucun élément « ${demande.elementId} » dans ce parcours` };
 
+      // Le remplaçant hérite du prix de l'élément remplacé quand il n'en porte
+      // pas : sinon le budget du parcours devient silencieusement faux dès
+      // qu'une modification passe (l'élément vaut « — » au lieu de son coût).
+      // Un prix explicitement proposé fait toujours foi.
       const remplacant: Element = {
         ...demande.remplacement,
         id: cible.id,
+        prix: demande.remplacement.prix ?? cible.prix,
         alternatives: reporterArbitrages(cible, demande.remplacement.alternatives),
       };
       const nouveau: Parcours = {

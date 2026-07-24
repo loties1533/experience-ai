@@ -179,3 +179,64 @@ describe('agent Modification (IA n°2) — son seul vocabulaire : une demande ci
     await expect(interpreterDemande(parcours, 'refais tout')).rejects.toThrow();
   });
 });
+
+// ---------------------------------------------------------------------------
+// L'extraction du brief est CHAMP PAR CHAMP.
+// Observé en recette : la ville, le budget et les dates donnés dans la même
+// phrase disparaissaient dès qu'un seul champ était mal formé, et le dialogue
+// les redemandait — ce que le produit s'interdit.
+// ---------------------------------------------------------------------------
+describe('extraction du brief tolérante aux champs invalides', () => {
+  it('garde les champs valides quand un seul est mal formé', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'Vous partez combien de temps ?',
+        brief: {
+          intention: 'organiser l’EVG de Max',
+          avecQui: 'groupe de 8', // invalide : l'enum attend "amis"/"groupe"…
+          lieux: ['Bordeaux'],
+          budgetTotal: 2800,
+          dates: { debut: '2026-09-04T00:00:00Z', fin: '2026-09-06T00:00:00Z' },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue({}, "On est 8 à Bordeaux pour l'EVG de Max, 2800 € du 4 au 6 septembre");
+
+    // Le champ fautif est le seul écarté…
+    expect(etape.brief.avecQui).toBeUndefined();
+    // …tous les autres survivent.
+    expect(etape.brief.intention).toBe('organiser l’EVG de Max');
+    expect(etape.brief.lieux).toEqual(['Bordeaux']);
+    expect(etape.brief.budgetTotal).toBe(2800);
+    expect(etape.brief.dates?.debut).toBe('2026-09-04T00:00:00Z');
+  });
+
+  it('ignore un champ que le modèle a inventé', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'Avec qui partez-vous ?',
+        brief: { intention: 'une soirée', meteo: 'ensoleillé' },
+      })
+    );
+
+    const etape = await avancerDialogue({}, 'une soirée sympa');
+
+    expect(etape.brief.intention).toBe('une soirée');
+    expect(etape.brief as Record<string, unknown>).not.toHaveProperty('meteo');
+  });
+
+  it('n’efface jamais un acquis quand le modèle ne renvoie rien d’exploitable', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'Pour combien de temps ?', brief: 'pas un objet' })
+    );
+
+    const etape = await avancerDialogue(
+      { intention: 'vivre la NBA', lieux: ['Boston'] },
+      'peu importe'
+    );
+
+    expect(etape.brief.intention).toBe('vivre la NBA');
+    expect(etape.brief.lieux).toEqual(['Boston']);
+  });
+});
