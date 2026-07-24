@@ -16,6 +16,9 @@ const SUGGESTIONS = [
   'Un festival techno entre amis',
 ]
 
+/** L'envie écrite avant connexion, gardée le temps de l'aller-retour. */
+const ENVIE_EN_ATTENTE = 'experience-ai:envie-en-attente'
+
 export default function Envie() {
   const { user } = useAuthStore()
   const { messages, brief, estComplet, ajouterMessage, mettreAJourBrief, reinitialiser } = useDialogueStore()
@@ -29,9 +32,27 @@ export default function Envie() {
     finListe.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length, enCours])
 
+  // Retour de connexion : l'envie mise de côté revient dans le champ, prête à
+  // partir. On ne l'envoie pas d'office — c'est à l'utilisateur de décider.
+  useEffect(() => {
+    if (!user) return
+    const enAttente = sessionStorage.getItem(ENVIE_EN_ATTENTE)
+    if (!enAttente) return
+    sessionStorage.removeItem(ENVIE_EN_ATTENTE)
+    setSaisie(enAttente)
+  }, [user])
+
   const envoyer = async (texte: string) => {
     if (!texte.trim() || enCours) return
-    if (!user) { navigate('/login'); return }
+    // Une envie ne se perd pas parce qu'il faut se connecter : on la met de
+    // côté et on la remet dans le champ au retour. Sinon le tout premier geste
+    // du produit — écrire ce qu'on veut vivre — s'efface sans un mot.
+    if (!user) {
+      sessionStorage.setItem(ENVIE_EN_ATTENTE, texte)
+      toast('Connecte-toi pour continuer — on garde ton envie de côté.')
+      navigate('/login')
+      return
+    }
 
     ajouterMessage('utilisateur', texte)
     setSaisie('')

@@ -8,9 +8,16 @@ export const RoleSchema = z.enum(['organisateur', 'participant', 'heros']);
 
 export const VisibiliteSchema = z.enum(['prive', 'partage', 'surprise']);
 
+// `sortie` désigne ce qui se vit le soir : bar, club, tournée, apéro.
+// Sans ce type, le modèle rangeait la boîte de nuit et la virée bars dans
+// `temps_libre` (constaté sur deux générations sur quatre) : le temps fort du
+// parcours s'affichait alors comme un temps mort. Un produit qui tient sa
+// cohérence d'un thème ne peut pas confondre le sommet de la soirée avec une
+// pause café.
 export const TypeElementSchema = z.enum([
   'activite',
   'restaurant',
+  'sortie',
   'transport',
   'hebergement',
   'evenement',

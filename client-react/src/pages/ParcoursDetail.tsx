@@ -17,6 +17,7 @@ import {
 const LIBELLES_TYPE: Record<Element['type'], string> = {
   activite: 'Activité',
   restaurant: 'Restaurant',
+  sortie: 'Sortie',
   transport: 'Transport',
   hebergement: 'Hébergement',
   evenement: 'Événement',
