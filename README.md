@@ -12,7 +12,7 @@
 [![Express](https://img.shields.io/badge/Express-4-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com)
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org)
-[![Vitest](https://img.shields.io/badge/Vitest-189_tests-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Vitest](https://img.shields.io/badge/Vitest-tests_verts-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
 
 [Documentation produit](docs/README.md) · [Modèle de domaine](docs/06-modele-conceptuel.md) · [Décisions (ADR)](docs/11-decisions.md)
 
@@ -69,8 +69,8 @@ Le modèle porte des règles qui doivent **toujours** être vraies ([doc 06](doc
 4. Une réservation n'est jamais un achat dans le produit
 5. Ni durée ni format fixes
 6. L'utilisateur garde le dernier mot
-7. Un arbitrage est définitif *(à implémenter)*
-8. Toute modification s'exerce dans le cadre du rôle de son auteur *(à implémenter)*
+7. Un arbitrage est définitif — une option écartée n'est jamais reproposée
+8. Toute modification s'exerce dans le cadre du rôle de son auteur
 
 ---
 
@@ -99,7 +99,7 @@ npm run dev:all
 npx vitest run
 ```
 
-189 tests : domaine (logique pure), dépôts (Prisma mocké), routes, authentification et validation des entrées.
+La suite couvre le domaine (logique pure), les dépôts (Prisma mocké), les routes, l'authentification et la validation des entrées.
 
 ---
 
@@ -139,4 +139,4 @@ Deux règles de gouvernance :
 
 Le modèle de domaine est **stable pour le MVP** : validé par crash-test contre six parcours très différents (passionné solo, couple avec surprise, soirée improvisée, famille, EVG, festival).
 
-Le premier vertical de validation est l'**EVG/EVJF** — un premier marché, pas la définition du produit ([ADR-0009](docs/decisions/ADR-0009.md)). Cette hypothèse doit être confirmée ou invalidée par des interviews d'organisateurs réels.
+**Aucun vertical n'est retenu comme périmètre de validation.** Le produit ne dépend d'aucun d'entre eux : dès qu'un parcours se vit à plusieurs, il se partage et se modifie à plusieurs, que ce soit un EVG, un festival ou un week-end en famille. Le choix d'un premier marché reste une question ouverte (voir [questions ouvertes](docs/questions-ouvertes.md)).
