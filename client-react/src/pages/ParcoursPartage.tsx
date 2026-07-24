@@ -115,6 +115,13 @@ export default function ParcoursPartage() {
                         {element.lieu}
                         {element.prix !== undefined && <> · {element.prix} €</>}
                       </p>
+                      {element.reservation && (
+                        <a href={element.reservation.lienExterne} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
+                          aria-label={`Voir ${element.nom} sur la carte (nouvel onglet)`}>
+                          Voir sur la carte
+                        </a>
+                      )}
                       <p className="text-sm text-encre-light mt-2 italic">« {element.justification} »</p>
                       <AvisGroupe parcours={parcours} element={element} />
                     </div>
