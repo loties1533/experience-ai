@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// On ne mocke QUE l'appel LLM : parseJSON et sanitizeInput restent réels,
-// puisque c'est justement la frontière de méfiance qu'on teste.
+// On ne mocke QUE les appels LLM : parseJSON et sanitizeInput restent réels,
+// puisque c'est justement la frontière de méfiance qu'on teste. L'orchestrateur
+// passe par la voie OUTILLÉE (callAIAvecOutils) depuis qu'il cherche de vrais
+// lieux ; l'intake et la modification, eux, n'ont rien à chercher.
 vi.mock('../../server/services/claude/core.js', async (importOriginal) => {
   const reel = await importOriginal<typeof import('../../server/services/claude/core.js')>();
-  return { ...reel, callAI: vi.fn() };
+  return { ...reel, callAI: vi.fn(), callAIAvecOutils: vi.fn() };
 });
 
-const { callAI } = await import('../../server/services/claude/core.js');
+const { callAI, callAIAvecOutils } = await import('../../server/services/claude/core.js');
 const { champsManquants, reformulerBrief, BriefSchema } = await import('../../server/agents/brief.js');
 const { avancerDialogue } = await import('../../server/agents/intake.js');
 const { normaliserDatesBrief } = await import('../../server/agents/brief.js');
@@ -25,6 +27,7 @@ const briefComplet = BriefSchema.parse({
 
 beforeEach(() => {
   vi.mocked(callAI).mockReset();
+  vi.mocked(callAIAvecOutils).mockReset();
 });
 
 describe('brief — cadrage (doc 05, étape 3)', () => {
@@ -116,7 +119,7 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
   };
 
   it('construit un parcours valide, remappe les refs en ids et écarte les refs inventées', async () => {
-    vi.mocked(callAI).mockResolvedValue(JSON.stringify(sortieLLM));
+    vi.mocked(callAIAvecOutils).mockResolvedValue(JSON.stringify(sortieLLM));
     const parcours = await genererParcours(briefComplet);
 
     expect(() => ParcoursSchema.parse(parcours)).not.toThrow();
@@ -127,7 +130,7 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
   });
 
   it('rejette une sortie inexploitable avec une erreur actionnable', async () => {
-    vi.mocked(callAI).mockResolvedValue('{"moments": []}');
+    vi.mocked(callAIAvecOutils).mockResolvedValue('{"moments": []}');
     await expect(genererParcours(briefComplet)).rejects.toThrow('inexploitable');
   });
 });

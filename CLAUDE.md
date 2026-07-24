@@ -8,6 +8,25 @@
 Une intention (envie / passion / objectif) + un contexte → un **parcours** cohérent de moments.
 Le voyage n'est qu'un *format* de parcours (soirée, EVG, festival, séjour NBA, journée gastro…).
 
+## La vision en version finie (à connaître par cœur)
+
+> **Experience AI est un moteur de conception de parcours personnalisés. Il comprend l'intention et le contexte d'une personne, les transforme en un parcours cohérent composé de moments et d'éléments adressables, puis permet de modifier ce parcours de manière chirurgicale sans repartir de zéro.**
+
+Ce que ça implique, dans l'ordre où le produit le vit :
+
+1. **On ne part jamais du lieu, on part du pourquoi.** TripGenie cherchait une destination ; Experience AI cherche une intention.
+2. **Le langage devient du domaine.** « On est huit » → participants. « Max ne peut pas boire » → contrainte. « 250 € chacun » → budget partagé. Le texte disparaît, le modèle reste.
+3. **Le parcours n'est pas un planning.** Chaque moment existe pour une raison et sert l'intention : montée, temps fort, respiration, second pic. C'est un récit, pas un agenda.
+4. **Chaque moment contient des éléments adressables** (prix, horaire, alternatives, contraintes). C'est ce qui rend la suite possible.
+5. **La modification est chirurgicale** — le cœur du produit. On remplace *un* élément, on recalcule *ses* dépendances, le reste ne bouge pas.
+6. **Le groupe fait partie du domaine, pas d'une option** : qui décide, qui propose, qui ne voit rien.
+7. **L'historique retient les décisions du parcours**, pas les goûts de la personne : une option écartée n'est jamais reproposée.
+8. **Ce qui est sauvegardé, c'est le domaine** — intention, contexte, moments, éléments, décisions, alternatives. Pas la conversation, qui n'était qu'un moyen.
+9. **On revient trois semaines plus tard et on ajuste** sans rien recommencer.
+10. **Le vertical change, le moteur ne change pas.** Le domaine n'a jamais parlé d'EVG.
+
+⚠️ **Hugo et son EVG ne sont qu'une tranche de MVP**, choisie pour aller chercher des retours réels — jamais la définition du produit. NBA, surf, festival, séminaire, anniversaire : même moteur. Ce qui fait la valeur, c'est que le parcours soit **cohérent avec un thème**, là où TripGenie était générique et désorganisé.
+
 ## Vocabulaire (à respecter partout)
 - **Parcours** = ce que le produit *construit* (l'objet, la structure). Remplace « voyage ».
 - **Expérience** = ce que l'utilisateur *vit* (le ressenti).
@@ -48,6 +67,13 @@ tests verts · typecheck OK · entrées validées · aucun code mort · petit di
 - **Nommer les fichiers** concernés ; lire le doc pertinent, pas tout le repo.
 - Petits diffs. Mettre à jour mémoire + SPRINTS au fil de l'eau.
 - Ce fichier reste **court** : il pointe vers les docs détaillés, il ne les recopie pas.
+
+## Branches, PR et documentation (règles imposées)
+- Chaque modification se fait sur une **branche dédiée**, jamais sur `main`.
+- Elle s'explique dans une **PR détaillée** (le pourquoi, pas le quoi) + une revue dans `docs/SPRINTS.md`, **qui porte le lien de sa PR**.
+- **Regrouper** : une PR porte un chantier cohérent. Pas de PR pour deux lignes.
+- **Interdit de créer un nouveau document.** On s'appuie sur la doc existante ; le seul fichier qu'un sprint met à jour est `docs/SPRINTS.md`.
+- La doc de `docs/` est la **ligne directrice** : elle ne bouge pas en effet de bord d'une implémentation. Elle n'évolue que par décision explicite d'Alexis, dans sa propre branche — et seulement si le code ou un utilisateur l'exige (règle d'évolution, doc 06).
 
 ## Commits (préférence utilisateur)
 Messages naturels en français, signés au nom d'Alexis. **Aucune trace d'IA** (pas de `Co-Authored-By`, pas d'emoji IA).

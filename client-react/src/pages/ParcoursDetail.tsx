@@ -17,6 +17,7 @@ import {
 const LIBELLES_TYPE: Record<Element['type'], string> = {
   activite: 'Activité',
   restaurant: 'Restaurant',
+  sortie: 'Sortie',
   transport: 'Transport',
   hebergement: 'Hébergement',
   evenement: 'Événement',
@@ -135,6 +136,14 @@ export default function ParcoursDetail() {
                         {element.lieu}
                         {element.prix !== undefined && <> · {element.prix} €</>}
                       </p>
+                      {/* Un vrai lieu, trouvé pour ce parcours : on y conduit, on ne vend rien */}
+                      {element.reservation && (
+                        <a href={element.reservation.lienExterne} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
+                          aria-label={`Voir ${element.nom} sur la carte (nouvel onglet)`}>
+                          Voir sur la carte
+                        </a>
+                      )}
                       {/* La justification : la cohérence visible (Constitution #4) */}
                       <p className="text-sm text-encre-light mt-2 italic">« {element.justification} »</p>
                       {/* Ce que le groupe en pense — ça éclaire, ça ne décide pas */}

@@ -10,13 +10,13 @@ vi.mock('../../server/db/prisma.js', () => ({ default: prismaMock }));
 
 vi.mock('../../server/services/claude/core.js', async (importOriginal) => {
   const reel = await importOriginal<typeof import('../../server/services/claude/core.js')>();
-  return { ...reel, callAI: vi.fn() };
+  return { ...reel, callAI: vi.fn(), callAIAvecOutils: vi.fn() };
 });
 
 const { chargerPreferences, sauvegarderPreferences } = await import('../../server/depots/depotPreferences.js');
 const { genererParcours } = await import('../../server/agents/generation.js');
 const { BriefSchema } = await import('../../server/agents/brief.js');
-const { callAI } = await import('../../server/services/claude/core.js');
+const { callAIAvecOutils } = await import('../../server/services/claude/core.js');
 
 const PROPRIETAIRE = 'user-1';
 const preferencesValides = {
@@ -65,16 +65,16 @@ describe('génération — les préférences orientent, le brief prime', () => {
   });
 
   it('injecte les préférences dans le prompt quand elles existent', async () => {
-    vi.mocked(callAI).mockResolvedValue(sortieMinimale);
+    vi.mocked(callAIAvecOutils).mockResolvedValue(sortieMinimale);
     await genererParcours(brief, preferencesValides);
-    const prompt = vi.mocked(callAI).mock.calls[0][0];
+    const prompt = vi.mocked(callAIAvecOutils).mock.calls[0][0];
     expect(prompt).toContain('végétarien');
     expect(prompt).toContain('le brief prime');
   });
 
   it('fonctionne sans préférences (aucune mention dans le prompt)', async () => {
-    vi.mocked(callAI).mockResolvedValue(sortieMinimale);
+    vi.mocked(callAIAvecOutils).mockResolvedValue(sortieMinimale);
     await genererParcours(brief, null);
-    expect(vi.mocked(callAI).mock.calls[0][0]).not.toContain('Préférences');
+    expect(vi.mocked(callAIAvecOutils).mock.calls[0][0]).not.toContain('Préférences');
   });
 });
