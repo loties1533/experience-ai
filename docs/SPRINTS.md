@@ -15,6 +15,7 @@
 | R4 — Entrée orientée envie | Brief en langage naturel, dialogue minimal, reformulation avant génération | Terminé |
 | R5 — Mémoire simple | Préférences utilisateur | Terminé |
 | R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | En cours (R6a fait) |
+| R7 — Domaine complété | Les manques révélés par le code et le prototype : invariants 7 et 8, vraies dates de parcours | En cours |
 
 ### Board — backlog par sprint
 
@@ -39,6 +40,16 @@
 - [x] **Suppression** du modèle Pack (routes trips/votes, services pack, tables) — jamais deux modèles qui cohabitent
 - [ ] Cache des appels externes (maîtrise des coûts)
 - [ ] Recette manuelle de bout en bout
+
+**R7 — Domaine complété** *(en cours)*
+
+> Deux manques constatés **en implémentant**, pas en théorisant (règle d'évolution
+> du domaine, doc 06) : le code ne portait que 6 invariants sur 8, et le
+> prototype utilisateur a réclamé de vraies dates.
+
+- [x] Invariant 7 — arbitrage définitif : option écartée mémorisée, jamais reproposée
+- [x] Invariant 8 — chaque modification est signée, le rôle de l'auteur doit la couvrir
+- [ ] Dates réelles du parcours (début / fin) et cohérence avec les plages des éléments
 
 ### Revue R1 (terminé le 23/07)
 - 23/07 — Module `server/domaine/parcours/` créé : `schema.ts` (agrégat complet
@@ -169,6 +180,28 @@
   appelés par aucune route pour l'instant : à rebrancher, sinon à supprimer.
 - Reste au sprint R6c : cache des appels externes, recette manuelle de bout en
   bout, et réécriture du README (il décrit encore le produit TripGenie).
+
+### Revue R7 — invariants 7 et 8 (24/07)
+- **Invariant 7 (arbitrage définitif).** Une alternative porte désormais un
+  drapeau `ecartee` : la forme la plus simple qui tienne l'invariant, sans
+  inventer d'objet « Arbitrage » (l'Historique raconte déjà quand on a tranché).
+  Nouvelle demande `ecarter_alternative`, et `alternativesProposables()` : c'est
+  la **seule** liste d'options que voient le front et l'agent Modification, qui
+  ne peut donc plus reproposer ce qui a été écarté. Un arbitrage survit au
+  remplacement de l'élément qui le portait — on ne blanchit pas une décision en
+  changeant l'élément.
+- **Invariant 8 (responsabilités du rôle).** `appliquerModification` est
+  désormais signée : elle prend l'identité de l'auteur et refuse proprement
+  (message français, `ok:false`) si son rôle ne couvre pas la responsabilité
+  engagée — proposer / ajuster / supprimer / arbitrer (tableau dans le doc 06).
+  Max, le héros de son EVG, ne peut plus toucher à son parcours ; un auteur
+  étranger au parcours non plus.
+- Sur la route, l'auteur est l'utilisateur du JWT. Le dépôt ne rendant que ses
+  propres parcours, il en est propriétaire : s'il ne figure pas dans les
+  participants (un parcours généré porte un participant « Organisateur » d'id
+  aléatoire), il est rattaché à l'organisateur. À revoir le jour du partage :
+  chaque invité aura alors son propre participant et son propre rôle.
+- 209 tests verts, typecheck serveur et client OK, lint sans erreur.
 
 ---
 

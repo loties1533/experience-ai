@@ -36,7 +36,7 @@ Il porte :
 - **Budget** — **individuel ou partagé**. Sert de contrainte pilotante.
 - **Ambiance / Ton** — propriété transverse qui teinte tous les éléments.
 - **Visibilité** — privé / partagé / surprise (certains participants ne voient pas).
-- **Historique** — le journal des modifications (permet d'annuler), **y compris les arbitrages** de l'utilisateur (option écartée = mémorisée). *Un arbitrage est pour l'instant un événement de l'Historique, pas un objet métier — question laissée ouverte tant que plusieurs journeys ne réclament pas plus (voir Questions ouvertes).*
+- **Historique** — le journal des modifications (permet d'annuler), **y compris les arbitrages** de l'utilisateur (option écartée = mémorisée). *Un arbitrage reste un événement de l'Historique, pas un objet métier — question laissée ouverte tant que plusieurs journeys ne réclament pas plus (voir Questions ouvertes).* L'option écartée en garde simplement la trace (voir Alternative) : l'Historique raconte **quand** on a tranché, l'Alternative sait **qu'on a tranché**.
 - **Timeline** — la suite ordonnée de **Moments**.
 
 ## Les entités
@@ -54,12 +54,23 @@ La matière concrète d'un moment. Il a un **type** (activité, resto, transport
   - *dure / datée* (un match, un set → horaire non négociable ; peut créer des **conflits** à arbitrer) ;
   - *filtre* (adapté aux enfants, mobilité → exclut des éléments) ;
   - *souple* (ambiance, niveau, rythme → oriente sans exclure).
-- **Alternative** — une option de remplacement d'un élément (plan B).
+- **Alternative** — une option de remplacement d'un élément (plan B). Elle est soit **proposable**, soit **écartée** : écartée, elle reste dans le parcours (on n'efface pas une décision) mais n'est plus jamais offerte. *Forme retenue : un simple drapeau sur l'option, pas un objet « Arbitrage » — l'invariant 7 demande de ne plus reproposer, pas de modéliser la délibération.*
 - **Réservation** — un **lien externe** vers un service tiers. **Jamais un achat dans le produit** (Constitution #5).
 - **Rôle** — la fonction d'un participant, définie par ses **responsabilités métier** (pas des « permissions » techniques — la technique les déduira plus tard) :
   - *organisateur* — responsable du parcours : décide, modifie, supprime ;
   - *participant* — contribue : propose, vote, ajuste ce qui lui est délégué ;
   - *héros* — celui pour qui le parcours existe ; peut être exclu de la visibilité (surprise) ; ne décide pas.
+
+  Quatre responsabilités suffisent à dire qui peut quoi (invariant 8) :
+
+  | Responsabilité | Ce que c'est | organisateur | participant | héros |
+  |---|---|---|---|---|
+  | *proposer* | ajouter un élément | oui | oui | non |
+  | *ajuster* | remplacer un élément, changer son statut | oui | oui | non |
+  | *supprimer* | retirer un élément du parcours | oui | non | non |
+  | *arbitrer* | écarter définitivement une option | oui | non | non |
+
+  Un **arbitrage** engage tout le parcours et ne se défait pas : il relève de celui qui décide, pas de celui qui contribue. Et **qui n'est pas participant du parcours n'a aucune main dessus**.
 - **Justification (Note IA)** — le *pourquoi* d'un élément (cohérence et confiance).
 
 ## Les invariants (toujours vrais)
@@ -70,7 +81,9 @@ La matière concrète d'un moment. Il a un **type** (activité, resto, transport
 5. Un Parcours n'a **ni durée ni format fixes** (soirée, EVG, festival, séjour = même modèle).
 6. L'utilisateur garde le dernier mot : tout élément est acceptable / refusable / remplaçable.
 7. **Un arbitrage est définitif** : une option écartée par l'utilisateur n'est jamais reproposée (sauf demande explicite).
+   *Précision née du code :* le produit ne propose **que** les alternatives non écartées — c'est la seule liste que voient le front et l'IA de modification. Un arbitrage survit même au remplacement de l'élément qui le portait. La « demande explicite » reste possible : l'utilisateur peut toujours redemander lui-même ce qu'il avait écarté, ce qui lui est interdit, c'est de se le voir **reproposer**.
 8. Toute modification s'exerce dans le cadre des **responsabilités du rôle** de son auteur.
+   *Précision née du code :* toute modification est signée par un participant ; son rôle doit couvrir la responsabilité engagée (tableau ci-dessus), sinon elle est refusée avec une explication — jamais appliquée à moitié.
 
 ## Règle de primauté des invariants
 Quand une histoire casse un invariant, la première question n'est plus « comment changer le domaine ? » mais : **le journey est-il légitime, ou l'invariant protège-t-il quelque chose de plus important ?** Les invariants sont la Constitution du domaine ; ce sont parfois les histoires qui doivent s'adapter. (Sinon, les fondations bougent sans arrêt.)

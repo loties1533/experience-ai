@@ -3,6 +3,7 @@ import { callAI, parseJSON, sanitizeInput } from '../services/claude/core.js';
 import { AppError } from '../lib/AppError.js';
 import {
   DemandeModificationSchema,
+  alternativesProposables,
   type DemandeModification,
   type Parcours,
 } from '../domaine/parcours/index.js';
@@ -14,21 +15,34 @@ import {
 // pour appliquer (ou refuser) la demande.
 
 const SYSTEM_MODIFICATION = `Tu traduis la demande d'un utilisateur en UNE modification ciblée de son parcours.
-Réponds UNIQUEMENT en JSON valide, l'une de ces quatre formes :
+Réponds UNIQUEMENT en JSON valide, l'une de ces cinq formes :
 - {"type": "remplacer_element", "elementId": string, "remplacement": {"type": ..., "nom": ..., "lieu"?, "plage"?, "prix"?, "justification": string}}
 - {"type": "supprimer_element", "elementId": string}
 - {"type": "ajouter_element", "momentId": string, "element": {"id": "sera-remplace", "type": ..., "nom": ..., "justification": string}}
 - {"type": "changer_statut", "elementId": string, "statut": "propose"|"accepte"|"a_remplacer"}
+- {"type": "ecarter_alternative", "elementId": string, "alternativeId": string} (l'utilisateur tranche : cette option ne lui sera plus proposée)
 Utilise UNIQUEMENT les ids listés. Chaque élément proposé porte une justification (pourquoi il sert l'intention).`;
 
-/** Vue compacte du parcours donnée au LLM : juste de quoi adresser les éléments. */
+/**
+ * Vue compacte du parcours donnée au LLM : juste de quoi adresser les éléments
+ * et les options encore ouvertes. Les options déjà écartées n'y figurent pas —
+ * le modèle ne peut donc pas les reproposer (invariant 7).
+ */
 function resumerPourLLM(parcours: Parcours): string {
   return parcours.timeline
     .map(
       (moment) =>
         `Moment "${moment.titre}" (momentId: ${moment.id})\n` +
         moment.elements
-          .map((e) => `  - ${e.nom} [${e.type}] (elementId: ${e.id})`)
+          .map((e) => {
+            const options = alternativesProposables(e)
+              .map((a) => `      · ${a.nom} (alternativeId: ${a.id})`)
+              .join('\n');
+            return (
+              `  - ${e.nom} [${e.type}] (elementId: ${e.id})` +
+              (options ? `\n    options possibles :\n${options}` : '')
+            );
+          })
           .join('\n')
     )
     .join('\n');

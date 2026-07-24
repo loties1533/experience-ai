@@ -76,6 +76,10 @@ export const AlternativeSchema = z.object({
   nom: z.string().min(1),
   description: z.string().optional(),
   prix: z.number().nonnegative().optional(),
+  // Invariant 7 : la mémoire d'un arbitrage. Un simple drapeau suffit —
+  // l'arbitrage reste un événement de l'Historique (doc 06), ce booléen dit
+  // seulement « cette option a été tranchée » pour ne plus jamais la proposer.
+  ecartee: z.boolean().default(false),
 });
 
 export const ReservationSchema = z.object({

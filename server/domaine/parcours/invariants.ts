@@ -1,6 +1,6 @@
-import type { Element, Parcours, PlageHoraire } from './schema.js';
+import type { Alternative, Element, Parcours, PlageHoraire, Role } from './schema.js';
 
-// Invariants 3 à 6 de docs/06-modele-conceptuel.md : logique pure, testable,
+// Invariants 3 à 8 de docs/06-modele-conceptuel.md : logique pure, testable,
 // indépendante du stockage. Retourne des erreurs lisibles, ne lève jamais.
 
 export interface ConflitHoraire {
@@ -8,6 +8,29 @@ export interface ConflitHoraire {
   elementB: string;
   description: string;
 }
+
+/**
+ * Invariant 8 — ce qu'un rôle a le droit de faire, dit en responsabilités
+ * métier (doc 06) et non en permissions techniques.
+ */
+export type ActionParcours = 'proposer' | 'ajuster' | 'supprimer' | 'arbitrer';
+
+const RESPONSABILITES: Record<Role, ActionParcours[]> = {
+  // Responsable du parcours : décide, modifie, supprime.
+  organisateur: ['proposer', 'ajuster', 'supprimer', 'arbitrer'],
+  // Contribue : propose et ajuste. Ne supprime pas, et ne tranche pas un
+  // arbitrage — écarter une option engage le parcours entier, c'est décider.
+  participant: ['proposer', 'ajuster'],
+  // Celui pour qui le parcours existe : il ne décide pas (l'EVG de Max).
+  heros: [],
+};
+
+const LIBELLES_ACTION: Record<ActionParcours, string> = {
+  proposer: 'ajouter un élément',
+  ajuster: 'ajuster un élément',
+  supprimer: 'supprimer un élément',
+  arbitrer: 'écarter une option',
+};
 
 function tousLesElements(parcours: Parcours): Element[] {
   return parcours.timeline.flatMap((moment) => moment.elements);
@@ -64,6 +87,38 @@ export function elementsDependants(parcours: Parcours, elementId: string): strin
 }
 
 /**
+ * Invariant 7 : les alternatives encore proposables d'un élément — c'est-à-dire
+ * toutes SAUF celles que l'utilisateur a déjà écartées. Le produit (front comme
+ * agent IA) ne doit jamais offrir autre chose que ça : un arbitrage est définitif.
+ */
+export function alternativesProposables(element: Element): Alternative[] {
+  return element.alternatives.filter((alternative) => !alternative.ecartee);
+}
+
+/**
+ * Invariant 8 : une modification s'exerce dans le cadre des responsabilités du
+ * rôle de son auteur. Rend un message affichable si l'auteur n'a pas la main,
+ * `null` s'il l'a. Un auteur qui n'est pas dans le parcours n'a aucune main.
+ */
+export function verifierResponsabilite(
+  parcours: Parcours,
+  auteurId: string,
+  action: ActionParcours
+): string | null {
+  const auteur = parcours.participants.find((p) => p.id === auteurId);
+  if (!auteur) {
+    return 'Vous ne faites pas partie de ce parcours';
+  }
+  if (RESPONSABILITES[auteur.role].includes(action)) {
+    return null;
+  }
+  if (auteur.role === 'heros') {
+    return `« ${auteur.nom} » est le héros de ce parcours : il n'en décide pas le contenu`;
+  }
+  return `« ${auteur.nom} » participe à ce parcours : ${LIBELLES_ACTION[action]} revient à l'organisateur`;
+}
+
+/**
  * Conflits entre contraintes dures / ancres datées (histoire d'Inès : deux sets
  * au même horaire). Le produit les signale, l'utilisateur arbitre (invariant 6).
  */
@@ -112,6 +167,12 @@ export function validerParcours(parcours: Parcours): string[] {
     }
     if (element.type === 'temps_libre' && element.reservation) {
       erreurs.push(`un temps libre ne se réserve pas (« ${element.nom} »)`);
+    }
+    // L'id d'une alternative porte la mémoire de l'arbitrage (invariant 7) :
+    // deux options homonymes rendraient « écartée » ambigu.
+    const idsAlternatives = new Set(element.alternatives.map((a) => a.id));
+    if (idsAlternatives.size !== element.alternatives.length) {
+      erreurs.push(`les alternatives de « ${element.nom} » doivent avoir des ids distincts`);
     }
   }
 

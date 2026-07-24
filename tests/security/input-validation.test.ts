@@ -44,7 +44,11 @@ const PARCOURS: Parcours = ParcoursSchema.parse({
   id: PARCOURS_ID,
   intention: { texte: 'fêter le départ de Hugo' },
   contexte: { avecQui: 'amis', duree: { valeur: 2, unite: 'jours' } },
-  participants: [{ id: 'u1', nom: 'Hugo', role: 'heros' }],
+  // Hugo est le héros (invariant 8 : il ne décide pas) ; Sam organise.
+  participants: [
+    { id: 'u1', nom: 'Hugo', role: 'heros' },
+    { id: 'u2', nom: 'Sam', role: 'organisateur' },
+  ],
   budget: { mode: 'partage', montantTotal: 1200 },
   timeline: [
     {
@@ -229,6 +233,17 @@ describe('POST /api/parcours/:id/modifications — validation de la demande', ()
     const res = await auth(request(app).post(`/api/parcours/${PARCOURS_ID}/modifications`))
       .send({ phrase: 'enlève le resto' });
     expect(res.status).toBe(200);
+  });
+
+  it('422 si l\'auteur n\'a la main sur rien (invariant 8)', async () => {
+    // Parcours sans organisateur : le propriétaire n'est rattaché à personne,
+    // le domaine refuse plutôt que de supposer un droit.
+    prismaMock.parcours.findFirst.mockResolvedValueOnce({
+      contenu: { ...PARCOURS, participants: [{ id: 'u1', nom: 'Hugo', role: 'heros' }] },
+    });
+    const res = await auth(request(app).post(`/api/parcours/${PARCOURS_ID}/modifications`))
+      .send({ demande: { type: 'changer_statut', elementId: 'e1', statut: 'accepte' } });
+    expect(res.status).toBe(422);
   });
 });
 

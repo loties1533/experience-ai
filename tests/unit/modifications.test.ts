@@ -4,10 +4,13 @@ import {
   ElementSchema,
   DemandeModificationSchema,
   appliquerModification,
+  alternativesProposables,
   type Parcours,
 } from '../../server/domaine/parcours/index.js';
 
 const HORODATAGE = '2026-07-23T18:00:00Z';
+// L'organisateur signe les modifications, sauf mention contraire (invariant 8).
+const PAR_ORGANISATEUR = { auteurId: 'u1', horodatage: HORODATAGE };
 
 function element(id: string, surcharge: Partial<Parameters<typeof ElementSchema.parse>[0]> = {}) {
   return ElementSchema.parse({
@@ -54,27 +57,27 @@ describe('remplacer_element — invariant 3, le recalcul reste ciblé', () => {
   });
 
   it('remplace en gardant l’id (adressage stable pour le front)', () => {
-    const resultat = appliquerModification(parcoursDeTest(), demande, HORODATAGE);
+    const resultat = appliquerModification(parcoursDeTest(), demande, PAR_ORGANISATEUR);
     if (!resultat.ok) throw new Error(resultat.erreur);
     const resto = resultat.parcours.timeline[0].elements.find((e) => e.id === 'resto');
     expect(resto?.nom).toBe('Chez Rose');
   });
 
   it('ne demande de régénérer que les dépendants, jamais l’amont', () => {
-    const resultat = appliquerModification(parcoursDeTest(), demande, HORODATAGE);
+    const resultat = appliquerModification(parcoursDeTest(), demande, PAR_ORGANISATEUR);
     if (!resultat.ok) throw new Error(resultat.erreur);
     expect(resultat.elementsARegenerer).toEqual(['bar']);
   });
 
   it('ne mute jamais le parcours d’origine', () => {
     const origine = parcoursDeTest();
-    appliquerModification(origine, demande, HORODATAGE);
+    appliquerModification(origine, demande, PAR_ORGANISATEUR);
     expect(origine.timeline[0].elements.find((e) => e.id === 'resto')?.nom).toBe('Élément resto');
     expect(origine.historique).toEqual([]);
   });
 
   it('journalise la modification avec une description affichable', () => {
-    const resultat = appliquerModification(parcoursDeTest(), demande, HORODATAGE);
+    const resultat = appliquerModification(parcoursDeTest(), demande, PAR_ORGANISATEUR);
     if (!resultat.ok) throw new Error(resultat.erreur);
     expect(resultat.parcours.historique).toHaveLength(1);
     expect(resultat.parcours.historique[0]).toMatchObject({
@@ -88,7 +91,7 @@ describe('remplacer_element — invariant 3, le recalcul reste ciblé', () => {
     const resultat = appliquerModification(
       parcoursDeTest(),
       { ...demande, elementId: 'fantome' },
-      HORODATAGE
+      PAR_ORGANISATEUR
     );
     expect(resultat).toMatchObject({ ok: false });
   });
@@ -99,7 +102,7 @@ describe('supprimer_element', () => {
     const resultat = appliquerModification(
       parcoursDeTest(),
       { type: 'supprimer_element', elementId: 'hotel' },
-      HORODATAGE
+      PAR_ORGANISATEUR
     );
     if (!resultat.ok) throw new Error(resultat.erreur);
     const ids = resultat.parcours.timeline[0].elements.map((e) => e.id);
@@ -114,7 +117,7 @@ describe('ajouter_element', () => {
     const resultat = appliquerModification(
       parcoursDeTest(),
       { type: 'ajouter_element', momentId: 'm1', element: element('musee') },
-      HORODATAGE
+      PAR_ORGANISATEUR
     );
     if (!resultat.ok) throw new Error(resultat.erreur);
     expect(resultat.parcours.timeline[0].elements).toHaveLength(4);
@@ -125,7 +128,7 @@ describe('ajouter_element', () => {
     const resultat = appliquerModification(
       parcoursDeTest(),
       { type: 'ajouter_element', momentId: 'm1', element: element('resto') },
-      HORODATAGE
+      PAR_ORGANISATEUR
     );
     expect(resultat).toMatchObject({ ok: false });
   });
@@ -134,7 +137,7 @@ describe('ajouter_element', () => {
     const resultat = appliquerModification(
       parcoursDeTest(),
       { type: 'ajouter_element', momentId: 'm1', element: element('spa', { dependDe: ['fantome'] }) },
-      HORODATAGE
+      PAR_ORGANISATEUR
     );
     expect(resultat).toMatchObject({ ok: false });
     if (!resultat.ok) expect(resultat.erreur).toContain('incohérent');
@@ -146,11 +149,201 @@ describe('changer_statut — l’utilisateur garde le dernier mot (invariant 6)'
     const resultat = appliquerModification(
       parcoursDeTest(),
       { type: 'changer_statut', elementId: 'bar', statut: 'accepte' },
-      HORODATAGE
+      PAR_ORGANISATEUR
     );
     if (!resultat.ok) throw new Error(resultat.erreur);
     expect(resultat.parcours.timeline[0].elements.find((e) => e.id === 'bar')?.statut).toBe('accepte');
     expect(resultat.elementsARegenerer).toEqual([]);
     expect(resultat.description).toContain('accepté');
+  });
+});
+
+// ---- Invariant 7 : un arbitrage est définitif (histoire d'Inès) ----
+// Deux sets au même horaire, elle tranche pour l'artiste A : le set B ne doit
+// plus jamais lui être proposé, même trois jours plus tard.
+function parcoursFestival(): Parcours {
+  return ParcoursSchema.parse({
+    id: 'p2',
+    intention: { texte: 'vivre le festival sans rater mes artistes' },
+    contexte: { avecQui: 'amis', duree: { valeur: 3, unite: 'jours' } },
+    participants: [{ id: 'u1', nom: 'Inès', role: 'organisateur' }],
+    budget: { mode: 'partage' },
+    timeline: [
+      {
+        id: 'm1',
+        titre: 'Vendredi soir',
+        elements: [
+          element('creneau-22h', {
+            type: 'evenement',
+            estAncre: true,
+            alternatives: [
+              { id: 'artisteA', nom: 'Set de l’artiste A' },
+              { id: 'artisteB', nom: 'Set de l’artiste B' },
+            ],
+          }),
+        ],
+      },
+    ],
+  });
+}
+
+const ECARTER_B = {
+  type: 'ecarter_alternative',
+  elementId: 'creneau-22h',
+  alternativeId: 'artisteB',
+} as const;
+
+describe('ecarter_alternative — invariant 7, une option écartée ne revient pas', () => {
+  it('mémorise l’arbitrage et retire l’option des propositions', () => {
+    const resultat = appliquerModification(parcoursFestival(), ECARTER_B, PAR_ORGANISATEUR);
+    if (!resultat.ok) throw new Error(resultat.erreur);
+    const creneau = resultat.parcours.timeline[0].elements[0];
+    expect(creneau.alternatives.find((a) => a.id === 'artisteB')?.ecartee).toBe(true);
+    expect(alternativesProposables(creneau).map((a) => a.id)).toEqual(['artisteA']);
+  });
+
+  it('journalise l’arbitrage dans l’historique', () => {
+    const resultat = appliquerModification(parcoursFestival(), ECARTER_B, PAR_ORGANISATEUR);
+    if (!resultat.ok) throw new Error(resultat.erreur);
+    expect(resultat.parcours.historique).toHaveLength(1);
+    expect(resultat.description).toContain('écarté');
+  });
+
+  it('ne mute jamais le parcours d’origine', () => {
+    const origine = parcoursFestival();
+    appliquerModification(origine, ECARTER_B, PAR_ORGANISATEUR);
+    expect(origine.timeline[0].elements[0].alternatives.every((a) => !a.ecartee)).toBe(true);
+  });
+
+  it('refuse d’écarter deux fois la même option', () => {
+    const premier = appliquerModification(parcoursFestival(), ECARTER_B, PAR_ORGANISATEUR);
+    if (!premier.ok) throw new Error(premier.erreur);
+    const second = appliquerModification(premier.parcours, ECARTER_B, PAR_ORGANISATEUR);
+    expect(second).toMatchObject({ ok: false });
+    if (!second.ok) expect(second.erreur).toContain('déjà été écarté');
+  });
+
+  it('refuse une option inconnue', () => {
+    const resultat = appliquerModification(
+      parcoursFestival(),
+      { ...ECARTER_B, alternativeId: 'artisteZ' },
+      PAR_ORGANISATEUR
+    );
+    expect(resultat).toMatchObject({ ok: false });
+  });
+
+  it('ne laisse pas un remplacement ressusciter une option écartée', () => {
+    const arbitre = appliquerModification(parcoursFestival(), ECARTER_B, PAR_ORGANISATEUR);
+    if (!arbitre.ok) throw new Error(arbitre.erreur);
+
+    // Le remplaçant repropose le set B comme si de rien n'était.
+    const resultat = appliquerModification(
+      arbitre.parcours,
+      {
+        type: 'remplacer_element',
+        elementId: 'creneau-22h',
+        remplacement: ElementSchema.omit({ id: true }).parse({
+          type: 'evenement',
+          nom: 'Créneau de 22 h',
+          justification: 'le temps fort de la soirée',
+          alternatives: [{ id: 'artisteB', nom: 'Set de l’artiste B' }],
+        }),
+      },
+      PAR_ORGANISATEUR
+    );
+    if (!resultat.ok) throw new Error(resultat.erreur);
+    const creneau = resultat.parcours.timeline[0].elements[0];
+    expect(creneau.alternatives.find((a) => a.id === 'artisteB')?.ecartee).toBe(true);
+    expect(alternativesProposables(creneau)).toEqual([]);
+  });
+});
+
+// ---- Invariant 8 : chacun modifie dans le cadre de son rôle (EVG de Hugo) ----
+function parcoursEVG(): Parcours {
+  return ParcoursSchema.parse({
+    id: 'p3',
+    intention: { texte: 'l’EVG de Max' },
+    contexte: { avecQui: 'groupe', duree: { valeur: 2, unite: 'jours' } },
+    participants: [
+      { id: 'hugo', nom: 'Hugo', role: 'organisateur' },
+      { id: 'lea', nom: 'Léa', role: 'participant' },
+      { id: 'max', nom: 'Max', role: 'heros' },
+    ],
+    budget: { mode: 'partage' },
+    visibilite: 'surprise',
+    timeline: [
+      {
+        id: 'm1',
+        titre: 'Samedi',
+        elements: [
+          element('karting'),
+          element('resto', {
+            type: 'restaurant',
+            alternatives: [{ id: 'brasserie', nom: 'La brasserie du port' }],
+          }),
+        ],
+      },
+    ],
+  });
+}
+
+const SUPPRESSION = { type: 'supprimer_element', elementId: 'karting' } as const;
+
+describe('invariant 8 — les responsabilités du rôle de l’auteur', () => {
+  it('laisse l’organisateur tout faire', () => {
+    const resultat = appliquerModification(parcoursEVG(), SUPPRESSION, {
+      auteurId: 'hugo',
+      horodatage: HORODATAGE,
+    });
+    expect(resultat.ok).toBe(true);
+  });
+
+  it('laisse un participant proposer un élément', () => {
+    const resultat = appliquerModification(
+      parcoursEVG(),
+      { type: 'ajouter_element', momentId: 'm1', element: element('bar') },
+      { auteurId: 'lea', horodatage: HORODATAGE }
+    );
+    expect(resultat.ok).toBe(true);
+  });
+
+  it('empêche un participant de supprimer un élément', () => {
+    const resultat = appliquerModification(parcoursEVG(), SUPPRESSION, {
+      auteurId: 'lea',
+      horodatage: HORODATAGE,
+    });
+    expect(resultat).toMatchObject({ ok: false });
+    if (!resultat.ok) expect(resultat.erreur).toContain('Léa');
+  });
+
+  it('empêche un participant de trancher un arbitrage', () => {
+    const resultat = appliquerModification(
+      parcoursEVG(),
+      { type: 'ecarter_alternative', elementId: 'resto', alternativeId: 'brasserie' },
+      { auteurId: 'lea', horodatage: HORODATAGE }
+    );
+    expect(resultat).toMatchObject({ ok: false });
+  });
+
+  it('interdit toute modification au héros, même sur son propre parcours (Max)', () => {
+    const parcours = parcoursEVG();
+    const resultat = appliquerModification(
+      parcours,
+      { type: 'changer_statut', elementId: 'karting', statut: 'a_remplacer' },
+      { auteurId: 'max', horodatage: HORODATAGE }
+    );
+    expect(resultat).toMatchObject({ ok: false });
+    if (!resultat.ok) expect(resultat.erreur).toContain('héros');
+    // Un refus ne touche à rien.
+    expect(parcours.timeline[0].elements[0].statut).toBe('propose');
+  });
+
+  it('refuse un auteur inconnu du parcours', () => {
+    const resultat = appliquerModification(parcoursEVG(), SUPPRESSION, {
+      auteurId: 'inconnu',
+      horodatage: HORODATAGE,
+    });
+    expect(resultat).toMatchObject({ ok: false });
+    if (!resultat.ok) expect(resultat.erreur).toContain('ne faites pas partie');
   });
 });

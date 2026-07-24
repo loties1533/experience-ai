@@ -5,6 +5,8 @@ import {
   elementsDependants,
   detecterConflits,
   validerParcours,
+  alternativesProposables,
+  verifierResponsabilite,
   type Parcours,
 } from '../../server/domaine/parcours/index.js';
 
@@ -195,5 +197,77 @@ describe('validerParcours — cohérence structurelle', () => {
     const parcours = parcoursMinimal({ visibilite: 'surprise' });
     const erreurs = validerParcours(parcours);
     expect(erreurs.some((e) => e.includes('deux participants'))).toBe(true);
+  });
+
+  it('signale deux alternatives de même id sur un élément', () => {
+    const parcours = parcoursMinimal({
+      timeline: [
+        {
+          id: 'm1',
+          titre: 'Soirée',
+          elements: [
+            element('creneau', {
+              alternatives: [
+                { id: 'setA', nom: 'Set A' },
+                { id: 'setA', nom: 'Set A bis' },
+              ],
+            }),
+          ],
+        },
+      ],
+    });
+    expect(validerParcours(parcours).some((e) => e.includes('ids distincts'))).toBe(true);
+  });
+});
+
+describe('alternativesProposables — invariant 7 (un arbitrage est définitif)', () => {
+  it('ne rend que les options non écartées', () => {
+    const creneau = element('creneau', {
+      alternatives: [
+        { id: 'setA', nom: 'Set A' },
+        { id: 'setB', nom: 'Set B', ecartee: true },
+      ],
+    });
+    expect(alternativesProposables(creneau).map((a) => a.id)).toEqual(['setA']);
+  });
+
+  it('considère une option comme proposable par défaut', () => {
+    const creneau = element('creneau', { alternatives: [{ id: 'setA', nom: 'Set A' }] });
+    expect(creneau.alternatives[0].ecartee).toBe(false);
+    expect(alternativesProposables(creneau)).toHaveLength(1);
+  });
+});
+
+describe('verifierResponsabilite — invariant 8 (les rôles)', () => {
+  const parcours = parcoursMinimal({
+    participants: [
+      { id: 'hugo', nom: 'Hugo', role: 'organisateur' },
+      { id: 'lea', nom: 'Léa', role: 'participant' },
+      { id: 'max', nom: 'Max', role: 'heros' },
+    ],
+  });
+
+  it('laisse l’organisateur décider, modifier et supprimer', () => {
+    for (const action of ['proposer', 'ajuster', 'supprimer', 'arbitrer'] as const) {
+      expect(verifierResponsabilite(parcours, 'hugo', action)).toBeNull();
+    }
+  });
+
+  it('laisse le participant proposer et ajuster, mais pas supprimer ni arbitrer', () => {
+    expect(verifierResponsabilite(parcours, 'lea', 'proposer')).toBeNull();
+    expect(verifierResponsabilite(parcours, 'lea', 'ajuster')).toBeNull();
+    expect(verifierResponsabilite(parcours, 'lea', 'supprimer')).toContain('organisateur');
+    expect(verifierResponsabilite(parcours, 'lea', 'arbitrer')).toContain('organisateur');
+  });
+
+  it('n’autorise rien au héros', () => {
+    expect(verifierResponsabilite(parcours, 'max', 'proposer')).toContain('héros');
+    expect(verifierResponsabilite(parcours, 'max', 'ajuster')).toContain('héros');
+  });
+
+  it('refuse un auteur étranger au parcours', () => {
+    expect(verifierResponsabilite(parcours, 'inconnu', 'proposer')).toContain(
+      'ne faites pas partie'
+    );
   });
 });

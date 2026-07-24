@@ -20,6 +20,7 @@ import { interpreterDemande } from '../agents/modification.js';
 import {
   DemandeModificationSchema,
   appliquerModification,
+  type Parcours,
 } from '../domaine/parcours/index.js';
 
 // Routes de la refonte (montées sur /api/parcours). Cycle de vie du doc 05 :
@@ -33,6 +34,20 @@ const ParamsIdSchema = z.object({ id: z.uuid() });
 /** Après validateParams, l'id est garanti string (uuid) — Express 5 le type trop large. */
 function idValide(req: Request): string {
   return req.params.id as string;
+}
+
+/**
+ * Qui signe la modification (invariant 8). L'auteur, c'est l'utilisateur du JWT.
+ * `chargerParcours` ne rend que les parcours de cet utilisateur : il en est donc
+ * le propriétaire. S'il ne figure pas dans les participants — un parcours généré
+ * porte un participant « Organisateur » d'id aléatoire, sans lien avec le compte
+ * tant que le partage n'existe pas — on le rattache à cet organisateur : celui
+ * qui a créé le parcours en est le responsable. Le jour où un parcours sera
+ * partagé, chaque invité aura son propre participant et son propre rôle.
+ */
+function auteurDe(parcours: Parcours, userId: string): string {
+  if (parcours.participants.some((p) => p.id === userId)) return userId;
+  return parcours.participants.find((p) => p.role === 'organisateur')?.id ?? userId;
 }
 
 // ---- POST /api/parcours/dialogue — cadrage : une réponse, une question ----
@@ -145,7 +160,10 @@ router.post(
       const demande =
         'demande' in corps ? corps.demande : await interpreterDemande(parcours, corps.phrase);
 
-      const resultat = appliquerModification(parcours, demande, new Date().toISOString());
+      const resultat = appliquerModification(parcours, demande, {
+        auteurId: auteurDe(parcours, req.user!.id),
+        horodatage: new Date().toISOString(),
+      });
       if (!resultat.ok) throw new AppError(resultat.erreur, 422);
 
       await sauvegarderParcours(req.user!.id, resultat.parcours);
