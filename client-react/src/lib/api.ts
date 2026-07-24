@@ -7,7 +7,11 @@
 import type {
   Parcours,
   Element,
-  DemandeModification,
+  DemandeSurElement,
+  Participant,
+  Role,
+  Visibilite,
+  Avis,
 } from '../../../server/domaine/parcours/index'
 import type { Brief, BriefPartiel } from '../../../server/agents/brief'
 import type { EtapeDialogue } from '../../../server/agents/intake'
@@ -15,7 +19,7 @@ import type { ResumeParcours } from '../../../server/depots/depotParcours'
 import type { PreferencesParcours } from '../../../server/domaine/preferences'
 
 export type {
-  Parcours, Element, DemandeModification,
+  Parcours, Element, DemandeSurElement, Participant, Role, Visibilite, Avis,
   Brief, BriefPartiel, EtapeDialogue, ResumeParcours, PreferencesParcours,
 }
 
@@ -73,8 +77,46 @@ export interface ReponseModification {
   elementsARegenerer: string[]
   description: string
 }
-export const modifierParcours = (id: string, corps: { demande: DemandeModification } | { phrase: string }) =>
+export const modifierParcours = (id: string, corps: { demande: DemandeSurElement } | { phrase: string }) =>
   request<ReponseModification>(`/parcours/${id}/modifications`, { method: 'POST', body: JSON.stringify(corps) })
+
+// ---- Partage au groupe (côté organisateur — compte requis) ----
+export interface LienParticipant {
+  participantId: string
+  nom: string
+  role: Role
+  /** Chemin du lien personnel, ou null quand le domaine refuse d'en remettre un. */
+  chemin: string | null
+}
+export interface EtatPartage {
+  visibilite: Visibilite
+  liens: LienParticipant[]
+}
+export interface ReponsePartage {
+  parcours: Parcours
+  partage: EtatPartage
+}
+
+export const chargerPartage = (id: string) => request<EtatPartage>(`/parcours/${id}/partage`)
+
+export const changerVisibilite = (id: string, visibilite: Visibilite) =>
+  request<ReponsePartage>(`/parcours/${id}/partage`, { method: 'PUT', body: JSON.stringify({ visibilite }) })
+
+export const ajouterParticipant = (id: string, participant: { nom: string; role: Role }) =>
+  request<ReponsePartage>(`/parcours/${id}/participants`, { method: 'POST', body: JSON.stringify(participant) })
+
+export const retirerParticipant = (id: string, participantId: string) =>
+  request<ReponsePartage>(`/parcours/${id}/participants/${participantId}`, { method: 'DELETE' })
+
+// ---- Parcours partagé (accès par lien, sans compte) ----
+export const chargerParcoursPartage = (jeton: string) =>
+  request<{ parcours: Parcours; participant: Participant }>(`/partage/${jeton}`)
+
+export const reagirSurElement = (jeton: string, elementId: string, avis: Avis) =>
+  request<{ parcours: Parcours; description: string }>(`/partage/${jeton}/reactions`, {
+    method: 'POST',
+    body: JSON.stringify({ elementId, avis }),
+  })
 
 // ---- Préférences (mémoire simple) ----
 export const chargerPreferences = () =>

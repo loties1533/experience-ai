@@ -1,4 +1,4 @@
-import type { Alternative, Element, Parcours, PlageHoraire, Role } from './schema.js';
+import type { Alternative, Element, Parcours, Participant, PlageHoraire, Role } from './schema.js';
 
 // Invariants 3 à 8 de docs/06-modele-conceptuel.md : logique pure, testable,
 // indépendante du stockage. Retourne des erreurs lisibles, ne lève jamais.
@@ -13,16 +13,25 @@ export interface ConflitHoraire {
  * Invariant 8 — ce qu'un rôle a le droit de faire, dit en responsabilités
  * métier (doc 06) et non en permissions techniques.
  */
-export type ActionParcours = 'proposer' | 'ajuster' | 'supprimer' | 'arbitrer';
+export type ActionParcours =
+  | 'proposer'
+  | 'ajuster'
+  | 'supprimer'
+  | 'arbitrer'
+  | 'convier'
+  | 'reagir';
 
 const RESPONSABILITES: Record<Role, ActionParcours[]> = {
-  // Responsable du parcours : décide, modifie, supprime.
-  organisateur: ['proposer', 'ajuster', 'supprimer', 'arbitrer'],
+  // Responsable du parcours : décide, modifie, supprime, et constitue le groupe.
+  organisateur: ['proposer', 'ajuster', 'supprimer', 'arbitrer', 'convier', 'reagir'],
   // Contribue : propose et ajuste. Ne supprime pas, et ne tranche pas un
   // arbitrage — écarter une option engage le parcours entier, c'est décider.
-  participant: ['proposer', 'ajuster'],
-  // Celui pour qui le parcours existe : il ne décide pas (l'EVG de Max).
-  heros: [],
+  // Ne convie pas non plus : décider qui voit le parcours, c'est décider.
+  participant: ['proposer', 'ajuster', 'reagir'],
+  // Celui pour qui le parcours existe : il ne décide pas (l'EVG de Max). Il
+  // peut néanmoins réagir quand il voit le parcours — donner son avis n'est
+  // pas décider, et l'invariant 8 protège la décision, pas l'expression.
+  heros: ['reagir'],
 };
 
 const LIBELLES_ACTION: Record<ActionParcours, string> = {
@@ -30,6 +39,8 @@ const LIBELLES_ACTION: Record<ActionParcours, string> = {
   ajuster: 'ajuster un élément',
   supprimer: 'supprimer un élément',
   arbitrer: 'écarter une option',
+  convier: 'décider qui voit ce parcours',
+  reagir: 'donner son avis',
 };
 
 function tousLesElements(parcours: Parcours): Element[] {
@@ -127,6 +138,57 @@ export function verifierResponsabilite(
 }
 
 /**
+ * La **Visibilité** dit qui, en dehors du propriétaire, peut consulter le
+ * parcours. C'est la règle du domaine ; la technique du lien (un jeton par
+ * participant, ADR-0008) ne fait que l'appliquer.
+ *
+ * Rend un message affichable en cas de refus, `null` si l'accès est légitime.
+ * Une seule et même fonction sert aux deux moments où la question se pose :
+ * quand on **émet** un lien pour un participant, et à **chaque consultation**
+ * — impossible qu'un lien émis hier survive à un changement de visibilité.
+ */
+export function verifierAccesPartage(parcours: Parcours, participantId: string): string | null {
+  if (parcours.visibilite === 'prive') {
+    return "Ce parcours n'est pas partagé";
+  }
+  const participant = parcours.participants.find((p) => p.id === participantId);
+  if (!participant) {
+    return 'Vous ne faites pas partie de ce parcours';
+  }
+  // L'histoire de Max (EVG) et celle de Léa : le héros ne voit pas la surprise
+  // qu'on lui prépare.
+  if (parcours.visibilite === 'surprise' && participant.role === 'heros') {
+    return "Ce parcours est une surprise : celui pour qui elle est préparée n'y a pas accès";
+  }
+  return null;
+}
+
+/** Les participants à qui un lien de partage peut être remis, en l'état actuel. */
+export function participantsPartageables(parcours: Parcours): Participant[] {
+  return parcours.participants.filter((p) => verifierAccesPartage(parcours, p.id) === null);
+}
+
+/**
+ * Ce que le groupe pense d'un élément — l'avis qui éclaire, pas le vote qui
+ * décide (invariant 8 : l'organisateur tranche). Les noms sont résolus ici,
+ * contre les participants du parcours : un participant retiré disparaît.
+ */
+export interface AvisDuGroupe {
+  pour: string[];
+  contre: string[];
+}
+
+export function avisDuGroupe(parcours: Parcours, element: Element): AvisDuGroupe {
+  const nomParId = new Map(parcours.participants.map((p) => [p.id, p.nom]));
+  const avis: AvisDuGroupe = { pour: [], contre: [] };
+  for (const reaction of element.reactions) {
+    const nom = nomParId.get(reaction.participantId);
+    if (nom) avis[reaction.avis].push(nom);
+  }
+  return avis;
+}
+
+/**
  * Conflits entre contraintes dures / ancres datées (histoire d'Inès : deux sets
  * au même horaire). Le produit les signale, l'utilisateur arbitre (invariant 6).
  */
@@ -158,12 +220,29 @@ export function validerParcours(parcours: Parcours): string[] {
   const erreurs: string[] = [];
   const elements = tousLesElements(parcours);
   const ids = new Set(elements.map((e) => e.id));
+  const idsParticipants = new Set(parcours.participants.map((p) => p.id));
 
   if (ids.size !== elements.length) {
     erreurs.push('les ids des éléments doivent être uniques dans le parcours');
   }
+  if (idsParticipants.size !== parcours.participants.length) {
+    erreurs.push('les participants doivent avoir des ids distincts');
+  }
 
   for (const element of elements) {
+    // Une réaction est l'avis d'un participant DU parcours, et un participant
+    // n'a qu'un avis par élément (changer d'avis remplace, ne s'empile pas).
+    const auteursReactions = new Set<string>();
+    for (const reaction of element.reactions) {
+      if (!idsParticipants.has(reaction.participantId)) {
+        erreurs.push(`une réaction sur « ${element.nom} » vient de quelqu'un qui n'est pas dans le parcours`);
+      }
+      if (auteursReactions.has(reaction.participantId)) {
+        erreurs.push(`un participant a plusieurs avis sur « ${element.nom} »`);
+      }
+      auteursReactions.add(reaction.participantId);
+    }
+
     for (const dependance of element.dependDe) {
       if (!ids.has(dependance)) {
         erreurs.push(`l'élément « ${element.nom} » dépend d'un élément inconnu (${dependance})`);

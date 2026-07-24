@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { z } from 'zod';
 import type { Request, Response, NextFunction } from 'express';
@@ -11,6 +12,7 @@ import {
   listerParcours,
   supprimerParcours,
 } from '../depots/depotParcours.js';
+import { synchroniserLiens, revoquerTousLesLiens } from '../depots/depotPartage.js';
 import { chargerPreferences, sauvegarderPreferences } from '../depots/depotPreferences.js';
 import { PreferencesParcoursSchema } from '../domaine/preferences.js';
 import { BriefSchema, BriefPartielSchema } from '../agents/brief.js';
@@ -18,8 +20,12 @@ import { avancerDialogue } from '../agents/intake.js';
 import { genererParcours } from '../agents/generation.js';
 import { interpreterDemande } from '../agents/modification.js';
 import {
-  DemandeModificationSchema,
+  DemandeSurElementSchema,
+  type DemandeDePartage,
+  ParticipantSchema,
+  VisibiliteSchema,
   appliquerModification,
+  participantsPartageables,
   type Parcours,
 } from '../domaine/parcours/index.js';
 
@@ -141,8 +147,10 @@ router.get(
 // Deux entrées possibles : une demande structurée (le front sait déjà quoi),
 // ou une phrase que l'agent Modification traduit. Dans les deux cas, c'est le
 // domaine qui applique ou refuse — l'IA ne touche jamais l'état directement.
+// Seules les demandes qui portent sur un ÉLÉMENT passent ici : le partage a
+// ses propres routes, plus bas. Une porte par intention.
 const CorpsModificationSchema = z.union([
-  z.object({ demande: DemandeModificationSchema }),
+  z.object({ demande: DemandeSurElementSchema }),
   z.object({ phrase: z.string().min(1).max(500) }),
 ]);
 router.post(
@@ -172,6 +180,148 @@ router.post(
         elementsARegenerer: resultat.elementsARegenerer,
         description: resultat.description,
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ============================================================
+// PARTAGE AU GROUPE (sprint R8) — côté organisateur
+// Ces routes exigent un compte ET le rôle qui les autorise : un porteur de
+// lien n'y accède jamais (il n'a pas de compte du tout).
+// ============================================================
+
+/**
+ * L'état de partage tel que l'organisateur le voit : la visibilité, et la
+ * liste complète des participants avec le lien de chacun — `chemin: null`
+ * quand le domaine refuse de lui en remettre un (le héros d'une surprise).
+ * Le serveur ne rend qu'un chemin : c'est le navigateur qui connaît l'origine
+ * exacte, pas une variable d'environnement à tenir à jour.
+ *
+ * Aligne les liens au passage — émettre ce qui manque, révoquer ce qui n'a
+ * plus lieu d'être. L'opération est idempotente et ne régénère jamais un lien
+ * déjà envoyé : la consulter ne casse rien, et l'état ne peut pas dériver.
+ */
+async function etatPartage(parcours: Parcours) {
+  let liens: { participantId: string; jeton: string }[] = [];
+  if (parcours.visibilite === 'prive') {
+    await revoquerTousLesLiens(parcours.id);
+  } else {
+    liens = await synchroniserLiens(parcours.id, participantsPartageables(parcours).map((p) => p.id));
+  }
+  const jetonPar = new Map(liens.map((l) => [l.participantId, l.jeton]));
+
+  return {
+    visibilite: parcours.visibilite,
+    liens: parcours.participants.map((p) => ({
+      participantId: p.id,
+      nom: p.nom,
+      role: p.role,
+      chemin: jetonPar.has(p.id) ? `/partage/${jetonPar.get(p.id)}` : null,
+    })),
+  };
+}
+
+/** Charge le parcours de l'utilisateur ou échoue — répété sur chaque route. */
+async function parcoursDe(req: Request): Promise<Parcours> {
+  const parcours = await chargerParcours(req.user!.id, idValide(req));
+  if (!parcours) throw new AppError('Parcours introuvable', 404);
+  return parcours;
+}
+
+/**
+ * Applique une demande au nom de l'utilisateur connecté, sauvegarde, et rend
+ * le nouvel état de partage. Le domaine reste seule autorité : c'est lui qui
+ * refuse si le rôle de l'auteur ne couvre pas la responsabilité engagée.
+ */
+async function appliquerEtRendreLePartage(
+  req: Request,
+  parcours: Parcours,
+  demande: DemandeDePartage
+) {
+  const resultat = appliquerModification(parcours, demande, {
+    auteurId: auteurDe(parcours, req.user!.id),
+    horodatage: new Date().toISOString(),
+  });
+  if (!resultat.ok) throw new AppError(resultat.erreur, 422);
+
+  await sauvegarderParcours(req.user!.id, resultat.parcours);
+  return { parcours: resultat.parcours, partage: await etatPartage(resultat.parcours) };
+}
+
+// ---- GET /api/parcours/:id/partage — l'état du partage ----
+router.get(
+  '/:id/partage',
+  requireAuth,
+  validateParams(ParamsIdSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      res.json(await etatPartage(await parcoursDe(req)));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ---- PUT /api/parcours/:id/partage — choisir la visibilité ----
+const CorpsVisibiliteSchema = z.object({ visibilite: VisibiliteSchema });
+router.put(
+  '/:id/partage',
+  requireAuth,
+  validateParams(ParamsIdSchema),
+  validateBody(CorpsVisibiliteSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { visibilite } = req.body as z.infer<typeof CorpsVisibiliteSchema>;
+      const resultat = await appliquerEtRendreLePartage(req, await parcoursDe(req), {
+        type: 'changer_visibilite',
+        visibilite,
+      });
+      res.json(resultat);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ---- POST /api/parcours/:id/participants — constituer le groupe ----
+// L'id est attribué ICI : le client ne choisit pas l'identité des gens.
+const CorpsParticipantSchema = ParticipantSchema.omit({ id: true }).extend({
+  nom: z.string().min(1).max(60),
+});
+router.post(
+  '/:id/participants',
+  requireAuth,
+  validateParams(ParamsIdSchema),
+  validateBody(CorpsParticipantSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { nom, role } = req.body as z.infer<typeof CorpsParticipantSchema>;
+      const resultat = await appliquerEtRendreLePartage(req, await parcoursDe(req), {
+        type: 'ajouter_participant',
+        participant: { id: randomUUID(), nom, role },
+      });
+      res.status(201).json(resultat);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ---- DELETE /api/parcours/:id/participants/:participantId ----
+const ParamsParticipantSchema = ParamsIdSchema.extend({ participantId: z.string().min(1).max(100) });
+router.delete(
+  '/:id/participants/:participantId',
+  requireAuth,
+  validateParams(ParamsParticipantSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const resultat = await appliquerEtRendreLePartage(req, await parcoursDe(req), {
+        type: 'retirer_participant',
+        participantId: req.params.participantId as string,
+      });
+      res.json(resultat);
     } catch (err) {
       next(err);
     }

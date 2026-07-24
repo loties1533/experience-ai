@@ -16,6 +16,7 @@
 | R5 — Mémoire simple | Préférences utilisateur | Terminé |
 | R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | En cours (R6a fait) |
 | R7 — Domaine complété | Les manques révélés par le code et le prototype : invariants 7 et 8, vraies dates de parcours | Terminé |
+| R8 — Partage au groupe | Un lien par participant, la visibilité respectée, les réactions du groupe | Terminé |
 
 ### Board — backlog par sprint
 
@@ -50,6 +51,18 @@
 - [x] Invariant 7 — arbitrage définitif : option écartée mémorisée, jamais reproposée
 - [x] Invariant 8 — chaque modification est signée, le rôle de l'auteur doit la couvrir
 - [x] Dates réelles du parcours (début / fin) et cohérence avec les plages des éléments
+
+**R8 — Partage au groupe** *(terminé le 24/07)*
+
+> La dernière capacité MVP qui manquait (doc 07). Jusqu'ici le produit était
+> solo : on générait, on modifiait, on ne montrait rien à personne.
+
+- [x] Constituer le groupe : ajouter / retirer un participant avec son rôle (responsabilité *convier*)
+- [x] Choisir la visibilité (privé / partagé / surprise) et obtenir un lien **par participant**
+- [x] Table `partages_parcours` + migration `ajout_liens_de_partage`
+- [x] Routes ouvertes `GET /api/partage/:jeton` et `POST /api/partage/:jeton/reactions`
+- [x] Réagir sur un élément (pour / contre, signé) et voir l'avis du groupe côté organisateur
+- [x] Front : panneau de partage sur le détail, page `/partage/:jeton` pour le groupe
 
 ### Revue R1 (terminé le 23/07)
 - 23/07 — Module `server/domaine/parcours/` créé : `schema.ts` (agrégat complet
@@ -221,6 +234,42 @@
   2026 »), l'orchestrateur les transmet et le front les affiche quand elles
   existent.
 - 220 tests verts, typecheck serveur et client OK, lint sans erreur.
+
+### Revue R8 — le partage au groupe (24/07)
+- **Le produit n'est plus solo.** L'organisateur constitue son groupe (prénom +
+  rôle), choisit la visibilité, et obtient un lien à envoyer à chacun. Le
+  porteur du lien consulte le parcours et dit ce qu'il en pense ; l'organisateur
+  voit l'avis du groupe sur chaque élément et tranche.
+- **La forme du lien : un jeton PAR PARTICIPANT**, pas un jeton par parcours. C'est ce qui rend la
+  surprise vraie : le héros n'a aucun lien à présenter, il n'y a rien à
+  contourner. Un jeton unique aurait obligé le porteur à déclarer qui il est —
+  et Max n'aurait eu qu'à se déclarer « Léo ». Effet de bord heureux : la
+  réaction est signée sans que personne ait à saisir son nom.
+- **Deux responsabilités nées du code** (règle d'évolution du doc 06) :
+  *convier* (constituer le groupe, choisir la visibilité — l'organisateur seul,
+  décider qui voit c'est décider) et *réagir* (ouverte aux trois rôles, héros
+  compris : l'invariant 8 protège la décision, pas l'expression).
+- **L'avis éclaire, il ne décide pas.** Une réaction ne change aucun statut, ne
+  déclenche aucun recalcul, ne se compte pas, et ne s'inscrit pas dans
+  l'Historique (qui journalise les modifications du parcours, pas les
+  conversations). Le vote formel reste explicitement en V2.
+- **Sécurité :** un jeton ne donne jamais les droits d'un compte. Les deux
+  seules routes ouvertes du produit lisent et enregistrent un avis, rien de
+  plus ; le propriétaire sous lequel on écrit vient de la ligne de partage,
+  jamais du client. Modifier, convier ou changer la visibilité exigent
+  `requireAuth` **et** le rôle. Jeton inconnu, parcours redevenu privé et
+  surprise dont on est le héros rendent la même 404 — on n'apprend pas à Max
+  qu'une surprise se prépare.
+- L'agent Modification a été **rétréci** : son vocabulaire de sortie
+  (`DemandeSurElementSchema`) s'arrête aux éléments. Partager est un geste
+  délibéré, pas une phrase mal comprise.
+- 289 tests verts (18 fichiers), typecheck serveur et client OK, lint sans
+  erreur. Spec OpenAPI complétée (tag Partage) — et l'énumération `visibilite`
+  y était incomplète (`surprise` manquait) : corrigé au passage.
+- Faiblesses assumées : **un lien se transfère** (le
+  produit sait qui un lien désigne, pas qui le clique) ; deux avis simultanés
+  sur le même parcours s'écrasent (relecture-réécriture du JSON entier) ;
+  l'organisateur copie autant de liens qu'il y a de participants.
 
 ---
 

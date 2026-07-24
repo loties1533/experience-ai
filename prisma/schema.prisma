@@ -67,8 +67,28 @@ model Parcours {
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @updatedAt @db.Timestamptz(6)
 
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  partages PartageParcours[]
 
   @@index([user_id])
   @@map("parcours")
+}
+
+// ---- LIENS DE PARTAGE (ADR-0008) ----
+// Un jeton par participant : c'est LUI qui identifie le porteur du lien, donc
+// son rôle, donc ce qu'il a le droit de voir (le héros d'une surprise n'a
+// jamais de jeton). Volontairement HORS de l'agrégat : un jeton n'est pas du
+// métier, c'est une clé d'accès qui s'émet et se révoque sans toucher au
+// parcours — et sa révocation doit être un DELETE, pas une réécriture du JSON.
+model PartageParcours {
+  jeton          String   @id
+  parcours_id    String   @db.Uuid
+  participant_id String
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  parcours Parcours @relation(fields: [parcours_id], references: [id], onDelete: Cascade)
+
+  @@unique([parcours_id, participant_id])
+  @@index([parcours_id])
+  @@map("partages_parcours")
 }
