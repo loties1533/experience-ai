@@ -120,7 +120,7 @@ export async function callOpenRouter(systemPrompt: string, userPrompt: string): 
           'Content-Type':  'application/json',
           'Authorization': `Bearer ${CLE_OPENROUTER}`,
           'HTTP-Referer':  'http://localhost:3001',
-          'X-Title':       'TripGenie',
+          'X-Title':       'Experience AI',
         },
         body: JSON.stringify({
           model,

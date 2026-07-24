@@ -304,6 +304,29 @@ inscription, dialogue, génération, modification. Trois défauts, dont un bloqu
   contrainte négative (« pas de paintball ») a été perdue au profit d'une autre.
   Le code est en cause nulle part — c'est la qualité du prompt d'intake.
 
+### Revue R6e — ménage des résidus TripGenie (24/07)
+
+Le projet est né d'une copie de TripGenie : la plomberie réutilisée était juste
+(auth, Express, Prisma, CI, cascade LLM), mais la périphérie estampillée
+TripGenie n'avait jamais été nettoyée. Passe dédiée :
+
+- **Config / branding corrigés** : `robots.txt` interdisait `/trips` (routes
+  disparues) → `/parcours` ; `Seo.tsx` pointait vers `tripgenie-api.onrender.com` ;
+  en-tête OpenRouter `X-Title: TripGenie` ; base de test CI `tripgenie_test` ;
+  README front.
+- **Code mort retiré** : `yelp.ts` (plus aucun import) et sa suite de tests ;
+  les recherches de **vols et d'hôtels** de `smartSearch.ts` (l'ancien TripGenie
+  réservait ; nous non — invariant 4). Seule la recherche d'**événements**
+  reste, vivante via PredictHQ. Fichier passé de 205 à ~80 lignes.
+- **Cache de build** `vite.config.js.timestamp-*.mjs` versionné par erreur →
+  supprimé et ignoré.
+- Séparation d'avec TripGenie finalisée hors dépôt : suppression de la vieille
+  copie locale `experience-ai` (doublon qui pointait sur le même dépôt), mémoire
+  projet consolidée.
+
+290 tests verts (les 22 retirés testaient le code mort supprimé), typecheck
+serveur et client propres.
+
 ### Revue R6d — de vrais lieux, et le cache (24/07)
 
 > Livré par la [PR #4](https://github.com/loties1533/experience-ai/pull/4) — avec le type `sortie` et l'envie préservée à la connexion.
