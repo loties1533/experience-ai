@@ -29,6 +29,34 @@ const LIBELLES_MANQUANTS: Record<'intention' | 'avecQui' | 'duree', string> = {
   duree: 'la durée',
 };
 
+/**
+ * « Du 4 au 6 septembre » désigne des JOURS, pas des instants : le 6 est
+ * compris en entier. Le modèle rend pourtant des dates à minuit — une fin au
+ * 6 à 00:00 exclut toute la journée du 6, et le brunch du dimanche tombait
+ * alors hors des bornes du parcours. Résultat observé en recette : la
+ * génération échouait en « parcours incohérent », sans que rien ne soit
+ * réellement incohérent.
+ *
+ * Une fin posée à minuit est donc étendue à la fin de sa journée. Une fin qui
+ * porte une heure explicite est respectée telle quelle : elle vient de
+ * quelqu'un qui a voulu cette heure-là.
+ */
+export function normaliserDatesBrief<T extends BriefPartiel>(brief: T): T {
+  if (!brief.dates) return brief;
+
+  const fin = new Date(brief.dates.fin);
+  const poseeAMinuit =
+    fin.getUTCHours() === 0 &&
+    fin.getUTCMinutes() === 0 &&
+    fin.getUTCSeconds() === 0 &&
+    fin.getUTCMilliseconds() === 0;
+  if (!poseeAMinuit) return brief;
+
+  const finDeJournee = new Date(fin);
+  finDeJournee.setUTCHours(23, 59, 59, 999);
+  return { ...brief, dates: { ...brief.dates, fin: finDeJournee.toISOString() } };
+}
+
 /** Les champs requis encore absents — le dialogue ne pose que ces questions. */
 export function champsManquants(brief: BriefPartiel): string[] {
   return (Object.keys(LIBELLES_MANQUANTS) as (keyof typeof LIBELLES_MANQUANTS)[])

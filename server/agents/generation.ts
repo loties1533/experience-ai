@@ -9,7 +9,7 @@ import {
   validerParcours,
   type Parcours,
 } from '../domaine/parcours/index.js';
-import type { Brief } from './brief.js';
+import { normaliserDatesBrief, type Brief } from './brief.js';
 import type { PreferencesParcours } from '../domaine/preferences.js';
 
 // L'ORCHESTRATEUR (IA n°1) : brief confirmé → parcours complet, en une passe.
@@ -55,9 +55,15 @@ const SortieGenerationSchema = z.object({
 });
 
 export async function genererParcours(
-  brief: Brief,
+  briefRecu: Brief,
   preferences: PreferencesParcours | null = null
 ): Promise<Parcours> {
+  // Une fin de journée posée à minuit exclurait tout le dernier jour : on la
+  // ramène au sens courant (« du 4 au 6 » comprend le 6 en entier). Fait ici
+  // aussi, et pas seulement à l'intake, car un brief peut arriver directement
+  // par l'API sans être passé par le dialogue.
+  const brief = normaliserDatesBrief(briefRecu);
+
   // Mémoire simple (sprint R5) : les préférences orientent, le brief prime.
   const blocPreferences = preferences
     ? `\nPréférences connues de l'utilisateur (souples — le brief prime toujours) :

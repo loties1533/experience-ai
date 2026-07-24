@@ -271,8 +271,22 @@ describe('les dates du parcours', () => {
     expect(validerParcours(parcours).some((e) => e.includes('hors des dates'))).toBe(true);
   });
 
-  it('signale un élément à cheval sur la fin du parcours', () => {
+  // Seul le DÉBUT est contrôlé : un club ferme après minuit et un hébergement
+  // se rend le lendemain matin. Exiger que la fin tombe aussi dans les bornes
+  // rendait ces deux cas impossibles — la génération échouait alors trois fois
+  // sur quatre en « parcours incohérent », alors que le parcours était juste.
+  it('accepte une soirée qui se termine après minuit', () => {
     const parcours = parcoursDate({ debut: '2026-07-14T22:00:00Z', fin: '2026-07-15T02:00:00Z' });
+    expect(validerParcours(parcours)).toEqual([]);
+  });
+
+  it('accepte un hébergement rendu le lendemain du dernier jour', () => {
+    const parcours = parcoursDate({ debut: '2026-07-12T14:00:00Z', fin: '2026-07-15T11:00:00Z' });
+    expect(validerParcours(parcours)).toEqual([]);
+  });
+
+  it('refuse un élément qui commence après la fin du parcours', () => {
+    const parcours = parcoursDate({ debut: '2026-07-15T09:00:00Z', fin: '2026-07-15T10:00:00Z' });
     expect(validerParcours(parcours).some((e) => e.includes('hors des dates'))).toBe(true);
   });
 
