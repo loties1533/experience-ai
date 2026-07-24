@@ -1,6 +1,6 @@
 import { Helmet } from 'react-helmet-async'
 
-const SITE_URL = 'https://tripgenie-api.onrender.com'
+const SITE_URL = 'https://experience-ai.onrender.com'
 const NOM_SITE = 'Experience AI'
 const TITRE_DEFAUT = `${NOM_SITE} — Qu'as-tu envie de vivre ?`
 

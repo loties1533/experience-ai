@@ -1,6 +1,6 @@
-# TripGenie — Frontend React
+# Experience AI — Frontend React
 
-Interface React pour TripGenie. Stack : **Vite + React 18 + TypeScript + Tailwind CSS + Zustand + React Query**.
+Interface React pour Experience AI. Stack : **Vite + React 18 + TypeScript + Tailwind CSS + Zustand + React Query**.
 
 ## Installation
 

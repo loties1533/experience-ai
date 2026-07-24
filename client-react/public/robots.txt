@@ -1,7 +1,7 @@
 User-agent: *
 Allow: /$
 Allow: /login
-Disallow: /trips
-Disallow: /trip/
+Disallow: /parcours
 Disallow: /preferences
+Disallow: /partage/
 Disallow: /api/
