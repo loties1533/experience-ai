@@ -240,8 +240,7 @@
   rôle), choisit la visibilité, et obtient un lien à envoyer à chacun. Le
   porteur du lien consulte le parcours et dit ce qu'il en pense ; l'organisateur
   voit l'avis du groupe sur chaque élément et tranche.
-- **La forme du lien est actée dans l'[ADR-0008](decisions/ADR-0008.md) : un
-  jeton PAR PARTICIPANT**, pas un jeton par parcours. C'est ce qui rend la
+- **La forme du lien : un jeton PAR PARTICIPANT**, pas un jeton par parcours. C'est ce qui rend la
   surprise vraie : le héros n'a aucun lien à présenter, il n'y a rien à
   contourner. Un jeton unique aurait obligé le porteur à déclarer qui il est —
   et Max n'aurait eu qu'à se déclarer « Léo ». Effet de bord heureux : la
@@ -267,7 +266,7 @@
 - 289 tests verts (18 fichiers), typecheck serveur et client OK, lint sans
   erreur. Spec OpenAPI complétée (tag Partage) — et l'énumération `visibilite`
   y était incomplète (`surprise` manquait) : corrigé au passage.
-- Faiblesses assumées, détaillées dans l'ADR : **un lien se transfère** (le
+- Faiblesses assumées : **un lien se transfère** (le
   produit sait qui un lien désigne, pas qui le clique) ; deux avis simultanés
   sur le même parcours s'écrasent (relecture-réécriture du JSON entier) ;
   l'organisateur copie autant de liens qu'il y a de participants.
