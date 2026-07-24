@@ -53,8 +53,9 @@ server/
 │   └── modification.ts       ← langage naturel → demande de modification
 ├── depots/                   ← la seule frontière avec PostgreSQL
 │   ├── depotParcours.ts      ← valide à chaque lecture, projette à chaque écriture
+│   ├── depotPartage.ts       ← les liens de partage : un jeton par participant
 │   └── depotPreferences.ts
-└── routes/                   ← auth · parcours · photos
+└── routes/                   ← auth · parcours · partage · photos
 ```
 
 **Pourquoi le domaine est séparé** : il est testable en quelques millisecondes, il survit à un changement de base ou de framework, et il reste la seule autorité sur ce qu'est un parcours valide. Les agents proposent, le domaine tranche.
@@ -99,7 +100,7 @@ npm run dev:all
 npx vitest run
 ```
 
-189 tests : domaine (logique pure), dépôts (Prisma mocké), routes, authentification et validation des entrées.
+289 tests : domaine (logique pure), dépôts (Prisma mocké), routes, authentification, partage et validation des entrées.
 
 ---
 
@@ -117,6 +118,12 @@ Toutes les routes `parcours` exigent un JWT et filtrent sur l'utilisateur du tok
 | `POST` | `/api/parcours/:id/modifications` | **Modification ciblée** d'un élément |
 | `DELETE` | `/api/parcours/:id` | Supprime un parcours |
 | `GET` `PUT` | `/api/parcours/preferences` | Mémoire simple : préférences réutilisées à la génération |
+| `GET` `PUT` | `/api/parcours/:id/partage` | Visibilité du parcours et lien de chaque participant |
+| `POST` `DELETE` | `/api/parcours/:id/participants` | Constituer le groupe (réservé à l'organisateur) |
+| `GET` | `/api/partage/:jeton` | **Sans compte** : consulter le parcours qu'on vous a partagé |
+| `POST` | `/api/partage/:jeton/reactions` | **Sans compte** : donner son avis sur un élément |
+
+Les deux dernières sont les seules routes ouvertes du produit. Un jeton de partage permet de **consulter et de donner son avis** — jamais de modifier le parcours ni d'en changer la visibilité : ces gestes exigent un compte **et** le rôle qui les autorise ([ADR-0008](docs/decisions/ADR-0008.md)).
 
 ---
 

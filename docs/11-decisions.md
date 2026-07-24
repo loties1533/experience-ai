@@ -19,3 +19,4 @@ Chaque ADR tient sur une page : **Contexte · Décision · Alternatives envisag�
 | [0005](decisions/ADR-0005.md) | Le contexte est un objet de premier niveau | 2026-07-23 | Accepté |
 | [0006](decisions/ADR-0006.md) | Le repo est la source de vérité (docs as code) | 2026-07-23 | Accepté |
 | [0007](decisions/ADR-0007.md) | Le parcours se persiste comme un agrégat (une table, contenu JSON validé) | 2026-07-23 | Accepté |
+| [0008](decisions/ADR-0008.md) | Le partage se fait par un lien **par participant**, et les réactions vivent dans l'agrégat | 2026-07-24 | Accepté |
