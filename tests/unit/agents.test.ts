@@ -38,6 +38,21 @@ describe('brief — cadrage (doc 05, étape 3)', () => {
     expect(phrase).toContain('vivre la NBA');
     expect(phrase).toContain('en solo');
     expect(phrase).toContain('21 jours');
+    // Sans dates arrêtées, la reformulation n'en invente aucune.
+    expect(phrase).not.toContain('du 1');
+  });
+
+  it('annonce les dates quand le brief en porte (le festival d’Inès)', () => {
+    const phrase = reformulerBrief(
+      BriefSchema.parse({
+        intention: 'vivre le festival sans rater mes artistes',
+        avecQui: 'amis',
+        duree: { valeur: 3, unite: 'jours' },
+        dates: { debut: '2026-07-12T00:00:00Z', fin: '2026-07-14T23:00:00Z' },
+      })
+    );
+    expect(phrase).toContain('12 juillet 2026');
+    expect(phrase).toContain('14 juillet 2026');
   });
 });
 

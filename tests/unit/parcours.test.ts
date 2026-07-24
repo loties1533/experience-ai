@@ -220,6 +220,117 @@ describe('validerParcours — cohérence structurelle', () => {
   });
 });
 
+// Les dates réelles du parcours : le festival d'Inès a lieu les 12-14 juillet,
+// rien de ce parcours ne se passe en dehors.
+describe('les dates du parcours', () => {
+  const DATES = { debut: '2026-07-12T00:00:00Z', fin: '2026-07-14T23:59:59Z' };
+
+  function parcoursDate(plageElement?: { debut: string; fin: string }): Parcours {
+    return parcoursMinimal({
+      contexte: {
+        avecQui: 'amis',
+        duree: { valeur: 3, unite: 'jours' },
+        dates: DATES,
+        lieux: [],
+      },
+      timeline: [
+        {
+          id: 'm1',
+          titre: 'Vendredi',
+          elements: [element('set', { type: 'evenement', plage: plageElement })],
+        },
+      ],
+    });
+  }
+
+  it('accepte un parcours sans dates (Karim sort ce soir)', () => {
+    const parcours = parcoursMinimal();
+    expect(parcours.contexte.dates).toBeUndefined();
+    expect(validerParcours(parcours)).toEqual([]);
+  });
+
+  it('refuse des dates dont le début suit la fin', () => {
+    const resultat = ParcoursSchema.safeParse({
+      ...parcoursMinimal(),
+      contexte: {
+        avecQui: 'amis',
+        duree: { valeur: 3, unite: 'jours' },
+        dates: { debut: '2026-07-14T00:00:00Z', fin: '2026-07-12T00:00:00Z' },
+      },
+    });
+    expect(resultat.success).toBe(false);
+  });
+
+  it('laisse passer un élément qui tombe dans les dates', () => {
+    const parcours = parcoursDate({ debut: '2026-07-12T20:00:00Z', fin: '2026-07-12T21:30:00Z' });
+    expect(validerParcours(parcours)).toEqual([]);
+  });
+
+  it('signale un élément qui déborde des dates du parcours', () => {
+    const parcours = parcoursDate({ debut: '2026-07-15T20:00:00Z', fin: '2026-07-15T21:30:00Z' });
+    expect(validerParcours(parcours).some((e) => e.includes('hors des dates'))).toBe(true);
+  });
+
+  it('signale un élément à cheval sur la fin du parcours', () => {
+    const parcours = parcoursDate({ debut: '2026-07-14T22:00:00Z', fin: '2026-07-15T02:00:00Z' });
+    expect(validerParcours(parcours).some((e) => e.includes('hors des dates'))).toBe(true);
+  });
+
+  it('signale un moment qui sort des dates du parcours', () => {
+    const parcours = parcoursMinimal({
+      contexte: {
+        avecQui: 'amis',
+        duree: { valeur: 3, unite: 'jours' },
+        dates: DATES,
+        lieux: [],
+      },
+      timeline: [
+        {
+          id: 'm1',
+          titre: 'Le jour d’après',
+          plage: { debut: '2026-07-16T10:00:00Z', fin: '2026-07-16T18:00:00Z' },
+          elements: [],
+        },
+      ],
+    });
+    expect(validerParcours(parcours).some((e) => e.includes('hors des dates'))).toBe(true);
+  });
+
+  it('n’examine aucune plage quand le parcours n’a pas de dates', () => {
+    const parcours = parcoursMinimal({
+      timeline: [
+        {
+          id: 'm1',
+          titre: 'Un jour',
+          elements: [
+            element('set', {
+              type: 'evenement',
+              plage: { debut: '2030-01-01T20:00:00Z', fin: '2030-01-01T22:00:00Z' },
+            }),
+          ],
+        },
+      ],
+    });
+    expect(validerParcours(parcours)).toEqual([]);
+  });
+
+  it('laisse coexister durée et dates sans les confondre', () => {
+    // La durée dit l'envie (« trois jours »), les dates disent le calendrier.
+    // Aucune n'est recalculée depuis l'autre : un écart n'est pas une erreur.
+    const parcours = parcoursMinimal({
+      contexte: {
+        avecQui: 'amis',
+        duree: { valeur: 21, unite: 'jours' },
+        dates: DATES,
+        lieux: [],
+      },
+    });
+    expect(parcours.contexte.duree.valeur).toBe(21);
+    expect(parcours.contexte.dates).toEqual(DATES);
+    expect(validerParcours(parcours)).toEqual([]);
+  });
+});
+
 describe('alternativesProposables — invariant 7 (un arbitrage est définitif)', () => {
   it('ne rend que les options non écartées', () => {
     const creneau = element('creneau', {

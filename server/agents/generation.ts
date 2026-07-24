@@ -26,6 +26,7 @@ Réponds UNIQUEMENT en JSON valide : {"ambiance": string, "moments": [...]}.
 - Chaque moment : {"titre": string, "elements": [...]}.
 - Chaque élément : {"ref": string (identifiant court unique, ex "resto-soir-1"), "type": "activite"|"restaurant"|"transport"|"hebergement"|"evenement"|"temps_libre", "nom": string, "lieu": string, "plage": {"debut": ISO, "fin": ISO} (optionnel), "prix": number en euros (optionnel), "justification": string (POURQUOI cet élément sert l'intention — obligatoire), "dependDe": [refs] (optionnel), "estAncre": boolean (optionnel).
 - Prévois des temps libres assumés (la respiration).
+- Si le brief donne des dates, TOUTES les plages horaires doivent tomber entre ces dates.
 - Reste dans le budget si fourni. Jamais de lien de réservation.`;
 
 const ElementGenereSchema = z.object({
@@ -82,7 +83,12 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
   const parcours = ParcoursSchema.parse({
     id: randomUUID(),
     intention: { texte: brief.intention },
-    contexte: { avecQui: brief.avecQui, duree: brief.duree, lieux: brief.lieux },
+    contexte: {
+      avecQui: brief.avecQui,
+      duree: brief.duree,
+      dates: brief.dates,
+      lieux: brief.lieux,
+    },
     participants: [{ id: randomUUID(), nom: 'Organisateur', role: 'organisateur' }],
     budget: { mode: 'individuel', montantTotal: brief.budgetTotal },
     ambiance: sortie.data.ambiance ?? brief.ambiance,

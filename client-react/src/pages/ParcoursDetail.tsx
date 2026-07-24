@@ -89,6 +89,11 @@ export default function ParcoursDetail() {
         <h1 className="text-2xl sm:text-3xl font-bold text-encre mt-1">{parcours.intention.texte}</h1>
         <p className="text-brume text-sm mt-2">
           {parcours.contexte.avecQui} · {parcours.contexte.duree.valeur} {parcours.contexte.duree.unite}
+          {/* Les dates ne s'affichent que si le parcours en a de vraies */}
+          {parcours.contexte.dates && (
+            <> · du {new Date(parcours.contexte.dates.debut).toLocaleDateString('fr-FR')}
+              {' '}au {new Date(parcours.contexte.dates.fin).toLocaleDateString('fr-FR')}</>
+          )}
           {parcours.contexte.lieux.length > 0 && <> · {parcours.contexte.lieux.join(', ')}</>}
           {parcours.ambiance && <> · ambiance {parcours.ambiance}</>}
           {parcours.budget.montantTotal !== undefined && <> · ~{parcours.budget.montantTotal} €</>}

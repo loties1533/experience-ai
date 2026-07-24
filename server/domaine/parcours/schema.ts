@@ -24,12 +24,32 @@ export const IntentionSchema = z.object({
   motsCles: z.array(z.string().min(1)).default([]),
 });
 
+export const PlageHoraireSchema = z
+  .object({
+    debut: z.iso.datetime(),
+    fin: z.iso.datetime(),
+  })
+  // Comparer en dates, pas en chaînes : « 20:00:00.500Z » suit « 20:00:00Z ».
+  .refine((p) => Date.parse(p.debut) < Date.parse(p.fin), {
+    message: 'le début doit précéder la fin',
+  });
+
 export const ContexteSchema = z.object({
   avecQui: z.enum(['solo', 'couple', 'famille', 'amis', 'groupe']),
+  // La durée voulue : l'ordre de grandeur de l'envie, toujours exprimable
+  // (« une soirée », « trois semaines ») même sans date arrêtée.
   duree: z.object({
     valeur: z.number().positive(),
     unite: z.enum(['heures', 'jours']),
   }),
+  // Les dates réelles, quand elles existent (le festival d'Inès les 12-14
+  // juillet, les matchs datés de Thomas). Optionnelles : Karim qui sort « ce
+  // soir » n'en a pas, et une envie peut vivre sans calendrier. Quand elles
+  // sont là, ce sont ELLES qui font foi — la durée reste l'expression de
+  // l'envie, on ne recalcule jamais l'une depuis l'autre.
+  // Même objet-valeur qu'une plage d'élément : une seule règle de comparaison
+  // dans tout le domaine, et « début avant fin » est déjà garanti.
+  dates: PlageHoraireSchema.optional(),
   lieux: z.array(z.string().min(1)).default([]),
 });
 
@@ -44,16 +64,6 @@ export const BudgetSchema = z.object({
   montantTotal: z.number().nonnegative().optional(),
   devise: z.string().length(3).default('EUR'),
 });
-
-export const PlageHoraireSchema = z
-  .object({
-    debut: z.iso.datetime(),
-    fin: z.iso.datetime(),
-  })
-  // Comparer en dates, pas en chaînes : « 20:00:00.500Z » suit « 20:00:00Z ».
-  .refine((p) => Date.parse(p.debut) < Date.parse(p.fin), {
-    message: 'le début doit précéder la fin',
-  });
 
 export const ContrainteSchema = z.discriminatedUnion('nature', [
   z.object({

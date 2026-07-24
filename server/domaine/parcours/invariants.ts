@@ -40,6 +40,14 @@ function plagesSeChevauchent(a: PlageHoraire, b: PlageHoraire): boolean {
   return Date.parse(a.debut) < Date.parse(b.fin) && Date.parse(b.debut) < Date.parse(a.fin);
 }
 
+/** `interieure` tient-elle entièrement dans `englobante` (bornes comprises) ? */
+function plageContenue(interieure: PlageHoraire, englobante: PlageHoraire): boolean {
+  return (
+    Date.parse(interieure.debut) >= Date.parse(englobante.debut) &&
+    Date.parse(interieure.fin) <= Date.parse(englobante.fin)
+  );
+}
+
 /** Tout ce dont un élément dépend, directement ou par ricochet. */
 function dependancesTransitives(elements: Element[], elementId: string): Set<string> {
   const parId = new Map(elements.map((e) => [e.id, e]));
@@ -173,6 +181,21 @@ export function validerParcours(parcours: Parcours): string[] {
     const idsAlternatives = new Set(element.alternatives.map((a) => a.id));
     if (idsAlternatives.size !== element.alternatives.length) {
       erreurs.push(`les alternatives de « ${element.nom} » doivent avoir des ids distincts`);
+    }
+  }
+
+  // Quand le parcours porte de vraies dates, rien ne se passe en dehors.
+  const dates = parcours.contexte.dates;
+  if (dates) {
+    for (const moment of parcours.timeline) {
+      if (moment.plage && !plageContenue(moment.plage, dates)) {
+        erreurs.push(`le moment « ${moment.titre} » se situe hors des dates du parcours`);
+      }
+      for (const element of moment.elements) {
+        if (element.plage && !plageContenue(element.plage, dates)) {
+          erreurs.push(`« ${element.nom} » se situe hors des dates du parcours`);
+        }
+      }
     }
   }
 

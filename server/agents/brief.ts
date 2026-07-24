@@ -9,6 +9,9 @@ export const BriefSchema = z.object({
   intention: z.string().min(1),
   avecQui: ContexteSchema.shape.avecQui,
   duree: ContexteSchema.shape.duree,
+  // Optionnelles, comme dans le contexte : on ne bloque jamais le dialogue
+  // sur des dates que l'utilisateur n'a pas encore arrêtées.
+  dates: ContexteSchema.shape.dates,
   lieux: z.array(z.string().min(1)).default([]),
   budgetTotal: z.number().positive().optional(),
   ambiance: z.string().optional(),
@@ -41,11 +44,24 @@ const LIBELLES_AVEC_QUI = {
   groupe: 'en groupe',
 } as const;
 
+/** Date affichable (« 12 juillet 2026 ») à partir d'un horodatage ISO. */
+function enFrancais(horodatageISO: string): string {
+  return new Date(horodatageISO).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
 /** Reformulation affichable du brief compris — validée par l'utilisateur avant génération. */
 export function reformulerBrief(brief: Brief): string {
   const morceaux = [
     `Vous voulez ${brief.intention}, ${LIBELLES_AVEC_QUI[brief.avecQui]}, sur ${brief.duree.valeur} ${brief.duree.unite}`,
   ];
+  if (brief.dates) {
+    morceaux.push(`du ${enFrancais(brief.dates.debut)} au ${enFrancais(brief.dates.fin)}`);
+  }
   if (brief.lieux.length > 0) morceaux.push(`du côté de ${brief.lieux.join(', ')}`);
   if (brief.budgetTotal !== undefined) morceaux.push(`avec un budget d'environ ${brief.budgetTotal} €`);
   if (brief.ambiance) morceaux.push(`dans une ambiance ${brief.ambiance}`);

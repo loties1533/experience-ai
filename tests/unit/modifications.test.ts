@@ -258,6 +258,54 @@ describe('ecarter_alternative — invariant 7, une option écartée ne revient p
   });
 });
 
+describe('les dates du parcours encadrent aussi les modifications', () => {
+  function parcoursDate(): Parcours {
+    return ParcoursSchema.parse({
+      id: 'p4',
+      intention: { texte: 'vivre le festival' },
+      contexte: {
+        avecQui: 'amis',
+        duree: { valeur: 3, unite: 'jours' },
+        dates: { debut: '2026-07-12T00:00:00Z', fin: '2026-07-14T23:59:59Z' },
+      },
+      participants: [{ id: 'u1', nom: 'Inès', role: 'organisateur' }],
+      budget: { mode: 'partage' },
+      timeline: [{ id: 'm1', titre: 'Vendredi', elements: [element('set')] }],
+    });
+  }
+
+  it('refuse d’ajouter un élément en dehors des dates', () => {
+    const resultat = appliquerModification(
+      parcoursDate(),
+      {
+        type: 'ajouter_element',
+        momentId: 'm1',
+        element: element('after', {
+          plage: { debut: '2026-07-20T20:00:00Z', fin: '2026-07-20T23:00:00Z' },
+        }),
+      },
+      PAR_ORGANISATEUR
+    );
+    expect(resultat).toMatchObject({ ok: false });
+    if (!resultat.ok) expect(resultat.erreur).toContain('hors des dates');
+  });
+
+  it('accepte un élément qui tombe dans les dates', () => {
+    const resultat = appliquerModification(
+      parcoursDate(),
+      {
+        type: 'ajouter_element',
+        momentId: 'm1',
+        element: element('after', {
+          plage: { debut: '2026-07-13T20:00:00Z', fin: '2026-07-13T23:00:00Z' },
+        }),
+      },
+      PAR_ORGANISATEUR
+    );
+    expect(resultat.ok).toBe(true);
+  });
+});
+
 // ---- Invariant 8 : chacun modifie dans le cadre de son rôle (EVG de Hugo) ----
 function parcoursEVG(): Parcours {
   return ParcoursSchema.parse({

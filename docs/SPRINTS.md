@@ -15,7 +15,7 @@
 | R4 — Entrée orientée envie | Brief en langage naturel, dialogue minimal, reformulation avant génération | Terminé |
 | R5 — Mémoire simple | Préférences utilisateur | Terminé |
 | R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | En cours (R6a fait) |
-| R7 — Domaine complété | Les manques révélés par le code et le prototype : invariants 7 et 8, vraies dates de parcours | En cours |
+| R7 — Domaine complété | Les manques révélés par le code et le prototype : invariants 7 et 8, vraies dates de parcours | Terminé |
 
 ### Board — backlog par sprint
 
@@ -41,7 +41,7 @@
 - [ ] Cache des appels externes (maîtrise des coûts)
 - [ ] Recette manuelle de bout en bout
 
-**R7 — Domaine complété** *(en cours)*
+**R7 — Domaine complété** *(terminé le 24/07)*
 
 > Deux manques constatés **en implémentant**, pas en théorisant (règle d'évolution
 > du domaine, doc 06) : le code ne portait que 6 invariants sur 8, et le
@@ -49,7 +49,7 @@
 
 - [x] Invariant 7 — arbitrage définitif : option écartée mémorisée, jamais reproposée
 - [x] Invariant 8 — chaque modification est signée, le rôle de l'auteur doit la couvrir
-- [ ] Dates réelles du parcours (début / fin) et cohérence avec les plages des éléments
+- [x] Dates réelles du parcours (début / fin) et cohérence avec les plages des éléments
 
 ### Revue R1 (terminé le 23/07)
 - 23/07 — Module `server/domaine/parcours/` créé : `schema.ts` (agrégat complet
@@ -202,6 +202,25 @@
   aléatoire), il est rattaché à l'organisateur. À revoir le jour du partage :
   chaque invité aura alors son propre participant et son propre rôle.
 - 209 tests verts, typecheck serveur et client OK, lint sans erreur.
+
+### Revue R7 — les dates du parcours (24/07)
+- Le parcours peut porter de **vraies dates** (`contexte.dates`), optionnelles.
+  Même objet-valeur qu'une plage d'élément : une seule règle de comparaison
+  dans le domaine, et « début avant fin » vient avec.
+- **Durée et dates cohabitent sans se contredire** (détaillé dans le doc 06) :
+  la durée est l'ordre de grandeur de l'envie et existe toujours ; les dates
+  sont le calendrier réel et font foi quand elles existent. Ni recalcul de
+  l'une depuis l'autre, ni refus en cas d'écart — une envie de trois semaines
+  posée sur cinq jours de congés n'est pas une erreur, c'est la vie.
+- `validerParcours` garantit que rien ne se passe en dehors : toute plage (d'un
+  moment comme d'un élément) tombe dans les dates quand elles existent. Une
+  modification qui ferait déborder un élément est donc refusée, comme toute
+  autre incohérence.
+- Le chemin complet suit : le brief accepte des dates (jamais déduites de la
+  durée), la reformulation les annonce (« du 12 juillet 2026 au 14 juillet
+  2026 »), l'orchestrateur les transmet et le front les affiche quand elles
+  existent.
+- 220 tests verts, typecheck serveur et client OK, lint sans erreur.
 
 ---
 

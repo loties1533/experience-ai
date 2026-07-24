@@ -31,7 +31,9 @@ Le **Parcours** est l'objet central. Tout le reste lui appartient. Un parcours n
 
 Il porte :
 - **Intention** — le *pourquoi* (envie / passion / objectif). Point de départ, jamais une destination.
-- **Contexte** — avec qui, durée, lieu(x). Co-égal à l'intention.
+- **Contexte** — avec qui, durée, **dates**, lieu(x). Co-égal à l'intention.
+  - *Durée et dates ne disent pas la même chose et ne se contredisent pas.* La **durée** est l'ordre de grandeur de l'envie : elle existe toujours, même sans calendrier (« une soirée », « trois semaines »). Les **dates** de début et de fin sont le calendrier réel : elles sont **optionnelles** (Karim qui sort ce soir n'en a pas ; une envie peut exister sans dates arrêtées), mais **quand elles existent, ce sont elles qui font foi**. On ne recalcule jamais l'une depuis l'autre, et un écart entre les deux n'est pas une erreur : c'est le signe qu'une envie de trois semaines s'est posée sur cinq jours de vacances.
+  - *Cohérence garantie :* le début précède la fin, et **rien ne se passe en dehors** — toute plage horaire (d'un moment comme d'un élément) tombe dans les dates du parcours quand elles existent. Sans dates, aucune contrainte : le parcours flotte, et c'est légitime.
 - **Participants** — de 1 à N, avec des **Rôles** (l'organisateur peut ≠ participant). Un participant **n'est pas forcément un utilisateur du produit** (Léa n'a pas de compte, elle existe pourtant dans le parcours).
 - **Budget** — **individuel ou partagé**. Sert de contrainte pilotante.
 - **Ambiance / Ton** — propriété transverse qui teinte tous les éléments.
@@ -116,6 +118,7 @@ Toute modification du domaine doit être justifiée **par du code ou par un util
 - Budget qui se réajuste pour un groupe → Budget partagé *(EVG)*.
 - Festival au centre → Élément **Ancre** + Contraintes datées en conflit *(Inès)*.
 - Vacances au bon rythme → Contraintes *filtres* + densité des Moments *(Famille)*.
+- Des matchs et des sets à une date précise → **dates** du parcours + plages des éléments *(Thomas, Inès)*.
 
 ## Ce que ce modèle n'est PAS
 Ni Prisma, ni tables, ni endpoints. La traduction technique se fera à l'étape 13 (Architecture) et **découlera directement** de ce modèle.
