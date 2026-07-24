@@ -1,8 +1,0 @@
-flowchart TB
-    C["Clients"] --> LB["Load Balancer<br/>round-robin · least-connections<br/>health checks"]
-    LB --> A1["API 1 — Express (stateless)"]
-    LB --> A2["API 2 — Express (stateless)"]
-    LB --> A3["API 3 — Express (stateless)"]
-    A1 --> DB[("PostgreSQL<br/>pool + réplicas lecture")]
-    A2 --> DB
-    A3 --> DB

@@ -25,8 +25,7 @@
     "test:services": "vitest run tests/services/",
     "test:security": "vitest run tests/security/",
     "test:middleware": "vitest run tests/middleware.test.ts",
-    "test:coverage": "vitest run --coverage",
-    "diagrams": "npx @mermaid-js/mermaid-cli -i /tmp/erd.mmd -o docs/assets/diagrams/erd.png -b white --width 900 && npx @mermaid-js/mermaid-cli -i /tmp/seq_generate.mmd -o docs/assets/diagrams/seq_generate.png -b white --width 1000 && npx @mermaid-js/mermaid-cli -i /tmp/seq_auth.mmd -o docs/assets/diagrams/seq_auth.png -b white --width 900 && npx @mermaid-js/mermaid-cli -i /tmp/arch.mmd -o docs/assets/diagrams/architecture.png -b white --width 1000 && npx @mermaid-js/mermaid-cli -i /tmp/scoring.mmd -o docs/assets/diagrams/scoring.png -b white --width 900 && npx @mermaid-js/mermaid-cli -i /tmp/llm_fallback.mmd -o docs/assets/diagrams/llm_fallback.png -b white --width 800"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
