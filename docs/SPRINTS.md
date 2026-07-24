@@ -39,8 +39,9 @@
 **R6 — Bascule & nettoyage** *(en cours)*
 - [x] Front basculé sur les routes `parcours` (R6a, 23/07)
 - [x] **Suppression** du modèle Pack (routes trips/votes, services pack, tables) — jamais deux modèles qui cohabitent
-- [ ] Cache des appels externes (maîtrise des coûts)
+- [x] Cache des appels externes (maîtrise des coûts)
 - [x] Recette manuelle de bout en bout (R6c, 24/07)
+- [x] La génération cherche de vrais lieux (outils, repli, traçabilité) — R6d, 24/07
 
 **R7 — Domaine complété** *(terminé le 24/07)*
 
@@ -298,6 +299,61 @@ inscription, dialogue, génération, modification. Trois défauts, dont un bloqu
 - Variance d'extraction observée : sur une phrase mêlant plusieurs idées, une
   contrainte négative (« pas de paintball ») a été perdue au profit d'une autre.
   Le code est en cause nulle part — c'est la qualité du prompt d'intake.
+
+### Revue R6d — de vrais lieux, et le cache (24/07)
+
+La recette avait sorti « Bar à cocktails réputé du centre » : un nom plausible,
+vérifiable nulle part. Sur un produit dont la valeur est la **cohérence avec un
+thème**, un lieu faux ruine la confiance plus sûrement qu'un parcours moyen. La
+génération ne faisait qu'un appel LLM, et le modèle puisait dans sa mémoire
+d'entraînement — pendant que les connecteurs (Foursquare, PredictHQ, météo)
+conservés au sprint R6b n'étaient appelés par personne.
+
+- **L'orchestrateur cherche avant d'écrire.** Il reçoit trois outils
+  (`chercher_lieux`, `chercher_evenements`, `consulter_meteo`), décide lui-même
+  quoi chercher, lit de vrais résultats et construit le parcours à partir d'eux.
+  Chaque outil est adossé à un connecteur qui existait déjà : rien de neuf côté
+  fournisseurs, seulement des câbles enfin branchés. Foursquare a gagné une
+  recherche **libre** (`foursquareRechercheLieux`) : ses catégories figées par
+  mode ne connaissaient que le repas et la fête, alors que le modèle doit
+  pouvoir chercher ce que l'intention réclame.
+- **Sans casser l'existant.** `callAI` (prompt → texte) ne bouge pas : l'intake
+  et l'agent Modification, qui n'ont rien à chercher, passent exactement par où
+  ils passaient. La boucle vit à côté, dans `callAIAvecOutils`.
+- **Trois tours d'outils au maximum**, soit **quatre appels au modèle** pour une
+  génération. Le modèle est Haiku 4.5 et sait grouper ses recherches dans un
+  même tour : en pratique il lui en faut un, deux s'il complète. Au dernier
+  tour, les outils lui sont retirés — il n'a plus qu'à écrire.
+- **Le repli est explicite, jamais une panne affichée.** Pas de clé Anthropic →
+  génération par la voie simple, sans données réelles. Connecteur sans clé, en
+  panne ou muet → l'outil rend « aucun résultat réel », et le prompt lui
+  interdit d'inventer un nom d'établissement : il redevient générique et
+  honnête (« un bar à cocktails du centre »). Boucle interrompue (quota,
+  réseau) → repli sur l'appel simple. Dans tous les cas, un parcours sort.
+- **Le cache** (`lib/cacheMemoire.ts`) est en mémoire, sans nouvelle
+  dépendance : deux générations sur la même ville ne repaient pas la même
+  recherche. Durées de vie choisies sur ce que la donnée a de périssable — 24 h
+  pour un lieu, 6 h pour un événement, 3 h pour la météo. On mémorise la
+  promesse (deux générations simultanées partagent l'appel) et jamais un échec.
+- **La traçabilité ne passe pas par le modèle.** Quand le nom proposé
+  correspond à un lieu rendu par une recherche, le serveur lui rattache son
+  adresse (`lieu`) et son lien de carte (`reservation`, un LIEN EXTERNE —
+  invariant 4, jamais un achat, et jamais sur un temps libre). Le modèle n'a
+  aucune URL à écrire : on ne lui en transmet même pas.
+- **Le domaine n'a pas bougé d'une ligne.** `validerParcours` reste seul juge,
+  les ids naissent côté serveur, la sortie est revalidée champ par champ.
+- 312 tests verts (20 fichiers, 17 ajoutés), typecheck serveur et client OK,
+  lint sans erreur. La suite ne peut plus toucher une vraie API : les clés du
+  `.env` sont neutralisées dans la configuration Vitest.
+- **Faiblesses assumées.** Rien n'a été vérifié contre les vraies API : la clé
+  PredictHQ est expirée et les tests mockent tout — le format de réponse réel
+  n'est donc pas confirmé par cette branche. Le rapprochement entre le nom
+  proposé et le lieu trouvé se fait par comparaison de chaînes (accents et
+  ponctuation ignorés, inclusion tolérée) : un modèle qui reformule un nom perd
+  son lien de carte, et deux établissements homonymes dans la même ville
+  seraient confondus. Le cache est par instance — deux instances chercheraient
+  chacune de leur côté. Enfin, un repli après une boucle interrompue repaie une
+  génération complète : c'est le prix d'un parcours qui sort quand même.
 
 ---
 
