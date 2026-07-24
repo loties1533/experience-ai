@@ -41,7 +41,7 @@ const schemas = {
     properties: {
       id:         { type: 'string', format: 'uuid' },
       intention:  { type: 'object', additionalProperties: true },
-      visibilite: { type: 'string', enum: ['prive', 'partage'] },
+      visibilite: { type: 'string', enum: ['prive', 'partage', 'surprise'] },
       elements:   { type: 'array', items: { type: 'object', additionalProperties: true } },
     },
   },
@@ -50,8 +50,29 @@ const schemas = {
     properties: {
       id:         { type: 'string', format: 'uuid' },
       intention:  { type: 'string', example: 'Un EVG à Lisbonne pour six' },
-      visibilite: { type: 'string', enum: ['prive', 'partage'] },
+      visibilite: { type: 'string', enum: ['prive', 'partage', 'surprise'] },
       misAJourLe: { type: 'string', format: 'date-time' },
+    },
+  },
+  EtatPartage: {
+    type: 'object',
+    description:
+      'Le partage vu par l\'organisateur (ADR-0008) : la visibilité, et le lien de CHAQUE participant. ' +
+      'Le serveur ne rend qu\'un chemin — le navigateur y met son origine.',
+    properties: {
+      visibilite: { type: 'string', enum: ['prive', 'partage', 'surprise'] },
+      liens: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            participantId: { type: 'string' },
+            nom:           { type: 'string', example: 'Léo' },
+            role:          { type: 'string', enum: ['organisateur', 'participant', 'heros'] },
+            chemin:        { type: 'string', nullable: true, example: '/partage/8Kd2...' },
+          },
+        },
+      },
     },
   },
   Preferences: {
@@ -103,6 +124,7 @@ export const openapiSpec = {
     { name: 'Auth',        description: 'Inscription, connexion, session' },
     { name: 'Parcours',    description: 'Cadrage, génération, lecture et modification ciblée' },
     { name: 'Préférences', description: 'Mémoire simple réinjectée à la génération' },
+    { name: 'Partage',     description: 'Partager le parcours au groupe et recueillir son avis' },
     { name: 'Divers',      description: 'Photos, santé' },
   ],
   components: {
@@ -331,6 +353,146 @@ export const openapiSpec = {
           401: unauthorized,
           404: notFound,
           422: { description: 'Modification refusée : elle rendrait le parcours incohérent', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+
+    // ---------------- PARTAGE ----------------
+    // Un jeton par participant : c'est lui qui dit QUI consulte, donc quel rôle
+    // s'applique. Consulter et réagir ne demandent pas de compte ; décider —
+    // modifier, convier, changer la visibilité — en exige toujours un.
+    '/api/parcours/{id}/partage': {
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+      get: {
+        tags: ['Partage'],
+        summary: 'État du partage : visibilité et lien de chaque participant',
+        description: '`chemin` vaut `null` quand le domaine refuse de remettre un lien — le héros d\'une surprise, ou tout le monde si le parcours est privé.',
+        security: [{ cookieAuth: [] }, { bearerAuth: [] }],
+        responses: {
+          200: { description: 'État du partage', content: { 'application/json': { schema: { $ref: '#/components/schemas/EtatPartage' } } } },
+          400: badRequest,
+          401: unauthorized,
+          404: notFound,
+        },
+      },
+      put: {
+        tags: ['Partage'],
+        summary: 'Choisir la visibilité (privé / partagé / surprise)',
+        description: 'Réservé à l\'organisateur (invariant 8). Passer en privé révoque tous les liens ; passer en surprise révoque celui du héros.',
+        security: [{ cookieAuth: [] }, { bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['visibilite'],
+                properties: { visibilite: { type: 'string', enum: ['prive', 'partage', 'surprise'] } },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Visibilité appliquée', content: { 'application/json': { schema: { type: 'object', properties: { parcours: { $ref: '#/components/schemas/Parcours' }, partage: { $ref: '#/components/schemas/EtatPartage' } } } } } },
+          400: badRequest,
+          401: unauthorized,
+          404: notFound,
+          422: { description: 'Refusé : le rôle de l\'auteur ne couvre pas ce geste', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/parcours/{id}/participants': {
+      post: {
+        tags: ['Partage'],
+        summary: 'Convier quelqu\'un au parcours',
+        description: 'L\'id du participant est attribué par le serveur. Réservé à l\'organisateur.',
+        security: [{ cookieAuth: [] }, { bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['nom', 'role'],
+                properties: {
+                  nom:  { type: 'string', minLength: 1, maxLength: 60, example: 'Léo' },
+                  role: { type: 'string', enum: ['organisateur', 'participant', 'heros'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Participant ajouté', content: { 'application/json': { schema: { type: 'object', properties: { parcours: { $ref: '#/components/schemas/Parcours' }, partage: { $ref: '#/components/schemas/EtatPartage' } } } } } },
+          400: badRequest,
+          401: unauthorized,
+          404: notFound,
+          422: { description: 'Refusé par le domaine', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/parcours/{id}/participants/{participantId}': {
+      delete: {
+        tags: ['Partage'],
+        summary: 'Retirer un participant (son lien et ses avis partent avec lui)',
+        security: [{ cookieAuth: [] }, { bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'participantId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          200: { description: 'Participant retiré', content: { 'application/json': { schema: { type: 'object', properties: { parcours: { $ref: '#/components/schemas/Parcours' }, partage: { $ref: '#/components/schemas/EtatPartage' } } } } } },
+          400: badRequest,
+          401: unauthorized,
+          404: notFound,
+          422: { description: 'Refusé : on ne retire pas l\'organisateur', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/partage/{jeton}': {
+      get: {
+        tags: ['Partage'],
+        summary: 'Consulter un parcours partagé (sans compte)',
+        description:
+          'Le jeton désigne un participant : la réponse dit sous quelle identité on consulte. ' +
+          'Jeton inconnu, parcours redevenu privé, ou surprise dont on est le héros donnent la MÊME réponse (404) — on ne renseigne jamais le curieux.',
+        parameters: [{ name: 'jeton', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          200: { description: 'Parcours et identité du porteur', content: { 'application/json': { schema: { type: 'object', properties: { parcours: { $ref: '#/components/schemas/Parcours' }, participant: { type: 'object', additionalProperties: true } } } } } },
+          400: badRequest,
+          404: { description: 'Ce lien n\'est plus valide', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        },
+      },
+    },
+    '/api/partage/{jeton}/reactions': {
+      post: {
+        tags: ['Partage'],
+        summary: 'Donner son avis sur un élément (sans compte)',
+        description:
+          'L\'avis ÉCLAIRE, il ne décide pas : il ne change ni le statut de l\'élément ni quoi que ce soit d\'autre — l\'organisateur tranche (invariant 8). ' +
+          'Le vote formel est en V2. Un jeton ne permet aucune autre écriture.',
+        parameters: [{ name: 'jeton', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['elementId', 'avis'],
+                properties: {
+                  elementId: { type: 'string' },
+                  avis:      { type: 'string', enum: ['pour', 'contre'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Avis enregistré', content: { 'application/json': { schema: { type: 'object', properties: { parcours: { $ref: '#/components/schemas/Parcours' }, description: { type: 'string', example: 'Léo est contre « Karting »' } } } } } },
+          400: badRequest,
+          404: { description: 'Ce lien n\'est plus valide', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          422: { description: 'Refusé par le domaine', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
         },
       },
     },

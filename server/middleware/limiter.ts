@@ -23,6 +23,20 @@ export const aiChatLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Limiteur des routes de partage, ouvertes SANS authentification (ADR-0008).
+// Un jeton de 256 bits ne se devine pas, mais une route publique se balaie :
+// on plafonne à 60 requêtes par quart d'heure et par IP, ce qui laisse
+// largement de quoi consulter un parcours et réagir sur ses éléments.
+export const partageLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: {
+    error: 'Trop de requêtes sur ce lien. Réessayez dans quelques minutes.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Limiteur dédié à l'authentification (connexion + inscription).
 // Protège contre le bourrage d'identifiants (credential stuffing) et le spam
 // de comptes : 10 tentatives max par fenêtre de 15 min et par IP.

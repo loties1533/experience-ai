@@ -20,6 +20,7 @@ import { openapiSpec } from './docs/openapi.js';
 import authRoutes from './routes/auth.js';
 import photosRoutes from './routes/photos.js';
 import parcoursRoutes from './routes/parcours.js';
+import partageRoutes from './routes/partage.js';
 
 // ---- Fail-fast : variables critiques obligatoires ----
 // Si JWT_SECRET est absent, jwt.sign/verify échouera silencieusement à l'exécution.
@@ -82,6 +83,7 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use('/api/auth', authRoutes);
 app.use('/api/photos', photosRoutes);
 app.use('/api/parcours', parcoursRoutes);
+app.use('/api/partage', partageRoutes);
 
 // Healthcheck pour s'assurer que le backend tourne
 app.get('/api/health', (req, res) => {
