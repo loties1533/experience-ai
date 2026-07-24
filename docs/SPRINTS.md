@@ -237,6 +237,8 @@
 - 220 tests verts, typecheck serveur et client OK, lint sans erreur.
 
 ### Revue R8 — le partage au groupe (24/07)
+
+> Livré par la [PR #1](https://github.com/loties1533/experience-ai/pull/1).
 - **Le produit n'est plus solo.** L'organisateur constitue son groupe (prénom +
   rôle), choisit la visibilité, et obtient un lien à envoyer à chacun. Le
   porteur du lien consulte le parcours et dit ce qu'il en pense ; l'organisateur
@@ -274,6 +276,8 @@
 
 ### Revue R6c — la recette manuelle, et ce qu'elle a trouvé (24/07)
 
+> Livré par la [PR #3](https://github.com/loties1533/experience-ai/pull/3).
+
 Première recette **dans le navigateur** (les précédentes passaient par l'API) :
 inscription, dialogue, génération, modification. Trois défauts, dont un bloquant.
 
@@ -301,6 +305,8 @@ inscription, dialogue, génération, modification. Trois défauts, dont un bloqu
   Le code est en cause nulle part — c'est la qualité du prompt d'intake.
 
 ### Revue R6d — de vrais lieux, et le cache (24/07)
+
+> Livré par la [PR #4](https://github.com/loties1533/experience-ai/pull/4) — avec le type `sortie` et l'envie préservée à la connexion.
 
 La recette avait sorti « Bar à cocktails réputé du centre » : un nom plausible,
 vérifiable nulle part. Sur un produit dont la valeur est la **cohérence avec un
@@ -394,6 +400,8 @@ front-end → intégration continue → déploiement.
 ---
 
 ## Revues de sprint
+
+> Chaque revue porte le lien de la **PR** qui l'a livrée : le sprint dit *pourquoi*, la PR montre *quoi*. On ne crée jamais de nouveau document — on met celui-ci à jour.
 
 À la fin de chaque sprint, je confrontais l'incrément livré à l'objectif fixé.
 

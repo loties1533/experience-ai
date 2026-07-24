@@ -70,7 +70,7 @@ tests verts · typecheck OK · entrées validées · aucun code mort · petit di
 
 ## Branches, PR et documentation (règles imposées)
 - Chaque modification se fait sur une **branche dédiée**, jamais sur `main`.
-- Elle s'explique dans une **PR détaillée** (le pourquoi, pas le quoi) + le sprint.
+- Elle s'explique dans une **PR détaillée** (le pourquoi, pas le quoi) + une revue dans `docs/SPRINTS.md`, **qui porte le lien de sa PR**.
 - **Regrouper** : une PR porte un chantier cohérent. Pas de PR pour deux lignes.
 - **Interdit de créer un nouveau document.** On s'appuie sur la doc existante ; le seul fichier qu'un sprint met à jour est `docs/SPRINTS.md`.
 - La doc de `docs/` est la **ligne directrice** : elle ne bouge pas en effet de bord d'une implémentation. Elle n'évolue que par décision explicite d'Alexis, dans sa propre branche — et seulement si le code ou un utilisateur l'exige (règle d'évolution, doc 06).
