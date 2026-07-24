@@ -49,5 +49,12 @@ tests verts · typecheck OK · entrées validées · aucun code mort · petit di
 - Petits diffs. Mettre à jour mémoire + SPRINTS au fil de l'eau.
 - Ce fichier reste **court** : il pointe vers les docs détaillés, il ne les recopie pas.
 
+## Branches, PR et documentation (règles imposées)
+- Chaque modification se fait sur une **branche dédiée**, jamais sur `main`.
+- Elle s'explique dans une **PR détaillée** (le pourquoi, pas le quoi) + le sprint.
+- **Regrouper** : une PR porte un chantier cohérent. Pas de PR pour deux lignes.
+- **Interdit de créer un nouveau document.** On s'appuie sur la doc existante ; le seul fichier qu'un sprint met à jour est `docs/SPRINTS.md`.
+- La doc de `docs/` est la **ligne directrice** : elle ne bouge pas en effet de bord d'une implémentation. Elle n'évolue que par décision explicite d'Alexis, dans sa propre branche — et seulement si le code ou un utilisateur l'exige (règle d'évolution, doc 06).
+
 ## Commits (préférence utilisateur)
 Messages naturels en français, signés au nom d'Alexis. **Aucune trace d'IA** (pas de `Co-Authored-By`, pas d'emoji IA).
