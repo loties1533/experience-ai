@@ -40,7 +40,7 @@
 - [x] Front basculé sur les routes `parcours` (R6a, 23/07)
 - [x] **Suppression** du modèle Pack (routes trips/votes, services pack, tables) — jamais deux modèles qui cohabitent
 - [ ] Cache des appels externes (maîtrise des coûts)
-- [ ] Recette manuelle de bout en bout
+- [x] Recette manuelle de bout en bout (R6c, 24/07)
 
 **R7 — Domaine complété** *(terminé le 24/07)*
 
@@ -270,6 +270,34 @@
   produit sait qui un lien désigne, pas qui le clique) ; deux avis simultanés
   sur le même parcours s'écrasent (relecture-réécriture du JSON entier) ;
   l'organisateur copie autant de liens qu'il y a de participants.
+
+### Revue R6c — la recette manuelle, et ce qu'elle a trouvé (24/07)
+
+Première recette **dans le navigateur** (les précédentes passaient par l'API) :
+inscription, dialogue, génération, modification. Trois défauts, dont un bloquant.
+
+- **Bloquant — la génération échouait 3 fois sur 4.** Le domaine exigeait que
+  *tout* élément tombe entre les dates du parcours. Or un hébergement se rend le
+  lendemain matin du dernier jour (`04/09 14:00 → 07/09 11:00`) et un club ferme
+  après minuit : ces deux cas, parfaitement justes, rendaient le parcours
+  « incohérent ». Désormais seul le **début** est contrôlé ; la fin peut déborder.
+  Mesuré avant/après sur le même brief : **1/4 → 4/4**.
+- **« Du 4 au 6 septembre » excluait le 6.** Le modèle rend des dates à minuit,
+  si bien qu'une fin au 6 à 00:00 mettait le brunch du dimanche hors bornes. Une
+  fin posée à minuit est maintenant étendue à la fin de sa journée ; une fin qui
+  porte une heure explicite est respectée telle quelle.
+- **L'envie saisie est perdue à la connexion.** Un visiteur non connecté écrit
+  son envie, clique, et se retrouve sur la page de connexion — texte effacé, sans
+  explication. C'est la promesse du produit qui s'évapore au premier geste.
+- **Les sorties sont typées « temps libre ».** Sur 2 générations sur 4, la virée
+  bars et la boîte de nuit — les temps forts d'un EVG — portaient le type
+  `temps_libre`. Le domaine a six types et aucun ne désigne une sortie : le
+  modèle range donc le club avec les pauses café. L'interface affichera le
+  sommet de la soirée comme un temps mort. **Constat, pas décision** : ajouter un
+  type touche au modèle, cela relève d'un arbitrage explicite.
+- Variance d'extraction observée : sur une phrase mêlant plusieurs idées, une
+  contrainte négative (« pas de paintball ») a été perdue au profit d'une autre.
+  Le code est en cause nulle part — c'est la qualité du prompt d'intake.
 
 ---
 

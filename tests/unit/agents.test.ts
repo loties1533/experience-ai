@@ -10,6 +10,7 @@ vi.mock('../../server/services/claude/core.js', async (importOriginal) => {
 const { callAI } = await import('../../server/services/claude/core.js');
 const { champsManquants, reformulerBrief, BriefSchema } = await import('../../server/agents/brief.js');
 const { avancerDialogue } = await import('../../server/agents/intake.js');
+const { normaliserDatesBrief } = await import('../../server/agents/brief.js');
 const { genererParcours } = await import('../../server/agents/generation.js');
 const { interpreterDemande } = await import('../../server/agents/modification.js');
 const { ParcoursSchema } = await import('../../server/domaine/parcours/index.js');
@@ -238,5 +239,42 @@ describe('extraction du brief tolérante aux champs invalides', () => {
 
     expect(etape.brief.intention).toBe('vivre la NBA');
     expect(etape.brief.lieux).toEqual(['Boston']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// « Du 4 au 6 septembre » comprend le 6 en entier.
+// Observé en recette navigateur : le brunch du dimanche tombait hors des
+// bornes (fin posée au 6 à 00:00) et la génération échouait en 502
+// « parcours incohérent », sans que rien ne soit réellement incohérent.
+// ---------------------------------------------------------------------------
+describe('les dates données en jours couvrent le dernier jour', () => {
+  it('étend une fin posée à minuit jusqu’à la fin de sa journée', () => {
+    const brief = normaliserDatesBrief({
+      dates: { debut: '2026-09-04T00:00:00.000Z', fin: '2026-09-06T00:00:00.000Z' },
+    });
+    expect(brief.dates?.fin).toBe('2026-09-06T23:59:59.999Z');
+    // Le début n'est pas touché : il tombe déjà au bon endroit.
+    expect(brief.dates?.debut).toBe('2026-09-04T00:00:00.000Z');
+  });
+
+  it('respecte une fin qui porte une heure explicite', () => {
+    const brief = normaliserDatesBrief({
+      dates: { debut: '2026-09-04T10:00:00.000Z', fin: '2026-09-06T18:30:00.000Z' },
+    });
+    expect(brief.dates?.fin).toBe('2026-09-06T18:30:00.000Z');
+  });
+
+  it('laisse passer un brief sans dates', () => {
+    expect(normaliserDatesBrief({ intention: 'une soirée' }).dates).toBeUndefined();
+  });
+
+  it('rend un brunch de dernier jour valide aux yeux du domaine', () => {
+    const brief = normaliserDatesBrief({
+      dates: { debut: '2026-09-04T00:00:00.000Z', fin: '2026-09-06T00:00:00.000Z' },
+    });
+    const brunch = { debut: '2026-09-06T12:00:00.000Z', fin: '2026-09-06T14:00:00.000Z' };
+    // Sans normalisation, le brunch du dimanche sortait des bornes.
+    expect(Date.parse(brunch.fin)).toBeLessThanOrEqual(Date.parse(brief.dates!.fin));
   });
 });

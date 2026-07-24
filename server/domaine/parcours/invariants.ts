@@ -263,16 +263,26 @@ export function validerParcours(parcours: Parcours): string[] {
     }
   }
 
-  // Quand le parcours porte de vraies dates, rien ne se passe en dehors.
+  // Quand le parcours porte de vraies dates, rien ne COMMENCE en dehors.
+  //
+  // On ne contrôle que le début, jamais la fin : un hébergement se rend le
+  // lendemain matin du dernier jour, et un club ferme après minuit. Exiger que
+  // la fin tombe aussi dans les bornes rendait ces deux cas impossibles — la
+  // génération échouait alors sur trois parcours sur quatre en « parcours
+  // incohérent », alors que le parcours était juste (constaté en recette).
   const dates = parcours.contexte.dates;
   if (dates) {
+    const commenceDansLesBornes = (plage: PlageHoraire): boolean =>
+      Date.parse(plage.debut) >= Date.parse(dates.debut) &&
+      Date.parse(plage.debut) <= Date.parse(dates.fin);
+
     for (const moment of parcours.timeline) {
-      if (moment.plage && !plageContenue(moment.plage, dates)) {
-        erreurs.push(`le moment « ${moment.titre} » se situe hors des dates du parcours`);
+      if (moment.plage && !commenceDansLesBornes(moment.plage)) {
+        erreurs.push(`le moment « ${moment.titre} » commence hors des dates du parcours`);
       }
       for (const element of moment.elements) {
-        if (element.plage && !plageContenue(element.plage, dates)) {
-          erreurs.push(`« ${element.nom} » se situe hors des dates du parcours`);
+        if (element.plage && !commenceDansLesBornes(element.plage)) {
+          erreurs.push(`« ${element.nom} » commence hors des dates du parcours`);
         }
       }
     }

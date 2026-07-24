@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import { callAI, parseJSON, sanitizeInput } from '../services/claude/core.js';
 import { AppError } from '../lib/AppError.js';
-import { BriefPartielSchema, champsManquants, reformulerBrief, BriefSchema, type BriefPartiel } from './brief.js';
+import {
+  BriefPartielSchema,
+  champsManquants,
+  reformulerBrief,
+  normaliserDatesBrief,
+  BriefSchema,
+  type BriefPartiel,
+} from './brief.js';
 
 // Agent d'intake : mène le dialogue d'entrée, extrait le brief au fil des
 // réponses et ne pose QUE les questions nécessaires. Il ne génère rien —
@@ -71,7 +78,10 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
     throw new AppError('Je n’ai pas réussi à comprendre, pouvez-vous reformuler ?', 502);
   }
 
-  const brief: BriefPartiel = { ...briefActuel, ...extraireChampsValides(sortie.data.brief) };
+  const brief: BriefPartiel = normaliserDatesBrief({
+    ...briefActuel,
+    ...extraireChampsValides(sortie.data.brief),
+  });
 
   const complet = BriefSchema.safeParse(brief);
   if (complet.success) {
