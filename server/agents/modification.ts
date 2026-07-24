@@ -2,17 +2,21 @@ import { randomUUID } from 'node:crypto';
 import { callAI, parseJSON, sanitizeInput } from '../services/claude/core.js';
 import { AppError } from '../lib/AppError.js';
 import {
-  DemandeModificationSchema,
+  DemandeSurElementSchema,
   alternativesProposables,
-  type DemandeModification,
+  type DemandeSurElement,
   type Parcours,
 } from '../domaine/parcours/index.js';
 
 // L'AGENT MODIFICATION (IA n°2) : il traduit une phrase (« change le resto du
 // jour 3 ») en UNE demande ciblée que le domaine sait appliquer. Il ne peut
 // PAS régénérer le parcours : son vocabulaire de sortie, c'est
-// DemandeModificationSchema, rien d'autre. Le domaine reste seule autorité
+// DemandeSurElementSchema, rien d'autre. Le domaine reste seule autorité
 // pour appliquer (ou refuser) la demande.
+//
+// Ce vocabulaire s'arrête volontairement aux éléments : partager au groupe,
+// changer la visibilité ou réagir sont des gestes délibérés de l'utilisateur,
+// jamais quelque chose qu'une phrase mal comprise pourrait déclencher.
 
 const SYSTEM_MODIFICATION = `Tu traduis la demande d'un utilisateur en UNE modification ciblée de son parcours.
 Réponds UNIQUEMENT en JSON valide, l'une de ces cinq formes :
@@ -56,14 +60,14 @@ function resumerPourLLM(parcours: Parcours): string {
 export async function interpreterDemande(
   parcours: Parcours,
   phrase: string
-): Promise<DemandeModification> {
+): Promise<DemandeSurElement> {
   const prompt = `Intention du parcours : ${parcours.intention.texte}
 ${resumerPourLLM(parcours)}
 
 Demande de l'utilisateur : "${sanitizeInput(phrase)}"`;
 
   const brut = await callAI(prompt, SYSTEM_MODIFICATION, 'onboarding');
-  const sortie = DemandeModificationSchema.safeParse(parseJSON(brut));
+  const sortie = DemandeSurElementSchema.safeParse(parseJSON(brut));
   if (!sortie.success) {
     throw new AppError('Je n’ai pas compris cette modification, pouvez-vous préciser ?', 502);
   }

@@ -81,6 +81,20 @@ export const ContrainteSchema = z.discriminatedUnion('nature', [
   }),
 ]);
 
+// L'avis d'un participant sur un élément. Ce n'est PAS un vote qui décide :
+// il éclaire l'organisateur, qui tranche (invariant 8). Le vote formel outillé
+// reste en V2 (doc 07).
+export const AvisSchema = z.enum(['pour', 'contre']);
+
+export const ReactionSchema = z.object({
+  // On stocke l'id du participant, jamais son nom : le nom se résout contre
+  // `participants` et suit ses corrections. Un participant = un avis par
+  // élément (le dernier remplace le précédent).
+  participantId: z.string().min(1),
+  avis: AvisSchema,
+  le: z.iso.datetime(),
+});
+
 export const AlternativeSchema = z.object({
   id: z.string().min(1),
   nom: z.string().min(1),
@@ -111,6 +125,7 @@ export const ElementSchema = z.object({
   alternatives: z.array(AlternativeSchema).default([]),
   contraintes: z.array(ContrainteSchema).default([]),
   reservation: ReservationSchema.optional(),
+  reactions: z.array(ReactionSchema).default([]),
 });
 
 export const MomentSchema = z.object({
@@ -148,6 +163,8 @@ export type Participant = z.infer<typeof ParticipantSchema>;
 export type Budget = z.infer<typeof BudgetSchema>;
 export type PlageHoraire = z.infer<typeof PlageHoraireSchema>;
 export type Contrainte = z.infer<typeof ContrainteSchema>;
+export type Avis = z.infer<typeof AvisSchema>;
+export type Reaction = z.infer<typeof ReactionSchema>;
 export type Alternative = z.infer<typeof AlternativeSchema>;
 export type Reservation = z.infer<typeof ReservationSchema>;
 export type Element = z.infer<typeof ElementSchema>;
