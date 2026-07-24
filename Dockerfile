@@ -1,5 +1,5 @@
 # =============================================
-# TripGenie — Dockerfile Backend (Express / Node.js)
+# Experience AI — Dockerfile Backend (Express / Node.js)
 # =============================================
 #
 # NOTE — Docker n'est PAS utilisé en production.
@@ -9,7 +9,7 @@
 # Dockerfile. Ce fichier n'a donc AUCUN effet sur le déploiement Render.
 #
 # Pourquoi le conserver alors ?
-#   - Portabilité : permet de lancer TripGenie sur n'importe quelle plateforme
+#   - Portabilité : permet de lancer Experience AI sur n'importe quelle plateforme
 #     de conteneurs (Kubernetes, ECS, Fly.io...) sans réécriture.
 #   - Reproductibilité locale : `docker build` fige l'environnement et met fin
 #     au « ça marche sur ma machine ».

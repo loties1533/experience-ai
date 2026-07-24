@@ -1,28 +1,57 @@
 # =============================================
-# TripGenie — Docker Compose
-# 1 seul container : Express sert l'API + React
+# Experience AI — Docker Compose
+# 2 services : la base PostgreSQL + l'app (Express sert l'API et le front React)
 # =============================================
 #
 # Usage :
-#   docker-compose up --build     ← premier lancement
-#   docker-compose up             ← lancements suivants
-#   docker-compose down           ← arrêt
+#   docker compose up --build     ← premier lancement
+#   docker compose up             ← lancements suivants
+#   docker compose up db          ← la base seule (dev local avec `npm run dev`)
+#   docker compose down           ← arrêt
 #
-# App → http://localhost:3000
+# App  → http://localhost:3000
+# Base → localhost:5434 (port décalé exprès : 5432/5433 peuvent héberger
+#        d'autres projets, dont TripGenie. Aucune base n'est partagée.)
 # =============================================
 
 services:
+
+  db:
+    image: postgres:16
+    container_name: experience-ai-db
+    ports:
+      - "5434:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=experience_ai
+    volumes:
+      - experience-ai-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d experience_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   server:
     build:
       context: .
       dockerfile: Dockerfile
-    image: tripgenie:latest
-    container_name: tripgenie
+    image: experience-ai:latest
+    container_name: experience-ai
     ports:
       - "3000:3000"
     env_file:
-      - .env                        # JWT_SECRET, DATABASE_URL, GEMINI_API_KEY...
+      - .env                        # JWT_SECRET, ANTHROPIC_API_KEY, clés externes…
     environment:
       - NODE_ENV=production
+      # Depuis le réseau Docker on joint la base par son nom de service, pas localhost.
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/experience_ai?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  experience-ai-data:
