@@ -17,7 +17,7 @@
 - Jusqu'où pousser la **fraîcheur des données** (horaires, dispos, prix) ?
 
 ## Business (les questions qui décident de la survie)
-- ~~Qui paie ?~~ → tranché pour le MVP : [ADR-0008](decisions/ADR-0008.md) (B2C one-shot → B2B agences). À revalider au premier contact marché.
-- ~~Premier périmètre ?~~ → tranché pour le MVP : [ADR-0009](decisions/ADR-0009.md) (EVG/EVJF, France, 2-3 villes).
+- **Qui paie, et pour quoi ?** B2C · B2B · white-label ? (non tranché)
+- **Premier périmètre de validation** : quel type de parcours, quelle ville ? (non tranché — l'EVG n'est qu'un candidat parmi d'autres)
 - Comment un produit utilisé 1-2 fois/an devient-il **récurrent** ? (le levier inspiration reste à prouver)
 - Quelles 2-3 villes exactes au lancement ?

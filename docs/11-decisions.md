@@ -3,7 +3,7 @@
 Les décisions structurantes sont des **ADR** (Architecture Decision Records), une par fichier, dans [`decisions/`](decisions/).
 Chaque ADR tient sur une page : **Contexte · Décision · Alternatives envisagées · Pourquoi · Conséquences.**
 
-**À partir de l'ADR-0009, trois champs supplémentaires sont obligatoires :**
+**À partir de l'ADR-0008, trois champs supplémentaires sont obligatoires :**
 - **Hypothèse testée** — qu'est-ce que cette décision parie ?
 - **Condition d'invalidation** — qu'est-ce qui prouverait qu'on a tort ?
 - **Preuve de confirmation** — preuve *utilisateur* (interviews, tests, usage) ou preuve *technique* (le code révèle une impossibilité). Rien d'autre — une décision sans preuve possible n'est pas une décision, c'est une opinion.
@@ -19,5 +19,3 @@ Chaque ADR tient sur une page : **Contexte · Décision · Alternatives envisag�
 | [0005](decisions/ADR-0005.md) | Le contexte est un objet de premier niveau | 2026-07-23 | Accepté |
 | [0006](decisions/ADR-0006.md) | Le repo est la source de vérité (docs as code) | 2026-07-23 | Accepté |
 | [0007](decisions/ADR-0007.md) | Le parcours se persiste comme un agrégat (une table, contenu JSON validé) | 2026-07-23 | Accepté |
-| [0008](decisions/ADR-0008.md) | B2C one-shot pour valider → B2B agences en cible | 2026-07-23 | Accepted for MVP — revisit après validation marché |
-| [0009](decisions/ADR-0009.md) | EVG/EVJF = premier vertical de validation (pas le cœur) | 2026-07-23 | Accepted for MVP — revisit après validation marché |
