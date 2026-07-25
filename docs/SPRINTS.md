@@ -395,6 +395,8 @@ conservés au sprint R6b n'étaient appelés par personne.
 
 ### Revue R6g — durcir le cache, retirer le code mort (25/07)
 
+> Livré par la [PR #9](https://github.com/loties1533/experience-ai/pull/9).
+>
 > Le tableau affichait encore R6 « en cours » alors que toutes ses cartes
 > étaient cochées depuis le 24/07 : un statut oublié, pas un travail en retard.
 > Statut corrigé. En le vérifiant, deux angles morts méritaient d'être fermés.
