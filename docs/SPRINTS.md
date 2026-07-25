@@ -460,6 +460,44 @@ conservés au sprint R6b n'étaient appelés par personne.
   fashion + police manuscrite) ne correspond pas au vrai front (orange/teal/navy) —
   doc design périmée, jamais suivie. Sort à trancher.
 
+### Finition front (suite) & design system remis en conformité (25/07)
+
+> Livré par les PR [#12](https://github.com/loties1533/experience-ai/pull/12)
+> et [#13](https://github.com/loties1533/experience-ai/pull/13).
+
+- **PR #12** — même correctif d'anneau de focus, appliqué aux 3 champs restés
+  hors des pages déjà auditées : la demande de modification (détail du
+  parcours) et les deux champs du panneau de partage (participant, rôle).
+  Liste **Mes parcours** auditée : rien à corriger.
+- **PR #13** — `MASTER.md` était périmé, pas ignoré : enquête git montrant
+  qu'un mauvais cadrage (« Road Trip Planner ») avait produit un thème rose
+  jamais implémenté, quand la vraie palette « aventure » (orange/teal/navy)
+  venait d'un second passage de la skill, celui-là suivi. Fichier réécrit à
+  partir du code réel (`tailwind.config.js` + `index.css`) : le code reste la
+  source de vérité, le doc ne fait que le refléter.
+
+### Génération : dates sans fuseau, échec systématique (25/07)
+
+> Livré par la [PR #14](https://github.com/loties1533/experience-ai/pull/14).
+> Recette live (voyage NBA multi-villes), clé Anthropic avec du crédit — donc
+> un bug distinct de la carte #10 (indisponibilité), révélé seulement une fois
+> une vraie génération tentée.
+
+- **Chaque génération avec horaires échouait en 502**, peu importe la clé. Le
+  LLM écrit systématiquement un ISO sans le suffixe `Z`
+  (`"2025-01-15T08:00:00"`), que `z.iso.datetime()` rejette seul. Diagnostic
+  posé en direct (log temporaire, retiré) : confirmé sur les 40 plages
+  horaires d'une même génération.
+- **`PlageHoraireSchema` corrige au lieu d'espérer.** Un `z.preprocess` ajoute
+  le `Z` manquant avant validation si le format le permet ; un ISO déjà
+  correct n'est pas touché, un format réellement invalide reste rejeté. Même
+  principe que pour les ids ou les refs inventées : le domaine ne fait jamais
+  confiance à la sortie du LLM, il la corrige.
+- Prompt de génération durci en complément (jamais de prose hors JSON).
+- 2 tests ajoutés, 299 verts. **Vérifié de bout en bout au navigateur** : un
+  vrai parcours NBA (Los Angeles / New York / Miami / Chicago) se génère et
+  s'affiche, avec hébergement et justifications.
+
 ---
 
 # TripGenie — Suivi Agile historique (sprints, revues et rétrospectives)
