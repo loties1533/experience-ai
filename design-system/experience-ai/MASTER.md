@@ -1,225 +1,126 @@
-# Design System Master File
+# Design System — Experience AI
 
-> **LOGIC:** When building a specific page, first check `design-system/pages/[page-name].md`.
-> If that file exists, its rules **override** this Master file.
-> If not, strictly follow the rules below.
+> **Source de vérité : le code.** Ce fichier documente le design **réellement
+> implémenté** dans `client-react/tailwind.config.js` (couleurs, ombres, polices)
+> et `client-react/src/index.css` (classes composant, animations). En cas de
+> doute, le code fait foi — pas ce document. Il est réécrit quand le code change,
+> jamais l'inverse.
+>
+> *Historique : une première version générée le 23/07 décrivait un thème « rose
+> fashion + police Caveat » (mauvais cadrage « Road Trip Planner »), jamais
+> implémenté. Le vrai front a été construit sur la palette « aventure » ci-dessous.
+> Ce fichier a été remis en conformité le 25/07.*
 
----
-
-**Project:** Experience AI
-**Generated:** 2026-07-23 22:19:55
-**Category:** Road Trip Planner
-**Design Dials:** Variance 4/10 (Balanced / Modern) | Motion 3/10 (Subtle)
-
----
-
-## Global Rules
-
-### Color Palette
-
-| Role | Hex | CSS Variable |
-|------|-----|--------------|
-| Primary | `#BE185D` | `--color-primary` |
-| On Primary | `#FFFFFF` | `--color-on-primary` |
-| Secondary | `#EC4899` | `--color-secondary` |
-| Accent/CTA | `#D97706` | `--color-accent` |
-| Background | `#FDF2F8` | `--color-background` |
-| Foreground | `#0F172A` | `--color-foreground` |
-| Muted | `#FBF1F5` | `--color-muted` |
-| Border | `#F7E3EB` | `--color-border` |
-| Destructive | `#DC2626` | `--color-destructive` |
-| Ring | `#BE185D` | `--color-ring` |
-
-**Color Notes:** Fashion rose + gold accent
-
-### Typography
-
-- **Heading Font:** Caveat
-- **Body Font:** Quicksand
-- **Mood:** handwritten, personal, friendly, casual, warm, charming
-- **Google Fonts:** [Caveat + Quicksand](https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Quicksand:wght@300;400;500;600;700&display=swap)
-
-**CSS Import:**
-```css
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Quicksand:wght@300;400;500;600;700&display=swap');
-```
-
-### Spacing Variables
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--space-xs` | `4px` / `0.25rem` | Tight gaps |
-| `--space-sm` | `8px` / `0.5rem` | Icon gaps, inline spacing |
-| `--space-md` | `16px` / `1rem` | Standard padding |
-| `--space-lg` | `24px` / `1.5rem` | Section padding |
-| `--space-xl` | `32px` / `2rem` | Large gaps |
-| `--space-2xl` | `48px` / `3rem` | Section margins |
-| `--space-3xl` | `64px` / `4rem` | Hero padding |
-
-### Shadow Depths
-
-| Level | Value | Usage |
-|-------|-------|-------|
-| `--shadow-sm` | `0 1px 2px rgba(0,0,0,0.05)` | Subtle lift |
-| `--shadow-md` | `0 4px 6px rgba(0,0,0,0.1)` | Cards, buttons |
-| `--shadow-lg` | `0 10px 15px rgba(0,0,0,0.1)` | Modals, dropdowns |
-| `--shadow-xl` | `0 20px 25px rgba(0,0,0,0.15)` | Hero images, featured cards |
+**Projet :** Experience AI — moteur de parcours personnalisés (une envie + un contexte → un parcours de moments)
+**Ton :** éditorial, chaleureux, sobre. Variance faible (3/10), mouvement discret (2/10).
+**Stack :** React + Vite + Tailwind (pas de framer-motion ni GSAP — animations en CSS).
 
 ---
 
-## Component Specs
+## Palette « aventure »
 
-### Buttons
+Définie dans `tailwind.config.js`. Orange coucher de soleil + teal de carte, sur crème, texte navy.
+
+| Rôle | Classe Tailwind | Hex |
+|------|-----------------|-----|
+| Primaire (CTA, accent) | `soleil` | `#EA580C` |
+| Primaire — clair | `soleil-light` | `#FED7AA` |
+| Primaire — foncé (hover) | `soleil-dark` | `#C2410C` |
+| Secondaire | `lagon` | `#0891B2` |
+| Secondaire — clair | `lagon-light` | `#CFFAFE` |
+| Secondaire — foncé | `lagon-dark` | `#0E7490` |
+| Fond / surfaces claires | `sable` | `#FFF7ED` |
+| Surface un ton plus bas | `sable-dark` | `#FDF0E3` |
+| Texte principal | `encre` | `#0F172A` |
+| Texte — atténué | `encre-light` | `#334155` |
+| Texte secondaire | `brume` | `#64748B` |
+| Sémantique — succès | `sauge` | `#16A34A` |
+| Sémantique — danger | `corail` | `#DC2626` |
+
+**Fond de l'app :** classe `.aurora` — `#FFF7ED` + deux nappes radiales très diluées (soleil 12 %, lagon 10 %), animées très lentement. Coupée si `prefers-reduced-motion`.
+
+---
+
+## Typographie
+
+Importées dans `index.css` depuis Google Fonts.
+
+- **Titres (`font-heading`) :** Poppins — 400 / 500 / 600 / 700
+- **Corps (`font-sans`) :** Open Sans — 300 / 400 / 500 / 600 / 700
+- Titres en `font-bold` ; l'accent d'un titre se met en `text-soleil` (ex. « Qu'as-tu envie de **vivre** ? »).
 
 ```css
-/* Primary Button */
-.btn-primary {
-  background: #D97706;
-  color: white;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-/* Secondary Button */
-.btn-secondary {
-  background: transparent;
-  color: #BE185D;
-  border: 2px solid #BE185D;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-```
-
-### Cards
-
-```css
-.card {
-  background: #FDF2F8;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: var(--shadow-md);
-  transition: all 200ms ease;
-  cursor: pointer;
-}
-
-.card:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
-}
-```
-
-### Inputs
-
-```css
-.input {
-  padding: 12px 16px;
-  border: 1px solid #E2E8F0;
-  border-radius: 8px;
-  font-size: 16px;
-  transition: border-color 200ms ease;
-}
-
-.input:focus {
-  border-color: #BE185D;
-  outline: none;
-  box-shadow: 0 0 0 3px #BE185D20;
-}
-```
-
-### Modals
-
-```css
-.modal-overlay {
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-}
-
-.modal {
-  background: white;
-  border-radius: 16px;
-  padding: 32px;
-  box-shadow: var(--shadow-xl);
-  max-width: 500px;
-  width: 90%;
-}
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
 ```
 
 ---
 
-## Style Guidelines
+## Rayons & ombres
 
-**Style:** Glassmorphism
-
-**Keywords:** Frosted glass, transparent, blurred background, layered, vibrant background, light source, depth, multi-layer
-
-**Best For:** Modern SaaS, financial dashboards, high-end corporate, lifestyle apps, modal overlays, navigation
-
-**Key Effects:** Backdrop blur (10-20px), subtle border (1px solid rgba white 0.2), light reflection, Z-depth
-
-### Page Pattern
-
-**Pattern Name:** Immersive/Interactive Experience
-
-- **Conversion Strategy:** 40% higher engagement. Performance trade-off. Provide skip option. Mobile fallback essential.
-- **CTA Placement:** After interaction complete + Skip option for impatient users
-- **Section Order:** 1. Full-screen interactive element, 2. Guided product tour, 3. Key benefits revealed, 4. CTA after completion
+- **Rayon standard :** `rounded-xl` (0.75rem) pour cartes, champs, boutons. `rounded-full` pour chips et badges.
+- **Ombres** (`tailwind.config.js`) :
+  - `shadow-card` → `0 4px 24px rgba(15,23,42,0.06)` — cartes au repos
+  - `shadow-card-lg` → `0 12px 48px rgba(15,23,42,0.12)` — carte de connexion, survol de liste
 
 ---
 
-## Motion
+## Classes composant (dans `index.css`)
 
-**Scroll Reveal** (Subtle) — Trigger: scroll (viewport enter) | Duration: 300-400ms | Easing: `power1.out`
+Toujours réutiliser ces classes plutôt que de recopier les utilitaires — c'est là que vivent la cohérence et l'accessibilité.
 
-```js
-gsap.from(el, { opacity: 0, y: 12, duration: 0.35, ease: 'power1.out', scrollTrigger: { trigger: el, start: 'top 90%', toggleActions: 'play none none reverse' } });
-```
+| Classe | Usage |
+|--------|-------|
+| `.carte` | surface blanche, bordure `encre/10`, `rounded-xl`, `shadow-card` |
+| `.champ` | champ de saisie — bordure + **anneau de focus visible** (`focus:ring-2 focus:ring-soleil/25`) |
+| `.btn-primaire` | CTA plein `soleil` ; enfoncement à l'appui (`active:scale`, coupé en reduced-motion) |
+| `.btn-secondaire` | bouton bordé, hover `lagon` |
+| `.chip` | choix rapide arrondi ; micro-élévation au survol, enfoncement à l'appui |
+| `.bulle-produit` / `.bulle-utilisateur` | bulles du dialogue (produit à gauche, utilisateur à droite en `soleil`) |
+| `.badge-accepte` / `.badge-propose` / `.badge-a-remplacer` | statut d'un élément (sauge / lagon / soleil) |
+| `.skeleton` | bloc de chargement (shimmer, coupé en reduced-motion) |
 
-**Framework notes:** Requires the ScrollTrigger plugin registered once via gsap.registerPlugin(ScrollTrigger)
-
-- ✅ Keep the y offset small (8-16px) so it reads as a fade, not a slide
-- ❌ Don't reveal below-the-fold content needed for SEO/crawlers as invisible-by-default without a no-JS fallback
-- ⚡ toggleActions 'play none none reverse' avoids re-triggering on every scroll direction change
-
----
-
-## Anti-Patterns (Do NOT Use)
-
-- ❌ Inconsistent styling
-- ❌ Poor contrast ratios
-
-### Additional Forbidden Patterns
-
-- ❌ **Emojis as icons** — Use SVG icons (Heroicons, Lucide, Simple Icons)
-- ❌ **Missing cursor:pointer** — All clickable elements must have cursor:pointer
-- ❌ **Layout-shifting hovers** — Avoid scale transforms that shift layout
-- ❌ **Low contrast text** — Maintain 4.5:1 minimum contrast ratio
-- ❌ **Instant state changes** — Always use transitions (150-300ms)
-- ❌ **Invisible focus states** — Focus states must be visible for a11y
+**Champs :** un champ NE fait jamais `focus:outline-none` seul — l'anneau de focus (`.champ`, ou `focus:ring-2 focus:ring-soleil/25` en inline pour les champs `flex-1`) doit rester visible au clavier.
 
 ---
 
-## Pre-Delivery Checklist
+## Mouvement
 
-Before delivering any UI code, verify:
+Tout en **CSS**, aucune librairie d'animation. Durées 150–300 ms. Coupé sous `@media (prefers-reduced-motion: reduce)`.
 
-- [ ] No emojis used as icons (use SVG instead)
-- [ ] All icons from consistent icon set (Heroicons/Lucide)
-- [ ] `cursor-pointer` on all clickable elements
-- [ ] Hover states with smooth transitions (150-300ms)
-- [ ] Light mode: text contrast 4.5:1 minimum
-- [ ] Focus states visible for keyboard navigation
-- [ ] `prefers-reduced-motion` respected
-- [ ] Responsive: 375px, 768px, 1024px, 1440px
-- [ ] No content hidden behind fixed navbars
-- [ ] No horizontal scroll on mobile
+- `.aurora` — nappe de fond lente (12 s)
+- `.msg-enter` — apparition d'un message (fondu + 8px, 0.25 s)
+- `.typing-dot` — points « en train d'écrire »
+- `.skeleton` — shimmer de chargement
+- `active:scale-[0.97]` (via `motion-safe:`) — retour d'appui des boutons/chips
+
+---
+
+## Icônes
+
+**SVG inline uniquement** (tracé façon Lucide : `stroke="currentColor"`, `stroke-width` 2–2.5, `stroke-linecap="round"`), `aria-hidden="true"` quand décoratives. **Jamais d'emoji comme icône.**
+
+---
+
+## Anti-patterns (à ne pas faire)
+
+- ❌ Emoji en guise d'icône (→ SVG)
+- ❌ `focus:outline-none` sans anneau de focus visible (accessibilité clavier)
+- ❌ Recopier les utilitaires d'un composant existant au lieu de sa classe `.carte` / `.champ` / `.btn-*`
+- ❌ Couleurs en dur dans le JSX au lieu des tokens (`soleil`, `encre`, `brume`…)
+- ❌ Changement d'état instantané sans transition (150–300 ms)
+- ❌ Animation non coupée sous `prefers-reduced-motion`
+- ❌ Réintroduire un autre thème (le « rose fashion » de la v0) — la palette est « aventure »
+
+---
+
+## Checklist avant livraison d'une UI
+
+- [ ] Icônes en SVG, jamais d'emoji
+- [ ] `cursor-pointer` sur tout élément cliquable
+- [ ] Focus clavier visible (anneau) sur champs et boutons
+- [ ] Contraste texte ≥ 4.5:1
+- [ ] Transitions 150–300 ms sur les états
+- [ ] `prefers-reduced-motion` respecté
+- [ ] Responsive vérifié (375 / 768 / 1024 px), pas de scroll horizontal
+- [ ] Cibles tactiles ≥ 44×44px
+- [ ] Tokens de la palette utilisés (pas de hex en dur)
