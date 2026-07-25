@@ -30,3 +30,21 @@
 - Accompagnement **pendant** le parcours · feedback **après**.
 
 > Hors périmètre (au moins au début) : réservation automatique, paiement, couverture mondiale.
+
+---
+
+## Le thème — clarification du concept
+
+Un besoin de vocabulaire est apparu à l'usage : on parle de « parcours EVG », « parcours surf », « parcours NBA ». Ce document fixe ce qu'est — et ce que n'est **pas** — un *thème*, avant toute décision d'implémentation.
+
+**Ce qu'est un thème.** L'univers autour duquel un parcours prend sa cohérence : l'EVG, le basket, le surf, le festival techno, l'anniversaire de couple, le séminaire. C'est ce qui fait qu'un élément « a sa place » ou non — un club à 2h du matin sert un EVG, pas un week-end en famille. Le thème est ce qui manquait à TripGenie : générique, il produisait des assemblages sans âme ; Experience AI tient sa cohérence du thème.
+
+**Ce qu'un thème n'est PAS.** Pas un « mode » à la TripGenie (`party`/`relax`/`student`), qui était une case figée pilotant un scoring pondéré. Un thème ne se choisit pas dans une liste fermée : il **émerge de l'intention** exprimée en langage naturel. « Vivre la NBA un mois » porte son thème sans qu'on le nomme.
+
+**État actuel (implicite).** Aujourd'hui, le thème n'existe **nulle part dans le domaine** — ni champ `theme`, ni liste, ni règle. Le LLM le déduit seul de l'intention et l'exprime via l'ambiance générée. Constaté en recette : « EVG à Bordeaux » → fête + sport ; « anniversaire de couple à Lyon » → romantique et intimiste, sans thème codé. **Ça fonctionne comme effet de la génération, pas comme capacité conçue.**
+
+**Question ouverte (à trancher sur preuve — règle doc 06).** Faut-il rendre le thème **explicite** ?
+- *Pour* : des règles par thème (« festival → billetterie + horaires de line-up stricts », « surf → marée/météo décisives ») pourraient fiabiliser des cas que le langage seul rate.
+- *Contre* : figer une notion de thème risque de rigidifier le modèle (retour du « mode » TripGenie) et de brider l'émergence par le langage, qui est justement la force actuelle.
+
+**Décision provisoire : le thème reste implicite** (porté par l'intention), tant qu'un cas concret — un vrai parcours qui échoue faute de thème structuré — ne prouve pas le besoin. Le jour où ce cas apparaît, il fera l'objet d'un ADR et passera le crash-test du doc 06. Voir aussi [`questions-ouvertes.md`](questions-ouvertes.md).
