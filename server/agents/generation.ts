@@ -35,10 +35,11 @@ const SYSTEM_GENERATION = `Tu construis un parcours personnalisé : un ensemble 
 AVANT D'ÉCRIRE, CHERCHE. Tu disposes d'outils qui rendent de vrais lieux, de vrais événements et la météo attendue.
 - Appelle-les d'abord, et groupe tes recherches (plusieurs outils dans le même tour) : tu as peu de tours.
 - Reprends EXACTEMENT le nom rendu par un outil, sans le reformuler.
-- N'invente JAMAIS un nom d'établissement. Si une recherche ne rend rien, reste générique et honnête ("un bar à cocktails du centre"), sans faire passer une invention pour un lieu existant.
+- N'invente JAMAIS un nom d'établissement, une date de match ni un événement. Si une recherche ne rend rien (lieu, événement OU date), reste générique et honnête ("un bar à cocktails du centre", "un match de la saison à voir sur place") — sans faire passer une invention pour un fait.
 - N'écris jamais d'URL : les liens sont ajoutés après toi.
 
 Puis réponds UNIQUEMENT en JSON valide : {"ambiance": string, "moments": [...]}.
+Ta réponse est TOUJOURS ce JSON, même incomplet, même si des recherches n'ont rien donné. N'écris JAMAIS de phrase d'explication, d'excuse ou de constat hors du JSON (ex. "les dates ne sont pas disponibles") : ce qui manque, on le laisse générique DANS le parcours.
 - Chaque moment : {"titre": string, "elements": [...]}.
 - Chaque élément : {"ref": string (identifiant court unique, ex "resto-soir-1"), "type": "activite"|"restaurant"|"sortie"|"transport"|"hebergement"|"evenement"|"temps_libre", "nom": string, "lieu": string, "plage": {"debut": ISO, "fin": ISO} (optionnel), "prix": number en euros (optionnel), "justification": string (POURQUOI cet élément sert l'intention — obligatoire), "dependDe": [refs] (optionnel), "estAncre": boolean (optionnel).
 - "sortie" = ce qui se vit le soir (bar, club, tournée, apéro). Ne JAMAIS le ranger en "temps_libre".

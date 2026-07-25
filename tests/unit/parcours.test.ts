@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ParcoursSchema,
   ElementSchema,
+  PlageHoraireSchema,
   elementsDependants,
   detecterConflits,
   validerParcours,
@@ -342,6 +343,20 @@ describe('les dates du parcours', () => {
     expect(parcours.contexte.duree.valeur).toBe(21);
     expect(parcours.contexte.dates).toEqual(DATES);
     expect(validerParcours(parcours)).toEqual([]);
+  });
+
+  it('accepte un ISO sans fuseau (le LLM en génération l’omet systématiquement)', () => {
+    const plage = PlageHoraireSchema.parse({
+      debut: '2025-01-15T08:00:00',
+      fin: '2025-01-15T12:00:00',
+    });
+    expect(plage.debut).toBe('2025-01-15T08:00:00Z');
+    expect(plage.fin).toBe('2025-01-15T12:00:00Z');
+  });
+
+  it('rejette toujours un format réellement invalide', () => {
+    expect(() => PlageHoraireSchema.parse({ debut: 'pas une date', fin: '2025-01-15T12:00:00Z' }))
+      .toThrow();
   });
 });
 
