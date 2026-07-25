@@ -157,7 +157,8 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
             maxLength={60}
             placeholder="Son prénom"
             className="w-full px-4 py-2.5 rounded-xl border border-encre/15 bg-white text-encre
-                       placeholder:text-brume focus:border-soleil focus:outline-none"
+                       placeholder:text-brume transition-colors
+                       focus:border-soleil focus:outline-none focus:ring-2 focus:ring-soleil/25"
           />
         </div>
         <div>
@@ -168,7 +169,7 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
             id="role-participant"
             value={role}
             onChange={(e) => setRole(e.target.value as Role)}
-            className="px-4 py-2.5 rounded-xl border border-encre/15 bg-white text-encre focus:border-soleil focus:outline-none"
+            className="px-4 py-2.5 rounded-xl border border-encre/15 bg-white text-encre transition-colors focus:border-soleil focus:outline-none focus:ring-2 focus:ring-soleil/25"
           >
             <option value="participant">Participant</option>
             <option value="heros">Pour qui c'est</option>
