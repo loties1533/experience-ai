@@ -21,13 +21,16 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
 - "brief" : uniquement les champs que le DERNIER message permet d'établir, parmi :
   intention (string, l'envie — jamais une destination), avecQui ("solo"|"couple"|"famille"|"amis"|"groupe"),
   duree ({"valeur": number, "unite": "heures"|"jours"|"semaines"}), dates ({"debut": ISO, "fin": ISO} — UNIQUEMENT si
-  l'utilisateur donne les DEUX bornes explicitement), dateDebut (ISO — dès qu'il donne SEULEMENT un point de départ,
-  même approximatif : "mi-août", "le 15 août", "dans deux semaines". Sans année précisée, suppose la prochaine
-  occurrence future de cette date), lieux (string[]), budgetTotal (number, en euros), ambiance (string), contraintes (string[]).
+  l'utilisateur donne les DEUX bornes explicitement), dateDebut (ISO — UNIQUEMENT si l'utilisateur donne une VRAIE date
+  de départ, même approximative : "mi-août", "le 15 août", "dans deux semaines". Sans année précisée, suppose la
+  prochaine occurrence future de cette date. Ne devine JAMAIS dateDebut s'il n'a rien dit sur le moment où il part —
+  ce champ concerne QUAND il part, jamais D'OÙ il part : une ville reste "lieux", pas "dateDebut"),
+  lieux (string[]), budgetTotal (number, en euros), ambiance (string), contraintes (string[]).
 - "duree" GARDE TOUJOURS l'unité EXACTE que l'utilisateur emploie, ne la convertis JAMAIS toi-même :
   "3 semaines" → {"valeur": 3, "unite": "semaines"}, jamais {"valeur": 3, "unite": "jours"}.
 - "reponse" : UNE question courte et chaleureuse en français sur UN champ requis manquant (intention, avecQui, duree,
-  un point de départ). Jamais deux questions. TUTOIE toujours l'utilisateur (« tu », jamais « vous »).
+  une date de départ approximative — jamais "point de départ", qui prête à confusion avec une ville). Jamais deux
+  questions. TUTOIE toujours l'utilisateur (« tu », jamais « vous »).
 - N'invente jamais un champ que l'utilisateur n'a pas exprimé.`;
 
 const SortieIntakeSchema = z.object({
