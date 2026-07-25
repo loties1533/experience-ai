@@ -190,7 +190,8 @@ export default function ParcoursDetail() {
           onChange={(e) => setPhrase(e.target.value)}
           placeholder='Ex. : « change le resto du moment 2, plutôt italien »'
           className="flex-1 px-4 py-2.5 rounded-xl border border-encre/15 bg-white text-encre
-                     placeholder:text-brume focus:border-soleil focus:outline-none"
+                     placeholder:text-brume transition-colors
+                     focus:border-soleil focus:outline-none focus:ring-2 focus:ring-soleil/25"
           maxLength={500}
         />
         <button type="submit" className="btn-primaire !py-2.5" disabled={modification.isPending || !phrase.trim()}>
