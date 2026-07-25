@@ -32,9 +32,12 @@ beforeEach(() => {
 
 describe('brief — cadrage (doc 05, étape 3)', () => {
   it('ne réclame que les champs requis manquants', () => {
-    expect(champsManquants({})).toHaveLength(3);
-    expect(champsManquants({ intention: 'vivre la NBA', avecQui: 'solo' })).toEqual(['la durée']);
-    expect(champsManquants(briefComplet)).toEqual([]);
+    expect(champsManquants({})).toHaveLength(4);
+    expect(champsManquants({ intention: 'vivre la NBA', avecQui: 'solo' }))
+      .toEqual(['la durée', 'un point de départ, même approximatif']);
+    // briefComplet n'a pas de dates : valide pour le domaine (BriefSchema), mais
+    // le dialogue les réclame quand même avant de considérer la conversation close.
+    expect(champsManquants(briefComplet)).toEqual(['un point de départ, même approximatif']);
   });
 
   it('reformule le brief en phrase affichable', () => {
@@ -102,14 +105,46 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
 
   it('reformule pour validation dès que le brief est complet (doc 05, étape 4)', async () => {
     vi.mocked(callAI).mockResolvedValue(
-      JSON.stringify({ reponse: 'ok', brief: { duree: { valeur: 21, unite: 'jours' } } })
+      JSON.stringify({
+        reponse: 'ok',
+        brief: { duree: { valeur: 21, unite: 'jours' }, dateDebut: '2026-08-15T00:00:00Z' },
+      })
     );
     const etape = await avancerDialogue(
       { intention: 'vivre la NBA', avecQui: 'solo' },
-      'trois semaines'
+      'trois semaines, à partir du 15 août'
     );
     expect(etape.estComplet).toBe(true);
     expect(etape.reponse).toContain('C’est bien ça ?'.replace('’', "'"));
+    expect(etape.brief.dates?.debut).toBe('2026-08-15T00:00:00.000Z');
+  });
+
+  it('calcule la fin depuis le point de départ + la durée, sans jamais la confier au LLM', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'ok', brief: { dateDebut: '2026-08-15T00:00:00Z' } })
+    );
+    const etape = await avancerDialogue(
+      { intention: 'vivre la NBA', avecQui: 'solo', duree: { valeur: 2, unite: 'semaines' } },
+      'à partir du 15 août'
+    );
+    expect(etape.estComplet).toBe(true);
+    expect(etape.brief.dates).toEqual({
+      debut: '2026-08-15T00:00:00.000Z',
+      fin: '2026-08-29T00:00:00.000Z',
+    });
+  });
+
+  it('signale franchement quand une correction n’a rien changé, sans rejouer la même confirmation', async () => {
+    const briefDejaComplet = {
+      intention: 'vivre la NBA',
+      avecQui: 'solo' as const,
+      duree: { valeur: 2, unite: 'semaines' as const },
+      dates: { debut: '2026-08-15T00:00:00.000Z', fin: '2026-08-29T00:00:00.000Z' },
+    };
+    vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
+    const etape = await avancerDialogue(briefDejaComplet, 'oui');
+    expect(etape.estComplet).toBe(true);
+    expect(etape.reponse).toContain('Je n’ai pas compris ce changement'.replace('’', "'"));
   });
 
   it('ignore une extraction invalide au lieu de la propager', async () => {
