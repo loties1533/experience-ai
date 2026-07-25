@@ -21,7 +21,7 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
   duree ({"valeur": number, "unite": "heures"|"jours"}), dates ({"debut": ISO, "fin": ISO} — UNIQUEMENT si l'utilisateur
   donne de vraies dates ; ne les déduis jamais de la durée), lieux (string[]), budgetTotal (number, en euros),
   ambiance (string), contraintes (string[]).
-- "reponse" : UNE question courte et chaleureuse en français sur UN champ requis manquant (intention, avecQui, duree). Jamais deux questions.
+- "reponse" : UNE question courte et chaleureuse en français sur UN champ requis manquant (intention, avecQui, duree). Jamais deux questions. TUTOIE toujours l'utilisateur (« tu », jamais « vous »).
 - N'invente jamais un champ que l'utilisateur n'a pas exprimé.`;
 
 const SortieIntakeSchema = z.object({
@@ -75,7 +75,7 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
   const brut = await callAI(prompt, SYSTEM_INTAKE, 'onboarding');
   const sortie = SortieIntakeSchema.safeParse(parseJSON(brut));
   if (!sortie.success) {
-    throw new AppError('Je n’ai pas réussi à comprendre, pouvez-vous reformuler ?', 502);
+    throw new AppError('Je n’ai pas réussi à comprendre, peux-tu reformuler ?', 502);
   }
 
   const brief: BriefPartiel = normaliserDatesBrief({

@@ -176,6 +176,15 @@ describe('le repli — sans données réelles, mais jamais d’erreur technique'
     vi.mocked(callClaudeOutils).mockResolvedValue([{ type: 'text', text: 'Je ne peux pas construire ce parcours.' }]);
     await expect(genererParcours(brief)).rejects.toThrow('inexploitable');
   });
+
+  it('signale un service indisponible (503) quand plus aucun fournisseur ne répond', async () => {
+    // Boucle d'outils en échec, puis l'appel simple échoue aussi : le mode
+    // secours renvoie { indisponible: true }. On veut un 503 honnête, pas un
+    // 502 « réessaie » (réessayer tout de suite ne changerait rien).
+    vi.mocked(callClaudeOutils).mockRejectedValue(new Error('quota dépassé'));
+    vi.mocked(callClaude).mockRejectedValue(new Error('quota dépassé'));
+    await expect(genererParcours(brief)).rejects.toMatchObject({ statusCode: 503 });
+  });
 });
 
 function tourTexteMinimal() {
