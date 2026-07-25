@@ -23,10 +23,15 @@ export const BriefPartielSchema = BriefSchema.partial();
 export type Brief = z.infer<typeof BriefSchema>;
 export type BriefPartiel = z.infer<typeof BriefPartielSchema>;
 
-const LIBELLES_MANQUANTS: Record<'intention' | 'avecQui' | 'duree', string> = {
+const LIBELLES_MANQUANTS: Record<'intention' | 'avecQui' | 'duree' | 'dates', string> = {
   intention: 'l’envie (que voulez-vous vivre ?)',
   avecQui: 'avec qui',
   duree: 'la durée',
+  // Une durée seule ("3 semaines") n'ancre le parcours à aucune vraie date :
+  // les connecteurs (PredictHQ...) chercheraient alors sur une date inventée,
+  // sans rapport avec le vrai séjour. Un point de départ, même approximatif,
+  // suffit — la fin se calcule ensuite depuis la durée (jamais confiée au LLM).
+  dates: 'un point de départ, même approximatif',
 };
 
 /**
@@ -55,6 +60,26 @@ export function normaliserDatesBrief<T extends BriefPartiel>(brief: T): T {
   const finDeJournee = new Date(fin);
   finDeJournee.setUTCHours(23, 59, 59, 999);
   return { ...brief, dates: { ...brief.dates, fin: finDeJournee.toISOString() } };
+}
+
+/**
+ * La fin d'une plage se CALCULE depuis un début connu + la durée — jamais
+ * confiée au LLM (arithmétique de dates, pas son fort). Utilisé une fois
+ * qu'un point de départ a été obtenu, pour que le domaine porte toujours de
+ * vraies dates avant la génération.
+ */
+export function calculerDates(
+  debutISO: string,
+  duree: { valeur: number; unite: 'heures' | 'jours' | 'semaines' }
+): { debut: string; fin: string } {
+  const HEURES_PAR_UNITE: Record<typeof duree.unite, number> = {
+    heures: 1,
+    jours: 24,
+    semaines: 24 * 7,
+  };
+  const debut = new Date(debutISO);
+  const fin = new Date(debut.getTime() + duree.valeur * HEURES_PAR_UNITE[duree.unite] * 3_600_000);
+  return { debut: debut.toISOString(), fin: fin.toISOString() };
 }
 
 /** Les champs requis encore absents — le dialogue ne pose que ces questions. */

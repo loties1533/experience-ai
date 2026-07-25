@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { callAI, parseJSON, sanitizeInput } from '../services/claude/core.js';
 import { AppError } from '../lib/AppError.js';
+import { DateTimeISOSchema } from '../domaine/parcours/index.js';
 import {
   BriefPartielSchema,
   champsManquants,
   reformulerBrief,
   normaliserDatesBrief,
+  calculerDates,
   BriefSchema,
   type BriefPartiel,
 } from './brief.js';
@@ -18,16 +20,28 @@ const SYSTEM_INTAKE = `Tu aides à comprendre l'envie d'un utilisateur pour cons
 Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
 - "brief" : uniquement les champs que le DERNIER message permet d'établir, parmi :
   intention (string, l'envie — jamais une destination), avecQui ("solo"|"couple"|"famille"|"amis"|"groupe"),
-  duree ({"valeur": number, "unite": "heures"|"jours"|"semaines"}), dates ({"debut": ISO, "fin": ISO} — UNIQUEMENT si l'utilisateur
-  donne de vraies dates ; ne les déduis jamais de la durée), lieux (string[]), budgetTotal (number, en euros),
-  ambiance (string), contraintes (string[]).
-- "reponse" : UNE question courte et chaleureuse en français sur UN champ requis manquant (intention, avecQui, duree). Jamais deux questions. TUTOIE toujours l'utilisateur (« tu », jamais « vous »).
+  duree ({"valeur": number, "unite": "heures"|"jours"|"semaines"}), dates ({"debut": ISO, "fin": ISO} — UNIQUEMENT si
+  l'utilisateur donne les DEUX bornes explicitement), dateDebut (ISO — dès qu'il donne SEULEMENT un point de départ,
+  même approximatif : "mi-août", "le 15 août", "dans deux semaines". Sans année précisée, suppose la prochaine
+  occurrence future de cette date), lieux (string[]), budgetTotal (number, en euros), ambiance (string), contraintes (string[]).
+- "duree" GARDE TOUJOURS l'unité EXACTE que l'utilisateur emploie, ne la convertis JAMAIS toi-même :
+  "3 semaines" → {"valeur": 3, "unite": "semaines"}, jamais {"valeur": 3, "unite": "jours"}.
+- "reponse" : UNE question courte et chaleureuse en français sur UN champ requis manquant (intention, avecQui, duree,
+  un point de départ). Jamais deux questions. TUTOIE toujours l'utilisateur (« tu », jamais « vous »).
 - N'invente jamais un champ que l'utilisateur n'a pas exprimé.`;
 
 const SortieIntakeSchema = z.object({
   reponse: z.string().min(1),
   brief: z.unknown(),
 });
+
+/** Juste un point de départ, sans la fin — extrait séparément de "dates" (les deux bornes). */
+function extraireDateDebut(brut: unknown): string | undefined {
+  if (typeof brut !== 'object' || brut === null) return undefined;
+  const valeur = (brut as Record<string, unknown>).dateDebut;
+  const resultat = DateTimeISOSchema.safeParse(valeur);
+  return resultat.success ? resultat.data : undefined;
+}
 
 /**
  * Ne jamais faire confiance au LLM : ses extractions passent par Zod. Mais la
@@ -78,13 +92,42 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
     throw new AppError('Je n’ai pas réussi à comprendre, peux-tu reformuler ?', 502);
   }
 
-  const brief: BriefPartiel = normaliserDatesBrief({
-    ...briefActuel,
-    ...extraireChampsValides(sortie.data.brief),
-  });
+  const extrait = extraireChampsValides(sortie.data.brief);
+  let brief: BriefPartiel = normaliserDatesBrief({ ...briefActuel, ...extrait });
+
+  // Un point de départ seul (sans la fin) ne vient pas de extraireChampsValides,
+  // qui ne connaît que les champs du domaine : on calcule la fin nous-mêmes,
+  // depuis la durée déjà connue — jamais confié au LLM.
+  let dateDebutUtilise = false;
+  if (!brief.dates && brief.duree) {
+    const dateDebut = extraireDateDebut(sortie.data.brief);
+    if (dateDebut) {
+      brief = { ...brief, dates: calculerDates(dateDebut, brief.duree) };
+      dateDebutUtilise = true;
+    }
+  }
 
   const complet = BriefSchema.safeParse(brief);
-  if (complet.success) {
+  // « Complet » exige aussi un point de départ (dates) : une durée seule
+  // n'ancre le parcours à aucune vraie date, et les connecteurs chercheraient
+  // alors sur une date inventée, sans rapport avec le vrai séjour.
+  const dialogueTermine = complet.success && champsManquants(brief).length === 0;
+  if (dialogueTermine) {
+    // Le brief était déjà complet et rien de nouveau n'a été retenu de ce
+    // message : l'utilisateur essayait de corriger quelque chose, mais rien
+    // n'a été compris (dates ambiguës, format inattendu...). Rejouer la même
+    // confirmation mot pour mot donnerait l'impression qu'on l'ignore — on le
+    // dit plutôt franchement, sans reformuler le contenu passé sous silence.
+    const auMoinsUnChampNouveau = Object.keys(extrait).length > 0 || dateDebutUtilise;
+    const briefActuelDejaTermine =
+      BriefSchema.safeParse(briefActuel).success && champsManquants(briefActuel).length === 0;
+    if (!auMoinsUnChampNouveau && briefActuelDejaTermine) {
+      return {
+        reponse: "Je n'ai pas compris ce changement — peux-tu préciser autrement (ex. une date au format JJ/MM/AAAA) ?",
+        brief,
+        estComplet: true,
+      };
+    }
     return {
       reponse: `${reformulerBrief(complet.data)} C'est bien ça ?`,
       brief,

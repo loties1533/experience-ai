@@ -37,7 +37,7 @@ export const IntentionSchema = z.object({
 // pour l'obtenir à chaque fois (ne jamais faire confiance à la sortie du LLM :
 // on la corrige, on ne l'espère pas). Un ISO déjà correct (avec Z ou un offset)
 // n'est pas touché ; un format réellement invalide reste rejeté par z.iso.datetime().
-const DateTimeISOSchema = z.preprocess((valeur) => {
+export const DateTimeISOSchema = z.preprocess((valeur) => {
   if (typeof valeur === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(valeur)) {
     return `${valeur}Z`;
   }
