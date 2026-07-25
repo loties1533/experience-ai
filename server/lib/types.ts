@@ -19,6 +19,15 @@ export interface JwtPayload {
 // connecteurs (une soirée ne se cherche pas comme une après-midi tranquille).
 export type TravelMode = 'party' | 'student' | 'group' | 'relax' | 'surprise';
 
+// Événement réel renvoyé par un connecteur événementiel (PredictHQ).
+export interface EventSearchResult {
+  title: string;
+  category: string;
+  start: string;
+  venue: string;
+  description: string;
+}
+
 // Lieu renvoyé par un connecteur de données (Foursquare, Yelp).
 export interface Activite {
   name: string;

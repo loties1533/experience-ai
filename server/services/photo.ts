@@ -1,5 +1,13 @@
+import { memoriser } from '../lib/cacheMemoire.js';
+
 const PHOTO_PAR_DEFAUT =
   'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=1200&q=80';
+
+// Une ville ne change pas de visage : on garde sa photo un jour entier plutôt
+// que de repayer Unsplash puis Pexels à chaque affichage (carte « maîtrise des
+// coûts », R6). On ne mémorise QUE les vraies photos — un échec renvoie le repli
+// générique sans le cacher, pour retenter à la prochaine occasion.
+const DUREE_PHOTO_MS = 24 * 60 * 60 * 1000; // 24 h
 
 interface ReponseUnsplash {
   results: Array<{ urls: { regular: string } }>;
@@ -9,7 +17,15 @@ interface ReponsePexels {
   photos: Array<{ src: { large2x: string } }>;
 }
 
-export async function getDestinationPhoto(query: string): Promise<string> {
+export function getDestinationPhoto(query: string): Promise<string> {
+  return memoriser(`photo:${query.trim().toLowerCase()}`, () => chercherPhoto(query), DUREE_PHOTO_MS)
+    .catch(() => {
+      console.warn(`Repli générique pour "${query}"`);
+      return PHOTO_PAR_DEFAUT;
+    });
+}
+
+async function chercherPhoto(query: string): Promise<string> {
   // 1️⃣ — Unsplash API (photos de voyage curatées, haute qualité)
   const cleUnsplash = process.env.UNSPLASH_ACCESS_KEY?.trim();
   if (cleUnsplash) {
@@ -56,7 +72,7 @@ export async function getDestinationPhoto(query: string): Promise<string> {
     }
   }
 
-  // 3️⃣ — Repli générique
-  console.warn(`Repli générique pour "${query}"`);
-  return PHOTO_PAR_DEFAUT;
+  // 3️⃣ — Aucune source n'a répondu : on lève pour que le cache NE retienne PAS
+  // l'échec. L'appelant renvoie alors le repli générique (et le retentera).
+  throw new Error(`Aucune photo trouvée pour "${query}"`);
 }

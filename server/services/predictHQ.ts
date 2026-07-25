@@ -1,6 +1,5 @@
 import 'dotenv/config';
-import type { TravelMode } from '../lib/types.js';
-import type { EventSearchResult } from './smartSearch.js';
+import type { TravelMode, EventSearchResult } from '../lib/types.js';
 import { encoderURL } from '../lib/url.js';
 
 const CLE_PREDICTHQ = process.env.PREDICTHQ_API_KEY;
@@ -87,10 +86,10 @@ export async function predictHQEventsSearch(
     });
 
     if (!res.ok) {
-      // 401 = clé invalide/expirée (PredictHQ est payant, essai limité). Non bloquant :
-      // on log proprement et smartEventsSearch bascule sur Tavily pour les événements.
+      // 401 = clé invalide/expirée (PredictHQ est payant, essai limité). Non
+      // bloquant : on log proprement et le parcours se construit sans événements.
       if (res.status === 401) {
-        console.warn('PredictHQ ignoré (clé invalide ou expirée) — repli événements via Tavily.');
+        console.warn('PredictHQ ignoré (clé invalide ou expirée) — parcours sans événements.');
         return [];
       }
       throw new Error(`PredictHQ ${res.status}: ${await res.text()}`);
@@ -114,7 +113,7 @@ export async function predictHQEventsSearch(
     }));
 
   } catch (err) {
-    console.warn('PredictHQ indisponible (repli Tavily) :', (err as Error).message);
+    console.warn('PredictHQ indisponible (parcours sans événements) :', (err as Error).message);
     return [];
   }
 }
