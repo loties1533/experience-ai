@@ -29,9 +29,12 @@ const LIBELLES_MANQUANTS: Record<'intention' | 'avecQui' | 'duree' | 'dates', st
   duree: 'la durée',
   // Une durée seule ("3 semaines") n'ancre le parcours à aucune vraie date :
   // les connecteurs (PredictHQ...) chercheraient alors sur une date inventée,
-  // sans rapport avec le vrai séjour. Un point de départ, même approximatif,
+  // sans rapport avec le vrai séjour. Une date de départ, même approximative,
   // suffit — la fin se calcule ensuite depuis la durée (jamais confiée au LLM).
-  dates: 'un point de départ, même approximatif',
+  // « point de départ » a été essayé puis abandonné : constaté en usage réel
+  // (recette live), le modèle le comprend comme une VILLE, pas une date, et
+  // demande d'où l'utilisateur part au lieu de quand.
+  dates: 'une date de départ, même approximative (à quel moment, pas d’où)',
 };
 
 /**

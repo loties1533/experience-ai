@@ -34,10 +34,10 @@ describe('brief — cadrage (doc 05, étape 3)', () => {
   it('ne réclame que les champs requis manquants', () => {
     expect(champsManquants({})).toHaveLength(4);
     expect(champsManquants({ intention: 'vivre la NBA', avecQui: 'solo' }))
-      .toEqual(['la durée', 'un point de départ, même approximatif']);
+      .toEqual(['la durée', 'une date de départ, même approximative (à quel moment, pas d’où)']);
     // briefComplet n'a pas de dates : valide pour le domaine (BriefSchema), mais
     // le dialogue les réclame quand même avant de considérer la conversation close.
-    expect(champsManquants(briefComplet)).toEqual(['un point de départ, même approximatif']);
+    expect(champsManquants(briefComplet)).toEqual(['une date de départ, même approximative (à quel moment, pas d’où)']);
   });
 
   it('reformule le brief en phrase affichable', () => {
