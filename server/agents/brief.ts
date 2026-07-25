@@ -82,10 +82,15 @@ function enFrancais(horodatageISO: string): string {
   });
 }
 
-/** « 1 jour », « 2 jours », « 1 heure » : le singulier sous 2, sinon le pluriel. */
-function accorderDuree(valeur: number, unite: 'heures' | 'jours'): string {
-  const singulier = unite === 'heures' ? 'heure' : 'jour';
-  return `${valeur} ${valeur < 2 ? singulier : unite}`;
+const SINGULIERS: Record<'heures' | 'jours' | 'semaines', string> = {
+  heures: 'heure',
+  jours: 'jour',
+  semaines: 'semaine',
+};
+
+/** « 1 jour », « 2 jours », « 3 semaines » : le singulier sous 2, sinon le pluriel. */
+function accorderDuree(valeur: number, unite: 'heures' | 'jours' | 'semaines'): string {
+  return `${valeur} ${valeur < 2 ? SINGULIERS[unite] : unite}`;
 }
 
 /** Reformulation affichable du brief compris — validée par l'utilisateur avant génération. */

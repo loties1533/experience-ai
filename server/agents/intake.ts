@@ -18,7 +18,7 @@ const SYSTEM_INTAKE = `Tu aides à comprendre l'envie d'un utilisateur pour cons
 Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
 - "brief" : uniquement les champs que le DERNIER message permet d'établir, parmi :
   intention (string, l'envie — jamais une destination), avecQui ("solo"|"couple"|"famille"|"amis"|"groupe"),
-  duree ({"valeur": number, "unite": "heures"|"jours"}), dates ({"debut": ISO, "fin": ISO} — UNIQUEMENT si l'utilisateur
+  duree ({"valeur": number, "unite": "heures"|"jours"|"semaines"}), dates ({"debut": ISO, "fin": ISO} — UNIQUEMENT si l'utilisateur
   donne de vraies dates ; ne les déduis jamais de la durée), lieux (string[]), budgetTotal (number, en euros),
   ambiance (string), contraintes (string[]).
 - "reponse" : UNE question courte et chaleureuse en français sur UN champ requis manquant (intention, avecQui, duree). Jamais deux questions. TUTOIE toujours l'utilisateur (« tu », jamais « vous »).

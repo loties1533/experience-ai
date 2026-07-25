@@ -60,7 +60,7 @@ export const ContexteSchema = z.object({
   // (« une soirée », « trois semaines ») même sans date arrêtée.
   duree: z.object({
     valeur: z.number().positive(),
-    unite: z.enum(['heures', 'jours']),
+    unite: z.enum(['heures', 'jours', 'semaines']),
   }),
   // Les dates réelles, quand elles existent (le festival d'Inès les 12-14
   // juillet, les matchs datés de Thomas). Optionnelles : Karim qui sort « ce
