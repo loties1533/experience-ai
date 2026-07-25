@@ -38,9 +38,6 @@ export default function Login() {
     }
   }
 
-  const classeChamp = `w-full bg-white border border-encre/15 rounded-xl px-4 py-3 text-sm
-    text-encre placeholder:text-brume focus:outline-none focus:border-soleil transition-colors`
-
   return (
     <PageLayout>
       <Seo
@@ -81,19 +78,19 @@ export default function Login() {
               <div>
                 <label htmlFor="prenom" className="block text-xs font-semibold text-encre-light mb-1">Prénom</label>
                 <input id="prenom" value={prenom} onChange={(e) => setPrenom(e.target.value)}
-                  autoComplete="given-name" className={classeChamp} />
+                  autoComplete="given-name" className="champ" />
               </div>
             )}
             <div>
               <label htmlFor="email" className="block text-xs font-semibold text-encre-light mb-1">Email</label>
               <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email" required className={classeChamp} />
+                autoComplete="email" required className="champ" />
             </div>
             <div>
               <label htmlFor="motdepasse" className="block text-xs font-semibold text-encre-light mb-1">Mot de passe</label>
               <input id="motdepasse" type="password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)}
                 autoComplete={onglet === 'connexion' ? 'current-password' : 'new-password'}
-                required className={classeChamp} />
+                required className="champ" />
             </div>
           </div>
 

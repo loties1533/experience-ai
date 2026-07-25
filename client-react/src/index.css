@@ -52,18 +52,30 @@
     @apply inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full
            text-sm font-medium border border-encre/15 text-encre
            bg-white hover:border-soleil hover:bg-soleil/5
-           transition-colors cursor-pointer;
+           transition duration-150 cursor-pointer
+           motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.97];
   }
 
-  /* Boutons */
+  /* Champ de saisie : anneau de focus VISIBLE au clavier (le seul changement de
+     bordure ne suffisait pas — il écrasait l'outline global). */
+  .champ {
+    @apply w-full bg-white border border-encre/15 rounded-xl px-4 py-3 text-sm
+           text-encre placeholder:text-brume transition-colors
+           focus:outline-none focus:border-soleil focus:ring-2 focus:ring-soleil/25;
+  }
+
+  /* Boutons — « transition » (et non colors seul) pour que l'enfoncement à
+     l'appui s'anime ; coupé si l'utilisateur préfère éviter le mouvement. */
   .btn-primaire {
     @apply bg-soleil hover:bg-soleil-dark text-white font-semibold px-6 py-3
-           rounded-xl transition-colors cursor-pointer
+           rounded-xl transition duration-150 cursor-pointer
+           motion-safe:active:scale-[0.97]
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-secondaire {
     @apply border border-encre/15 text-encre hover:border-lagon hover:bg-lagon/5
-           font-medium px-4 py-2 rounded-xl transition-colors cursor-pointer
+           font-medium px-4 py-2 rounded-xl transition duration-150 cursor-pointer
+           motion-safe:active:scale-[0.97]
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
