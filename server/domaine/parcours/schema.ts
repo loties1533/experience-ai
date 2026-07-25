@@ -31,10 +31,23 @@ export const IntentionSchema = z.object({
   motsCles: z.array(z.string().min(1)).default([]),
 });
 
+// Le LLM écrit systématiquement un ISO SANS le suffixe "Z" ("2025-01-15T08:00:00"
+// au lieu de "…T08:00:00Z") — un format valide, juste pas celui que z.iso.datetime()
+// exige seul. On l'ajoute avant validation plutôt que de compter sur le prompt
+// pour l'obtenir à chaque fois (ne jamais faire confiance à la sortie du LLM :
+// on la corrige, on ne l'espère pas). Un ISO déjà correct (avec Z ou un offset)
+// n'est pas touché ; un format réellement invalide reste rejeté par z.iso.datetime().
+const DateTimeISOSchema = z.preprocess((valeur) => {
+  if (typeof valeur === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(valeur)) {
+    return `${valeur}Z`;
+  }
+  return valeur;
+}, z.iso.datetime());
+
 export const PlageHoraireSchema = z
   .object({
-    debut: z.iso.datetime(),
-    fin: z.iso.datetime(),
+    debut: DateTimeISOSchema,
+    fin: DateTimeISOSchema,
   })
   // Comparer en dates, pas en chaînes : « 20:00:00.500Z » suit « 20:00:00Z ».
   .refine((p) => Date.parse(p.debut) < Date.parse(p.fin), {
