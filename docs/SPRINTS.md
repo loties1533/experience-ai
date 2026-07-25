@@ -420,6 +420,28 @@ conservés au sprint R6b n'étaient appelés par personne.
   événementiel reviendra s'il se prouve en recette — on le reconstruira alors
   pour le problème constaté, pas depuis une version dormante.
 
+### Finition — trois défauts trouvés en recette live (25/07)
+
+> Livré par la [PR #10](https://github.com/loties1533/experience-ai/pull/10).
+> Recette de bout en bout dans le navigateur (scénario EVG à Bordeaux), clé
+> Anthropic à sec — ce qui a justement révélé le premier défaut. Ce ne sont pas
+> des idées : ce sont des choses vues à l'écran.
+
+- **Le 502 mentait.** Sur clé morte, la génération bascule sur le repli ; le mode
+  secours renvoie `{ indisponible: true }` — un signal honnête — mais
+  `generation.ts` le jetait et levait un 502 « résultat inexploitable, réessaie »,
+  alors que réessayer tout de suite ne change rien. On détecte désormais
+  l'indisponibilité **avant** la validation de schéma et on rend un **503** avec un
+  message clair. Deux pannes enfin distinguées : charabia du modèle (502) vs
+  aucun fournisseur (503).
+- **La reformulation vouvoyait** (« Vous voulez… ») quand tout le produit tutoie.
+  Elle tutoie maintenant, et le prompt d'intake impose le « tu » (le « Vous
+  cherchez… » venait du modèle, faute de consigne).
+- **« sur 1 jours »** → accord de la durée (« sur 1 jour », « sur 2 jours »).
+- 297 tests verts (+3 : le 503, le tutoiement, l'accord), typecheck et lint OK.
+  Le reste de la recette (génération réelle → modification → partage) attend le
+  rechargement de la clé Anthropic.
+
 ---
 
 # TripGenie — Suivi Agile historique (sprints, revues et rétrospectives)
