@@ -14,7 +14,7 @@
 | R3 — Cœur | Parcours = état adressable + opérations de modification ciblée (logique pure) | Terminé |
 | R4 — Entrée orientée envie | Brief en langage naturel, dialogue minimal, reformulation avant génération | Terminé |
 | R5 — Mémoire simple | Préférences utilisateur | Terminé |
-| R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | En cours (R6a fait) |
+| R6 — Bascule & nettoyage | Basculer les routes sur Parcours, **supprimer** le modèle Pack, maîtrise des coûts (cache) | Terminé |
 | R7 — Domaine complété | Les manques révélés par le code et le prototype : invariants 7 et 8, vraies dates de parcours | Terminé |
 | R8 — Partage au groupe | Un lien par participant, la visibilité respectée, les réactions du groupe | Terminé |
 
@@ -392,6 +392,33 @@ conservés au sprint R6b n'étaient appelés par personne.
   seraient confondus. Le cache est par instance — deux instances chercheraient
   chacune de leur côté. Enfin, un repli après une boucle interrompue repaie une
   génération complète : c'est le prix d'un parcours qui sort quand même.
+
+### Revue R6g — durcir le cache, retirer le code mort (25/07)
+
+> Livré par la [PR #9](https://github.com/loties1533/experience-ai/pull/9).
+>
+> Le tableau affichait encore R6 « en cours » alors que toutes ses cartes
+> étaient cochées depuis le 24/07 : un statut oublié, pas un travail en retard.
+> Statut corrigé. En le vérifiant, deux angles morts méritaient d'être fermés.
+
+- **La route photo échappait au cache.** `GET /api/photos/:city` rappelait
+  Unsplash puis Pexels à chaque affichage, alors qu'une ville ne change pas de
+  visage. `getDestinationPhoto` passe désormais par `memoriser` (clé = ville,
+  24 h). On ne mémorise **que** les vraies photos : quand aucune source ne
+  répond, `chercherPhoto` lève, le cache ne retient pas l'échec, et l'appelant
+  rend le repli générique — qui sera retenté la fois suivante.
+- **Le cache n'avait aucun test.** C'est de la logique pure : un test unitaire
+  (`tests/unit/cacheMemoire.test.ts`) défend ses quatre invariants — mémoriser,
+  partager une promesse en vol, ne jamais garder une panne, recalculer une fois
+  le temps de vie écoulé.
+- **Code mort retiré.** `smartEventsSearch` et sa recherche web `searchWeb`
+  (Tavily) étaient définis mais appelés par personne — un repli événementiel
+  jamais branché. Supprimés (règle « pas de code mort »), avec les commentaires
+  et logs qui promettaient encore un « repli Tavily » inexistant. Le type
+  `EventSearchResult`, lui, était bien vivant : déplacé dans `lib/types.ts`.
+- 294 tests verts, typecheck OK, lint sans erreur. Le besoin d'un vrai repli
+  événementiel reviendra s'il se prouve en recette — on le reconstruira alors
+  pour le problème constaté, pas depuis une version dormante.
 
 ---
 

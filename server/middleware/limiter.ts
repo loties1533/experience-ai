@@ -1,6 +1,6 @@
 import rateLimit from 'express-rate-limit';
 
-// Limiteur pour les générations lourdes (Claude + Tavily)
+// Limiteur pour les générations lourdes (appels Claude)
 // 10 requêtes par heure pour éviter de vider le compte
 export const aiGenerateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 heure
