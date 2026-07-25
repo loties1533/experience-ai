@@ -64,6 +64,17 @@ describe('brief — cadrage (doc 05, étape 3)', () => {
     expect(unJour).not.toContain('sur 1 jours');
   });
 
+  it('accepte les semaines comme unité de durée (« Vivre la NBA pendant 3 semaines »)', () => {
+    const troisSemaines = reformulerBrief(
+      BriefSchema.parse({
+        intention: 'vivre la NBA',
+        avecQui: 'solo',
+        duree: { valeur: 3, unite: 'semaines' },
+      })
+    );
+    expect(troisSemaines).toContain('sur 3 semaines');
+  });
+
   it('annonce les dates quand le brief en porte (le festival d’Inès)', () => {
     const phrase = reformulerBrief(
       BriefSchema.parse({
