@@ -123,11 +123,22 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
   try {
     contenu = parseJSON(brut);
   } catch {
-    throw new AppError('La génération a produit un résultat inexploitable, réessayez', 502);
+    throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+  }
+  // Aucun fournisseur d'IA n'a répondu (clé à sec, quotas, panne) : le mode
+  // secours renvoie ce signal explicite. On le distingue d'un vrai « charabia »
+  // — ici réessayer tout de suite ne sert à rien, d'où un 503 (service
+  // indisponible) et un message honnête, plutôt qu'un 502 « réessaie ».
+  if (
+    typeof contenu === 'object' &&
+    contenu !== null &&
+    (contenu as { indisponible?: unknown }).indisponible === true
+  ) {
+    throw new AppError('Service IA momentanément indisponible, réessaie dans un instant', 503);
   }
   const sortie = SortieGenerationSchema.safeParse(contenu);
   if (!sortie.success) {
-    throw new AppError('La génération a produit un résultat inexploitable, réessayez', 502);
+    throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
   }
 
   // Attribution des ids côté serveur : les refs du LLM ne sortent pas d'ici.
@@ -173,7 +184,7 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
 
   const erreurs = validerParcours(parcours);
   if (erreurs.length > 0) {
-    throw new AppError('La génération a produit un parcours incohérent, réessayez', 502);
+    throw new AppError('La génération a produit un parcours incohérent, réessaie', 502);
   }
   return parcours;
 }

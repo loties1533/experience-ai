@@ -82,10 +82,16 @@ function enFrancais(horodatageISO: string): string {
   });
 }
 
+/** « 1 jour », « 2 jours », « 1 heure » : le singulier sous 2, sinon le pluriel. */
+function accorderDuree(valeur: number, unite: 'heures' | 'jours'): string {
+  const singulier = unite === 'heures' ? 'heure' : 'jour';
+  return `${valeur} ${valeur < 2 ? singulier : unite}`;
+}
+
 /** Reformulation affichable du brief compris — validée par l'utilisateur avant génération. */
 export function reformulerBrief(brief: Brief): string {
   const morceaux = [
-    `Vous voulez ${brief.intention}, ${LIBELLES_AVEC_QUI[brief.avecQui]}, sur ${brief.duree.valeur} ${brief.duree.unite}`,
+    `Tu veux ${brief.intention}, ${LIBELLES_AVEC_QUI[brief.avecQui]}, sur ${accorderDuree(brief.duree.valeur, brief.duree.unite)}`,
   ];
   if (brief.dates) {
     morceaux.push(`du ${enFrancais(brief.dates.debut)} au ${enFrancais(brief.dates.fin)}`);

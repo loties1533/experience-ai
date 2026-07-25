@@ -46,6 +46,24 @@ describe('brief — cadrage (doc 05, étape 3)', () => {
     expect(phrase).not.toContain('du 1');
   });
 
+  it('tutoie l’utilisateur, jamais de vouvoiement', () => {
+    const phrase = reformulerBrief(briefComplet);
+    expect(phrase).toMatch(/^Tu veux/);
+    expect(phrase).not.toMatch(/\bvous\b/i);
+  });
+
+  it('accorde la durée au singulier sous 2 (« 1 jour », pas « 1 jours »)', () => {
+    const unJour = reformulerBrief(
+      BriefSchema.parse({
+        intention: 'organiser une journée surprise',
+        avecQui: 'couple',
+        duree: { valeur: 1, unite: 'jours' },
+      })
+    );
+    expect(unJour).toContain('sur 1 jour');
+    expect(unJour).not.toContain('sur 1 jours');
+  });
+
   it('annonce les dates quand le brief en porte (le festival d’Inès)', () => {
     const phrase = reformulerBrief(
       BriefSchema.parse({
