@@ -28,8 +28,7 @@ function ChampListe({ id, libelle, aide, valeurs, onChange }: {
         id={id}
         value={valeurs.join(', ')}
         onChange={(e) => onChange(e.target.value.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 10))}
-        className="w-full bg-white border border-encre/15 rounded-xl px-4 py-3 text-sm text-encre
-                   placeholder:text-brume focus:outline-none focus:border-soleil transition-colors"
+        className="champ"
       />
     </div>
   )
@@ -127,8 +126,7 @@ function Formulaire({ initiales }: { initiales: PreferencesParcours }) {
                 id="budget" type="number" min={1} inputMode="numeric"
                 value={form.budgetHabituel ?? ''}
                 onChange={(e) => setForm((f) => ({ ...f, budgetHabituel: e.target.value ? Number(e.target.value) : undefined }))}
-                className="w-full bg-white border border-encre/15 rounded-xl px-4 py-3 text-sm text-encre
-                           focus:outline-none focus:border-soleil transition-colors"
+                className="champ"
               />
             </div>
 

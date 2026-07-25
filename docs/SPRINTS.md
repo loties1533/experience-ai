@@ -442,6 +442,24 @@ conservés au sprint R6b n'étaient appelés par personne.
   Le reste de la recette (génération réelle → modification → partage) attend le
   rechargement de la clé Anthropic.
 
+### Finition — front : focus clavier et retour d'appui (25/07)
+
+> Livré par la [PR #11](https://github.com/loties1533/experience-ai/pull/11).
+> Audit UI/UX des pages accueil / login / préférences, pas refonte : le front
+> était déjà propre (SVG, ARIA, palette cohérente). Deux vrais manques, corrigés
+> au niveau des classes pour valoir partout.
+
+- **Focus clavier presque invisible.** Les champs faisaient `focus:outline-none`
+  + simple bordure, ce qui écrasait l'outline global : au clavier, on ne voyait
+  plus où on était. Nouvelle classe `.champ` avec un anneau de focus net ; les
+  champs dupliqués (Login, Préférences, accueil) factorisés dessus.
+- **Aucun retour d'appui.** Boutons et chips gagnent un léger enfoncement au
+  clic (`active:scale`), coupé si `prefers-reduced-motion`.
+- CSS/Tailwind seul, aucune dépendance ajoutée. Vérifié au navigateur.
+- **Signalé (non touché) :** `design-system/experience-ai/MASTER.md` (rose
+  fashion + police manuscrite) ne correspond pas au vrai front (orange/teal/navy) —
+  doc design périmée, jamais suivie. Sort à trancher.
+
 ---
 
 # TripGenie — Suivi Agile historique (sprints, revues et rétrospectives)
