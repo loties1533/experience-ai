@@ -47,6 +47,49 @@ function extraireDateDebut(brut: unknown): string | undefined {
 }
 
 /**
+ * Filet déterministe pour une plage écrite en chiffres ("du 15/08 au 10/09") :
+ * constaté en recette, le LLM la comprend très bien — il la reformule dans
+ * "reponse" — mais ne la structure pas toujours dans "brief". On ne dépend
+ * pas de lui seul pour un champ aussi structurant. Motif générique : aucune
+ * date câblée en dur, marche pour n'importe quelle plage JJ/MM.
+ */
+function extrairePlageExplicite(message: string): { debut: string; fin: string } | undefined {
+  const motif = /(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s*(?:au|-|à)\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/i;
+  const trouve = message.match(motif);
+  if (!trouve) return undefined;
+
+  const construire = (jourStr: string, moisStr: string, annee: number): Date | undefined => {
+    const jour = Number(jourStr);
+    const mois = Number(moisStr);
+    if (mois < 1 || mois > 12 || jour < 1 || jour > 31) return undefined;
+    return new Date(Date.UTC(annee, mois - 1, jour));
+  };
+
+  const anneeExpliciteDebut = trouve[3] ? Number(trouve[3]) : undefined;
+  const anneeExpliciteFin = trouve[6] ? Number(trouve[6]) : undefined;
+  const anneeCourante = new Date().getUTCFullYear();
+
+  let debut = construire(trouve[1], trouve[2], anneeExpliciteDebut ?? anneeCourante);
+  if (!debut) return undefined;
+  // Sans année précisée : la prochaine occurrence future, jamais une date passée.
+  if (!anneeExpliciteDebut && debut.getTime() < Date.now()) {
+    debut = construire(trouve[1], trouve[2], anneeCourante + 1);
+    if (!debut) return undefined;
+  }
+
+  let fin = construire(trouve[4], trouve[5], anneeExpliciteFin ?? debut.getUTCFullYear());
+  if (!fin) return undefined;
+  // La fin suit le début : si elle tombe avant ("20/12 au 05/01"), l'année suivante.
+  if (!anneeExpliciteFin && fin.getTime() <= debut.getTime()) {
+    fin = construire(trouve[4], trouve[5], debut.getUTCFullYear() + 1);
+    if (!fin) return undefined;
+  }
+  if (fin.getTime() <= debut.getTime()) return undefined; // garde-fou : jamais une plage inversée
+
+  return { debut: debut.toISOString(), fin: fin.toISOString() };
+}
+
+/**
  * Ne jamais faire confiance au LLM : ses extractions passent par Zod. Mais la
  * validation se fait CHAMP PAR CHAMP, jamais sur l'objet entier.
  *
@@ -98,6 +141,17 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
   const extrait = extraireChampsValides(sortie.data.brief);
   let brief: BriefPartiel = normaliserDatesBrief({ ...briefActuel, ...extrait });
 
+  // Filet déterministe, avant de compter sur le LLM : une plage explicite
+  // ("du 15/08 au 10/09") qu'il aurait comprise sans la structurer.
+  let plageExpliciteUtilisee = false;
+  if (!brief.dates) {
+    const plage = extrairePlageExplicite(messageUtilisateur);
+    if (plage) {
+      brief = { ...brief, dates: plage };
+      plageExpliciteUtilisee = true;
+    }
+  }
+
   // Un point de départ seul (sans la fin) ne vient pas de extraireChampsValides,
   // qui ne connaît que les champs du domaine : on calcule la fin nous-mêmes,
   // depuis la durée déjà connue — jamais confié au LLM.
@@ -121,7 +175,8 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
     // n'a été compris (dates ambiguës, format inattendu...). Rejouer la même
     // confirmation mot pour mot donnerait l'impression qu'on l'ignore — on le
     // dit plutôt franchement, sans reformuler le contenu passé sous silence.
-    const auMoinsUnChampNouveau = Object.keys(extrait).length > 0 || dateDebutUtilise;
+    const auMoinsUnChampNouveau =
+      Object.keys(extrait).length > 0 || dateDebutUtilise || plageExpliciteUtilisee;
     const briefActuelDejaTermine =
       BriefSchema.safeParse(briefActuel).success && champsManquants(briefActuel).length === 0;
     if (!auMoinsUnChampNouveau && briefActuelDejaTermine) {
