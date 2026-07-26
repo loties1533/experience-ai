@@ -134,6 +134,37 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     });
   });
 
+  it('structure une plage explicite ("du JJ/MM au JJ/MM") même si le LLM l’a comprise sans la mettre dans le JSON', async () => {
+    // Constaté en recette live : le modèle reformule correctement les dates
+    // dans "reponse" ("...tu pars du 15 août au 10 septembre...") sans jamais
+    // les mettre dans "brief". Le filet déterministe ne dépend pas de lui.
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'Parfait ! Tu pars du 15 août au 10 septembre avec 8000 euros.',
+        brief: { avecQui: 'solo', budgetTotal: 8000 },
+      })
+    );
+    const etape = await avancerDialogue(
+      { intention: 'vivre la NBA', duree: { valeur: 3, unite: 'semaines' } },
+      'solo du 15/08/2026 au 10/09/2026 avec un budget de 8000 euros'
+    );
+    expect(etape.brief.dates).toEqual({
+      debut: '2026-08-15T00:00:00.000Z',
+      fin: '2026-09-10T00:00:00.000Z',
+    });
+    expect(etape.estComplet).toBe(true);
+  });
+
+  it('ignore une plage inversée ou absurde plutôt que de la structurer telle quelle', async () => {
+    vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
+    const etape = await avancerDialogue(
+      { intention: 'vivre la NBA', avecQui: 'solo', duree: { valeur: 1, unite: 'semaines' } },
+      'du 10/09/2026 au 15/08/2026' // fin avant début
+    );
+    expect(etape.brief.dates).toBeUndefined();
+    expect(etape.estComplet).toBe(false);
+  });
+
   it('signale franchement quand une correction n’a rien changé, sans rejouer la même confirmation', async () => {
     const briefDejaComplet = {
       intention: 'vivre la NBA',

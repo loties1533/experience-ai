@@ -498,6 +498,116 @@ conservés au sprint R6b n'étaient appelés par personne.
   vrai parcours NBA (Los Angeles / New York / Miami / Chicago) se génère et
   s'affiche, avec hébergement et justifications.
 
+### Premier déploiement public — Render + Neon (25-26/07)
+
+> Le compte Render (celui de TripGenie, qui expire le 30/07) n'autorise
+> qu'une seule base PostgreSQL gratuite à la fois. Plutôt que d'attendre ou de
+> sacrifier TripGenie, la base d'Experience AI vit sur **Neon** (gratuit, sans
+> cette limite) ; Render n'héberge que le service web. `DATABASE_URL` n'est
+> qu'une chaîne de connexion — rien n'oblige les deux à cohabiter chez le même
+> hébergeur.
+
+- Projet Render dédié (« Experience AI »), isolé de TripGenie : ni base, ni
+  service, ni URL partagés (déjà prévu par `render.yaml`, ADR-0006 dans
+  l'esprit — jamais deux projets mélangés).
+- **Deux bugs de configuration, propres à un premier déploiement, invisibles
+  en local :**
+  - `NODE_ENV=production` (nécessaire à l'exécution) affecte aussi le `npm
+    install` du **build** : les devDependencies (`@types/node`,
+    `@vitejs/plugin-react`) ne s'installaient plus, cassant `tsc` puis Vite.
+    Build Command corrigé : `npm install --include=dev && npx prisma migrate
+    deploy && npx tsc && npm run build` (le script `build` racine installe
+    *aussi* les dépendances de `client-react`, contrairement à
+    `client:build`).
+  - Un déploiement a hérité d'une lenteur infra ponctuelle (8m30 sans jamais
+    logger le démarrage) — annulé puis relancé manuellement, reparti en 1m00s
+    à l'identique. Pas un défaut du projet.
+- **Application en ligne : https://experience-ai.onrender.com**
+
+### Trois bugs de dialogue trouvés en recette live, sur le tout premier message (26/07)
+
+> Livrés par les PR [#15](https://github.com/loties1533/experience-ai/pull/15),
+> [#16](https://github.com/loties1533/experience-ai/pull/16) et
+> [#17](https://github.com/loties1533/experience-ai/pull/17). Les trois sont
+> nés du même test, dans l'ordre où ils sont apparus — chacun révélant le
+> suivant une fois corrigé.
+
+- **« semaines » manquait du schéma de durée** (PR #15). La toute première
+  suggestion de l'accueil — « Vivre la NBA pendant 3 semaines » — donnait
+  systématiquement « sur 3 jours » : `ContexteSchema.duree.unite` n'acceptait
+  que `heures|jours`, alors que le commentaire du schéma citait déjà « trois
+  semaines » comme exemple. Un oubli, jamais branché.
+- **Une durée seule n'ancre le parcours à aucune vraie date** (PR #16). Sans
+  date, le prompt de génération n'impose plus rien sur les plages horaires :
+  le modèle en invente une (vu : `2025-01-20`, sans rapport avec le vrai
+  séjour), et chercher de vrais événements (PredictHQ) sur une date inventée
+  n'a alors aucune valeur réelle. `dates` devient un champ requis du
+  **dialogue** (`champsManquants`), tout en restant optionnel au niveau du
+  domaine (`BriefSchema`) — un point de départ seul suffit, la fin se
+  **calcule** depuis la durée (`calculerDates`, arithmétique pure, jamais
+  confiée au LLM). Au passage : une correction qui n'aboutissait à rien
+  (dates ambiguës) rejouait la confirmation mot pour mot, donnant l'impression
+  d'être ignoré — elle le dit maintenant franchement.
+- **« point de départ » était ambigu** (PR #17). Le libellé introduit par la
+  PR #16 pour réclamer une date a été comprise par le modèle comme une
+  **ville** (« De quel point de départ tu pars ? » → « Bordeaux »), faisant
+  tourner le dialogue en rond. Renommé partout en « date de départ » avec une
+  précision explicite dans le prompt (« à quel moment, pas d'où »).
+- Prompt d'intake durci pour garder l'unité de durée exacte dite par
+  l'utilisateur (« 3 semaines » retombait parfois sur « 3 jours » malgré le
+  schéma déjà corrigé — un modèle rapide sans consigne explicite retombe par
+  habitude sur l'unité la plus commune).
+- 302 tests verts au fil des trois PR, typecheck et lint OK à chaque fois.
+
+### Vulnérabilités npm détectées en déployant — deux corrigées, une laissée ouverte (26/07)
+
+> Livré par la [PR #17](https://github.com/loties1533/experience-ai/pull/17),
+> avec les fixes de dialogue ci-dessus.
+
+- **Corrigées sans risque** (`npm audit fix`, non cassant) : `@babel/core`
+  (lecture de fichier arbitraire) et `postcss` (traversée de chemin /
+  lecture arbitraire via `sourceMappingURL`). Les deux ne s'exécutent que
+  côté outillage de **build** — jamais exposées à un visiteur du site en
+  ligne.
+- **⚠️ Laissée ouverte, volontairement : `react-router` — redirection
+  ouverte** (CVE via `<Link>`/`useNavigate`, et injection de constructeur
+  arbitraire en hydratation SSR — cette dernière ne s'applique pas ici, le
+  front n'étant pas server-rendu). Celle-ci *s'exécute dans le navigateur de
+  l'utilisateur*, en prod — la seule des trois qui compte vraiment. Le
+  correctif exige un saut de version **majeure** (6.30 → 7.18), un vrai
+  risque de casse de toute la navigation de l'app, qu'on ne peut pas tester
+  sérieusement en pleine session de recette live. `vite`/`esbuild` (dev-only,
+  jamais déployé) restent aussi en l'état pour la même raison de risque de
+  casse, mais sans urgence puisque non exposés en prod.
+- **À faire dans un chantier dédié** : upgrade react-router 6→7 avec une
+  vraie recette de non-régression sur toute la navigation (accueil,
+  connexion, détail parcours, partage) avant de merger.
+
+### Une plage de dates comprise par le modèle, mais jamais structurée (26/07)
+
+> Livré par une PR distincte, née du même test que les trois précédentes.
+> Repéré en inspectant les vraies requêtes réseau du dialogue, pas en
+> lisant seulement les réponses affichées.
+
+- **Le LLM peut dire une chose et en écrire une autre.** Message unique
+  « solo du 15/08 au 10/09 avec un budget de 8000 euros » : la réponse
+  reformulait bien *« tu pars seul du 15 août au 10 septembre »*, mais le
+  JSON structuré ne portait **aucun** champ `dates`. Le dialogue tournait en
+  rond (redemandait sans cesse la date) alors que le modèle l'avait pourtant
+  comprise — une divergence entre le texte libre et les données structurées,
+  invisible tant qu'on ne compare pas les deux.
+- **Un filet déterministe, indépendant du LLM.** Une expression régulière
+  générique (`JJ/MM au JJ/MM`, aucune date câblée en dur) reconnaît une plage
+  explicite directement dans le message brut, en repli si le modèle ne l'a
+  pas structurée. Le LLM reste la voie principale pour tout le langage flou
+  (« mi-août », « dans deux semaines ») — le filet ne couvre que le format
+  chiffré, le cas qui venait justement d'échouer.
+- Même principe que pour les dates sans fuseau (PR #14) ou les ids inventés :
+  un champ aussi structurant pour la suite (chercher de vrais événements) ne
+  peut pas dépendre entièrement de la fiabilité du modèle.
+- 2 tests ajoutés (plage explicite structurée malgré une extraction LLM
+  vide ; plage inversée ou absurde rejetée plutôt que propagée), 304 verts.
+
 ---
 
 # TripGenie — Suivi Agile historique (sprints, revues et rétrospectives)
