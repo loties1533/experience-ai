@@ -1,6 +1,9 @@
 import { CLE_ANTHROPIC, CLE_OPENROUTER } from '../lib/keys.js';
 
-const TIMEOUT_IA_MS  = 45_000;
+// Un parcours long (plusieurs semaines, plusieurs villes) prend plus de temps
+// à écrire en entier : 45 s coupait parfois une génération encore en cours,
+// ce qui bascule sur le repli (plus fragile, cf. callAIAvecOutils).
+const TIMEOUT_IA_MS  = 60_000;
 
 interface OptionsFetch extends RequestInit {
   signal?: AbortSignal;
@@ -34,7 +37,10 @@ export async function callClaude(systemPrompt: string, userPrompt: string): Prom
     headers: entetesAnthropic(),
     body: JSON.stringify({
       model:      MODELE_CLAUDE,
-      max_tokens: 4000,
+      // Cet appel simple sert aussi de repli à la génération outillée : un
+      // parcours long peut produire un JSON aussi volumineux que la voie
+      // outillée (cf. callClaudeOutils, même limite).
+      max_tokens: 8192,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: userPrompt }],
     }),
@@ -84,7 +90,10 @@ export async function callClaudeOutils(
     headers: entetesAnthropic(),
     body: JSON.stringify({
       model:      MODELE_CLAUDE,
-      max_tokens: 4000,
+      // Un parcours long (plusieurs semaines, plusieurs villes) dépasse vite
+      // 4000 tokens en sortie : le modèle tronque alors son JSON en plein
+      // milieu d'une valeur, ce qui rend la génération inexploitable.
+      max_tokens: 8192,
       system:     systemPrompt,
       messages,
       ...(outils?.length ? { tools: outils } : {}),
