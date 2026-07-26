@@ -608,6 +608,34 @@ conservés au sprint R6b n'étaient appelés par personne.
 - 2 tests ajoutés (plage explicite structurée malgré une extraction LLM
   vide ; plage inversée ou absurde rejetée plutôt que propagée), 304 verts.
 
+### Le résolveur de vrais liens, oublié lors du portage TripGenie (26/07)
+
+> Repéré en testant un parcours daté de bout en bout : les liens rendus
+> n'étaient que des recherches Google Maps, les hébergements 100% inventés,
+> sans aucun ancrage réel. « je ne montre pas ce produit dans cet état, ça
+> n'a pas d'intérêt si c'est pour générer des faux voyages. »
+
+- **Deux morceaux de logique jamais portés.** En comparant avec TripGenie
+  (repo de référence), rien dans leur logique ne dépendait de Pack ni de
+  Parcours — ils sont simplement passés à la trappe pendant la réécriture du
+  domaine : `services/liens.ts` (recherche web ciblée + LLM pour associer un
+  nom de lieu à sa vraie page, avec un filet anti-hallucination : une URL
+  n'est retenue que si elle existe littéralement dans les résultats de
+  recherche) et `construireLienHotel` dans `lib/url.ts` (lien Booking.com
+  pré-rempli avec les dates et le nombre de voyageurs — Booking, pas nous,
+  connaît le vrai prix).
+- **`tracerLieuReel` priorise maintenant en trois niveaux** : lien réel
+  (site officiel / billetterie) > Booking.com pour un hébergement > carte
+  Foursquare (repli existant, jamais un lien cassé). Un temps libre ne se
+  réserve toujours pas (invariant 4).
+- **Les vols (liens IATA/Kayak) sont délibérément laissés de côté** : mieux
+  vaut n'afficher aucun lien de vol que d'en inventer un sans donnée fiable
+  derrière.
+- Nécessite `TAVILY_API_KEY` en variable d'environnement sur Render (déjà
+  prévue dans `render.yaml`, jamais renseignée faute d'usage jusqu'ici).
+- 23 tests ajoutés (filet anti-hallucination, dégradation propre à null,
+  priorité des trois niveaux de lien), 327 verts.
+
 ---
 
 # TripGenie — Suivi Agile historique (sprints, revues et rétrospectives)
