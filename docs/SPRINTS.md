@@ -636,6 +636,31 @@ conservés au sprint R6b n'étaient appelés par personne.
 - 23 tests ajoutés (filet anti-hallucination, dégradation propre à null,
   priorité des trois niveaux de lien), 327 verts.
 
+### Un parcours long (NBA, 3 semaines, 4 villes) échouait systématiquement (26/07)
+
+> Repéré juste après avoir déployé le chantier des liens réels : même brief,
+> même échec deux fois de suite en recette live — reproduit ensuite en local
+> pour diagnostiquer sans deviner.
+
+- **Rien à voir avec les liens.** L'échec (« résultat inexploitable ») se
+  produit avant même que le résolveur de liens s'exécute — confirmé en
+  reproduisant en local avec des logs temporaires (retirés une fois la cause
+  trouvée).
+- **`max_tokens: 4000`, codé en dur, trop court pour un long parcours.** Un
+  voyage sur plusieurs semaines et plusieurs villes dépasse vite cette
+  limite : le modèle tronque son JSON en plein milieu d'une valeur. Relevé à
+  8192 pour `callClaudeOutils` (la boucle d'outils) et `callClaude` (son
+  repli), qui produisent le même JSON.
+- **Un second bug, plus sournois, caché derrière le premier.** Quand la
+  boucle d'outils est interrompue (délai dépassé, ce que confirme
+  `TIMEOUT_IA_MS` relevé de 45 s à 60 s), le repli renvoie tel quel le system
+  prompt d'origine à un appel qui, lui, n'a AUCUN outil : le modèle a alors
+  tenté d'invoquer un outil en écrivant une syntaxe inventée en pleine prose,
+  cassant le JSON. Le repli précise désormais explicitement qu'aucun outil
+  n'est disponible pour cette réponse.
+- 5 reproductions en local après correctif, 5 succès (contre un échec
+  systématique avant), 327 tests toujours verts.
+
 ---
 
 # TripGenie — Suivi Agile historique (sprints, revues et rétrospectives)

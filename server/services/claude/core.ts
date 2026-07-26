@@ -204,7 +204,15 @@ export async function callAIAvecOutils(
     console.error('Boucle d’outils interrompue :', (erreur as Error).message);
   }
 
-  // Boucle en panne (réseau, quota) : on génère sans données réelles plutôt que
-  // de rendre une erreur à quelqu'un qui attend son parcours.
-  return callAI(userPrompt, systemPrompt, context);
+  // Boucle en panne (réseau, quota, délai dépassé) : on génère sans données
+  // réelles plutôt que de rendre une erreur à quelqu'un qui attend son
+  // parcours. Le system prompt d'origine explique comment chercher — repris
+  // tel quel ici, le modèle tente parfois d'appeler un outil en prose (une
+  // syntaxe d'invocation inventée, en plein milieu du JSON) puisqu'aucun outil
+  // n'est réellement fourni à cet appel simple. On le prévient explicitement.
+  return callAI(
+    userPrompt,
+    `${systemPrompt}\n\nAUCUN OUTIL N'EST DISPONIBLE POUR CETTE RÉPONSE : ne cherche rien, n'appelle rien, réponds directement en JSON avec ce que tu sais déjà, reste générique si besoin.`,
+    context
+  );
 }
