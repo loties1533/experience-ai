@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { callAIAvecOutils, parseJSON } from '../services/claude/core.js';
 import { creerBoiteAOutils, type BoiteAOutils } from '../services/claude/outils.js';
+import { resoudreLiensReels } from '../services/liens.js';
+import { construireLienHotel } from '../lib/url.js';
 import { AppError } from '../lib/AppError.js';
 import {
   ParcoursSchema,
@@ -12,6 +14,9 @@ import {
 } from '../domaine/parcours/index.js';
 import { normaliserDatesBrief, type Brief } from './brief.js';
 import type { PreferencesParcours } from '../domaine/preferences.js';
+
+/** Types pour lesquels un vrai site officiel/billetterie vaut mieux qu'une carte. */
+const TYPES_AVEC_LIEN_REEL = new Set(['restaurant', 'activite', 'sortie', 'evenement']);
 
 // L'ORCHESTRATEUR (IA n°1) : brief confirmé → parcours complet.
 // À ne pas confondre avec l'agent Modification (IA n°2, modification.ts) qui
@@ -79,21 +84,50 @@ type ElementGenere = z.infer<typeof ElementGenereSchema>;
  * Ce qui, dans un élément, vient d'une recherche réelle et non du modèle.
  *
  * Quand le nom proposé correspond à un lieu rendu par un outil, on lui rattache
- * son adresse et son lien de carte — un LIEN EXTERNE, jamais un achat
- * (invariant 4) : le produit conduit vers le lieu, il ne vend rien. Le lien
- * vient du connecteur, jamais du modèle, qui n'a donc aucune URL à inventer.
+ * son adresse. Pour le LIEN EXTERNE — jamais un achat (invariant 4), le produit
+ * conduit vers le lieu, il ne vend rien — trois niveaux, du meilleur au repli :
+ *   1. Un vrai site officiel / billetterie (resoudreLiensReels, recherche web
+ *      ciblée + filet anti-hallucination) — jamais inventé par le modèle.
+ *   2. Pour un hébergement : un lien Booking.com pré-rempli (dates connues du
+ *      parcours) — Booking, pas nous, connaît le vrai prix.
+ *   3. La carte du connecteur (Foursquare) — jamais un lien cassé.
  */
 function tracerLieuReel(
   element: ElementGenere,
-  boite: BoiteAOutils
+  boite: BoiteAOutils,
+  liensReels: Map<string, string | null>,
+  datesParcours?: { debut: string; fin: string }
 ): { lieu?: string; reservation?: { lienExterne: string; fournisseur: string } } {
   const reel = boite.trouverLieuReel(element.nom);
   const lieu = reel?.lieu ?? element.lieu;
 
   // Un temps libre ne se réserve pas (invariant 4) : rien à y rattacher.
-  if (!reel?.lienCarte || element.type === 'temps_libre') return { lieu };
+  if (element.type === 'temps_libre') return { lieu };
 
-  return { lieu, reservation: { lienExterne: reel.lienCarte, fournisseur: reel.source } };
+  const lienOfficiel = liensReels.get(element.nom);
+  if (lienOfficiel) {
+    return { lieu, reservation: { lienExterne: lienOfficiel, fournisseur: 'Web' } };
+  }
+
+  if (element.type === 'hebergement' && lieu) {
+    const plage = element.plage ?? datesParcours;
+    return {
+      lieu,
+      reservation: {
+        lienExterne: construireLienHotel(element.nom, lieu, {
+          checkin: plage?.debut,
+          checkout: plage?.fin,
+        }),
+        fournisseur: 'Booking.com',
+      },
+    };
+  }
+
+  if (reel?.lienCarte) {
+    return { lieu, reservation: { lienExterne: reel.lienCarte, fournisseur: reel.source } };
+  }
+
+  return { lieu };
 }
 
 export async function genererParcours(
@@ -150,6 +184,20 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
     }
   }
 
+  // Un vrai site officiel / billetterie vaut mieux qu'une simple carte : une
+  // seule recherche groupée pour tout le parcours (services/liens.ts). Une
+  // recherche web échouée ou une clé absente rend une Map à null pour tous les
+  // noms — tracerLieuReel retombe alors sur la carte, jamais un lien cassé.
+  const nomsAResoudre = [
+    ...new Set(
+      sortie.data.moments
+        .flatMap((m) => m.elements)
+        .filter((e) => TYPES_AVEC_LIEN_REEL.has(e.type))
+        .map((e) => e.nom)
+    ),
+  ];
+  const liensReels = await resoudreLiensReels(nomsAResoudre, brief.lieux[0] ?? brief.intention);
+
   const parcours = ParcoursSchema.parse({
     id: randomUUID(),
     intention: { texte: brief.intention },
@@ -170,7 +218,7 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
         id: idParRef.get(element.ref) as string,
         type: element.type,
         nom: element.nom,
-        ...tracerLieuReel(element, boite),
+        ...tracerLieuReel(element, boite, liensReels, brief.dates),
         plage: element.plage,
         prix: element.prix,
         justification: element.justification,
