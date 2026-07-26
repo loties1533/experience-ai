@@ -18,11 +18,15 @@ vi.mock('../../server/services/providers.js', async (importOriginal) => {
 vi.mock('../../server/services/foursquare.js', () => ({ foursquareRechercheLieux: vi.fn() }));
 vi.mock('../../server/services/predictHQ.js', () => ({ predictHQEventsSearch: vi.fn() }));
 vi.mock('../../server/services/weather.js', () => ({ getRealWeather: vi.fn() }));
+// Le résolveur de vrais liens a sa propre suite (tests/unit/liens.test.ts) : ici
+// on ne teste que la PRIORITÉ dans tracerLieuReel (lien réel > Booking > carte).
+vi.mock('../../server/services/liens.js', () => ({ resoudreLiensReels: vi.fn() }));
 
 const { callClaude, callClaudeOutils } = await import('../../server/services/providers.js');
 const { foursquareRechercheLieux } = await import('../../server/services/foursquare.js');
 const { predictHQEventsSearch } = await import('../../server/services/predictHQ.js');
 const { getRealWeather } = await import('../../server/services/weather.js');
+const { resoudreLiensReels } = await import('../../server/services/liens.js');
 const { creerBoiteAOutils } = await import('../../server/services/claude/outils.js');
 const { MAX_TOURS_OUTILS } = await import('../../server/services/claude/core.js');
 const { viderCacheMemoire } = await import('../../server/lib/cacheMemoire.js');
@@ -78,6 +82,7 @@ beforeEach(() => {
   vi.mocked(foursquareRechercheLieux).mockReset().mockResolvedValue(LIEUX_TROUVES);
   vi.mocked(predictHQEventsSearch).mockReset().mockResolvedValue([]);
   vi.mocked(getRealWeather).mockReset().mockResolvedValue(null);
+  vi.mocked(resoudreLiensReels).mockReset().mockResolvedValue(new Map());
   viderCacheMemoire();
 });
 
@@ -184,6 +189,54 @@ describe('le repli — sans données réelles, mais jamais d’erreur technique'
     vi.mocked(callClaudeOutils).mockRejectedValue(new Error('quota dépassé'));
     vi.mocked(callClaude).mockRejectedValue(new Error('quota dépassé'));
     await expect(genererParcours(brief)).rejects.toMatchObject({ statusCode: 503 });
+  });
+});
+
+describe('tracerLieuReel — priorité du lien (réel > Booking > carte)', () => {
+  it('préfère le vrai lien (site officiel/billetterie) à la carte du connecteur', async () => {
+    vi.mocked(resoudreLiensReels).mockResolvedValue(
+      new Map([['Le Point Rouge', 'https://lepointrouge.fr/']])
+    );
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(tourOutil('chercher_lieux', { ville: 'Bordeaux', requete: 'bar' }))
+      .mockResolvedValueOnce(tourReponse('Le Point Rouge'));
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+
+    expect(element.reservation?.lienExterne).toBe('https://lepointrouge.fr/');
+    expect(element.reservation?.fournisseur).toBe('Web');
+  });
+
+  it('construit un lien Booking.com pré-rempli pour un hébergement, sans lien réel trouvé', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce([
+      {
+        type: 'text',
+        text: JSON.stringify({
+          ambiance: 'détente',
+          moments: [
+            {
+              titre: 'La nuit',
+              elements: [
+                {
+                  ref: 'hotel-1',
+                  type: 'hebergement',
+                  nom: 'Hôtel de la Paix',
+                  lieu: 'Bordeaux',
+                  plage: { debut: '2026-08-15T14:00:00Z', fin: '2026-08-17T10:00:00Z' },
+                  justification: 'une nuit sur place',
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    ]);
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+
+    expect(element.reservation?.fournisseur).toBe('Booking.com');
+    expect(element.reservation?.lienExterne).toContain('booking.com/searchresults.html');
+    expect(element.reservation?.lienExterne).toContain('checkin=2026-08-15');
   });
 });
 
