@@ -12,7 +12,7 @@
 | Sprint | Objectif | Statut |
 |---|---|---|
 | F0 — Audit du portage | Matrice TripGenie → Experience AI | Terminé |
-| F1 — Vérité des données | Confiance, traçabilité et refus explicite | En cours |
+| F1 — Vérité des données | Confiance, traçabilité et refus explicite | Terminé |
 | F2 — Lieux et événements | Liens fiables par ville et établissement | À faire |
 | F3 — Hébergements | Existence vérifiée et recherche Booking correcte | À faire |
 | F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | À faire |
@@ -22,7 +22,7 @@
 | F8 — Modification complète | Régénération atomique des seuls dépendants | À faire |
 | F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
 
-### Board — prochain travail
+### Board — avancement du chantier
 
 **F0 — Audit du portage**
 
@@ -36,7 +36,7 @@
 Rapport validé :
 [`docs/audits/tripgenie-vers-experience-ai.md`](audits/tripgenie-vers-experience-ai.md).
 
-**F1 — Vérité des données** *(en cours)*
+**F1 — Vérité des données** *(terminé)*
 
 - [x] Définir les niveaux persistés Vérifié / Estimé / Suggestion
 - [x] Définir la provenance : source, fournisseur, date et identifiant externe
@@ -45,11 +45,11 @@ Rapport validé :
 - [x] Normaliser les anciennes réservations sans leur accorder Vérifié
 - [x] Afficher le niveau de confiance et le caractère estimé des prix
 - [x] Valider les scénarios F1 par la suite automatisée
-- [ ] Faire accepter [ADR-0008](decisions/ADR-0008.md) dans la PR
+- [x] Faire accepter [ADR-0008](decisions/ADR-0008.md) dans la PR
 
 > **Note historique.** Les revues R6 ci-dessous expliquent pourquoi le système
 > avait été conçu pour « sortir un parcours dans tous les cas ». Elles restent
-> conservées comme historique, mais cette stratégie est désormais à remplacer
+> conservées comme historique, mais cette stratégie est désormais remplacée
 > par F1.
 
 ## Refonte Experience AI — plan de build

@@ -120,7 +120,7 @@ sequenceDiagram
     A-->>F: parcours complet
 ```
 
-> **Contrat F1 en cours de validation.** Une génération outillée indisponible ne retombe plus sur un
+> **Contrat F1 validé.** Une génération outillée indisponible ne retombe plus sur un
 > modèle sans sources : l'API renvoie une erreur technique `503`. Une recherche
 > exécutée mais vide peut encore produire une idée générique, toujours marquée
 > **Suggestion**, sans faux nom propre ni faux lien. Les éléments vérifiés
@@ -240,10 +240,10 @@ Deux règles de gouvernance :
 
 Le modèle de domaine est **stable pour le MVP** : validé par crash-test contre six parcours très différents (passionné solo, couple avec surprise, soirée improvisée, famille, EVG, festival), puis par une recette manuelle de bout en bout qui a corrigé deux défauts réels (le brief qui perdait des informations, la génération qui échouait sur des dates de fin légitimes).
 
-F0 est validé et **F1 — vérité des données** est en cours : provenance
+F0 et **F1 — vérité des données** sont validés : provenance
 persistée, niveaux de confiance visibles, suggestions génériques, refus métier
 et panne technique sont séparés. F2 — liens fiables pour les lieux et
-événements — reste à faire après validation de F1. Voir le
+événements — reste à faire. Voir le
 [plan détaillé](docs/14-fiabilite-parcours.md) et les
 [futurs sprints](docs/SPRINTS.md).
 

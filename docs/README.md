@@ -31,8 +31,8 @@
 | 13 | [principes-evolution](13-principes-evolution.md) | ✅ |
 | 14 | [fiabilite-parcours](14-fiabilite-parcours.md) | 🟡 plan de reprise actif |
 
-**Suivi d'exécution :** [SPRINTS](SPRINTS.md) — historique R1 → R8 et futurs
-sprints F0 → F9.
+**Suivi d'exécution :** [SPRINTS](SPRINTS.md) — historique R1 → R8 et suivi
+des sprints de fiabilité F0 → F9.
 
 **Docs vivants :** [questions-ouvertes](questions-ouvertes.md) ·
 [audit F0 TripGenie → Experience AI](audits/tripgenie-vers-experience-ai.md) ·

@@ -25,7 +25,7 @@ S'y ajoute l'**intake** (`agents/intake.ts`) : le dialogue de cadrage (doc 05, �
    Gemini → OpenRouter. Elle assure la disponibilité du raisonnement, mais ne
    doit pas autoriser une baisse silencieuse de la qualité des données.
 
-## Contrat de repli F1 en cours de validation
+## Contrat de repli F1 validé
 
 La génération outillée ne retombe plus sur un modèle sans outils après l'échec
 de sa boucle. Elle renvoie une indisponibilité explicite. Une recherche bien
