@@ -23,7 +23,7 @@ outillée et inscrit l'exigence suivante dans le domaine :
 
 Trois niveaux sont persistés sur les éléments. Le refus est un résultat métier
 de génération, jamais un niveau enregistré. Voir
-[ADR-0008](decisions/ADR-0008.md), proposé avec F1.
+[ADR-0008](decisions/ADR-0008.md), accepté à la clôture de F1.
 
 | Niveau ou résultat | Signification | Présentation autorisée |
 |---|---|---|
@@ -77,7 +77,7 @@ sa définition de terminé sont satisfaites.
 | Sprint | Objectif | Dépend de | Statut |
 |---|---|---|---|
 | **F0 — Audit du portage** | Matrice TripGenie → Experience AI des capacités utiles | — | Terminé |
-| **F1 — Vérité des données** | Politique de confiance, traçabilité et refus explicite | F0 | En cours |
+| **F1 — Vérité des données** | Politique de confiance, traçabilité et refus explicite | F0 | Terminé |
 | **F2 — Lieux et événements** | Liens fiables pour activités, restaurants et événements | F1 | À faire |
 | **F3 — Hébergements** | Hébergements nommés vérifiés et liens correctement paramétrés | F1, F2 | À faire |
 | **F4 — Vols et transports** | Recherches réelles avec IATA, dates et voyageurs | F0, F1 | À faire |
@@ -112,7 +112,7 @@ faute de données essentielles.
 
 **Terminé lorsque :** aucun lieu inventé n'est présenté comme réel.
 
-**État :** implémentation et validation en cours. Une panne technique des
+**État :** implémentation terminée et validée. Une panne technique des
 sources rend un `503`, tandis qu'un manque métier de données essentielles rend
 un `422`. Une donnée facultative absente reste une suggestion générique.
 
