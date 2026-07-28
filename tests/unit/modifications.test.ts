@@ -176,6 +176,13 @@ function parcoursFestival(): Parcours {
           element('creneau-22h', {
             type: 'evenement',
             estAncre: true,
+            confiance: {
+              niveau: 'verifie',
+              source: 'PredictHQ API',
+              fournisseur: 'PredictHQ',
+              recupereLe: '2026-07-23T17:00:00Z',
+              identifiantExterne: 'festival-set-22h',
+            },
             alternatives: [
               { id: 'artisteA', nom: 'Set de l’artiste A' },
               { id: 'artisteB', nom: 'Set de l’artiste B' },

@@ -3,14 +3,15 @@ import { z } from 'zod';
 import { callAIAvecOutils, parseJSON } from '../services/claude/core.js';
 import { creerBoiteAOutils, type BoiteAOutils } from '../services/claude/outils.js';
 import { resoudreLiensReels } from '../services/liens.js';
-import { construireLienHotel } from '../lib/url.js';
 import { AppError } from '../lib/AppError.js';
 import {
   ParcoursSchema,
   PlageHoraireSchema,
   TypeElementSchema,
   validerParcours,
+  type Confiance,
   type Parcours,
+  type TypeElement,
 } from '../domaine/parcours/index.js';
 import { normaliserDatesBrief, type Brief } from './brief.js';
 import type { PreferencesParcours } from '../domaine/preferences.js';
@@ -26,8 +27,10 @@ const TYPES_AVEC_LIEN_REEL = new Set(['restaurant', 'activite', 'sortie', 'evene
 // événements (services/claude/outils.ts). Sans eux, il puisait dans sa mémoire
 // d'entraînement et sortait des « Bar à cocktails réputé du centre » — sur un
 // produit dont la valeur est la cohérence avec un thème, un lieu faux ruine la
-// confiance. Quand aucune clé n'est configurée, il construit quand même le
-// parcours, sans données réelles : c'est un repli, jamais une panne affichée.
+// confiance. Depuis F1, une boucle d'outils réellement indisponible provoque
+// une erreur technique explicite ; une recherche exécutée mais vide produit
+// une suggestion générique si la donnée est facultative, ou un refus métier
+// si elle est essentielle.
 //
 // Ne jamais faire confiance au LLM : sa sortie est revalidée champ par champ,
 // les ids sont attribués ICI (jamais par le modèle), les dépendances vers des
@@ -43,8 +46,10 @@ AVANT D'ÉCRIRE, CHERCHE. Tu disposes d'outils qui rendent de vrais lieux, de vr
 - N'invente JAMAIS un nom d'établissement, une date de match ni un événement. Si une recherche ne rend rien (lieu, événement OU date), reste générique et honnête ("un bar à cocktails du centre", "un match de la saison à voir sur place") — sans faire passer une invention pour un fait.
 - N'écris jamais d'URL : les liens sont ajoutés après toi.
 
-Puis réponds UNIQUEMENT en JSON valide : {"ambiance": string, "moments": [...]}.
-Ta réponse est TOUJOURS ce JSON, même incomplet, même si des recherches n'ont rien donné. N'écris JAMAIS de phrase d'explication, d'excuse ou de constat hors du JSON (ex. "les dates ne sont pas disponibles") : ce qui manque, on le laisse générique DANS le parcours.
+Puis réponds UNIQUEMENT avec l'une de ces deux formes JSON :
+1. Parcours possible : {"ambiance": string, "moments": [...]}.
+2. Donnée ESSENTIELLE introuvable (par exemple l'événement daté qui constitue le motif même du parcours) : {"refus":{"code":"donnees_essentielles_insuffisantes","message":string}}.
+Une donnée facultative absente ne justifie jamais un refus : reste générique DANS le parcours. N'écris JAMAIS de phrase d'explication hors du JSON.
 - Chaque moment : {"titre": string, "elements": [...]}.
 - Chaque élément : {"ref": string (identifiant court unique, ex "resto-soir-1"), "type": "activite"|"restaurant"|"sortie"|"transport"|"hebergement"|"evenement"|"temps_libre", "nom": string, "lieu": string, "plage": {"debut": ISO, "fin": ISO} (optionnel), "prix": number en euros (optionnel), "justification": string (POURQUOI cet élément sert l'intention — obligatoire), "dependDe": [refs] (optionnel), "estAncre": boolean (optionnel).
 - "sortie" = ce qui se vit le soir (bar, club, tournée, apéro). Ne JAMAIS le ranger en "temps_libre".
@@ -78,56 +83,134 @@ const SortieGenerationSchema = z.object({
     .min(1),
 });
 
+const RefusGenerationSchema = z.object({
+  refus: z.object({
+    code: z.literal('donnees_essentielles_insuffisantes'),
+    message: z.string().min(1),
+  }),
+});
+
 type ElementGenere = z.infer<typeof ElementGenereSchema>;
+
+function confianceVerifiee(args: {
+  source: string;
+  fournisseur: string;
+  recupereLe?: string;
+  identifiantExterne?: string;
+}): Confiance {
+  return {
+    niveau: 'verifie',
+    source: args.source,
+    fournisseur: args.fournisseur,
+    recupereLe: args.recupereLe ?? new Date().toISOString(),
+    identifiantExterne: args.identifiantExterne,
+  };
+}
+
+/** Un résultat sans preuve reste une idée générique, jamais un faux nom propre. */
+function nomSuggestion(type: TypeElement, ville?: string): string {
+  const endroit = ville ? ` à ${ville}` : '';
+  const noms: Record<TypeElement, string> = {
+    activite: `Une activité adaptée à l’intention${endroit}`,
+    restaurant: `Un restaurant à choisir${endroit}`,
+    sortie: `Une sortie à choisir${endroit}`,
+    transport: `Un transport à organiser${endroit}`,
+    hebergement: `Un hébergement à choisir${endroit}`,
+    evenement: `Un événement à confirmer${endroit}`,
+    temps_libre: 'Un temps libre',
+  };
+  return noms[type];
+}
 
 /**
  * Ce qui, dans un élément, vient d'une recherche réelle et non du modèle.
  *
  * Quand le nom proposé correspond à un lieu rendu par un outil, on lui rattache
  * son adresse. Pour le LIEN EXTERNE — jamais un achat (invariant 4), le produit
- * conduit vers le lieu, il ne vend rien — trois niveaux, du meilleur au repli :
+ * conduit vers le lieu, il ne vend rien — deux niveaux :
  *   1. Un vrai site officiel / billetterie (resoudreLiensReels, recherche web
  *      ciblée + filet anti-hallucination) — jamais inventé par le modèle.
- *   2. Pour un hébergement : un lien Booking.com pré-rempli (dates connues du
- *      parcours) — Booking, pas nous, connaît le vrai prix.
- *   3. La carte du connecteur (Foursquare) — jamais un lien cassé.
+ *   2. La carte du connecteur (Foursquare) — jamais un lien cassé.
+ *
+ * Les liens spécialisés d'hébergement restent hors de F1 et seront traités en
+ * F3 après une recherche dédiée.
  */
 function tracerLieuReel(
   element: ElementGenere,
   boite: BoiteAOutils,
   liensReels: Map<string, string | null>,
-  datesParcours?: { debut: string; fin: string }
-): { lieu?: string; reservation?: { lienExterne: string; fournisseur: string } } {
+  options: {
+    ville?: string;
+  }
+): {
+  nom: string;
+  lieu?: string;
+  confiance: Confiance;
+  reservation?: {
+    lienExterne: string;
+    fournisseur: string;
+    typeLien: 'officiel' | 'billetterie' | 'recherche' | 'carte';
+  };
+} {
   const reel = boite.trouverLieuReel(element.nom);
   const lieu = reel?.lieu ?? element.lieu;
 
   // Un temps libre ne se réserve pas (invariant 4) : rien à y rattacher.
-  if (element.type === 'temps_libre') return { lieu };
+  if (element.type === 'temps_libre') {
+    return {
+      nom: nomSuggestion(element.type, options.ville),
+      lieu,
+      confiance: { niveau: 'suggestion' },
+    };
+  }
 
   const lienOfficiel = liensReels.get(element.nom);
   if (lienOfficiel) {
-    return { lieu, reservation: { lienExterne: lienOfficiel, fournisseur: 'Web' } };
-  }
-
-  if (element.type === 'hebergement' && lieu) {
-    const plage = element.plage ?? datesParcours;
     return {
+      nom: element.nom,
       lieu,
+      confiance: confianceVerifiee({
+        source: lienOfficiel,
+        fournisseur: reel?.source ?? 'Recherche Web',
+        recupereLe: reel?.recupereLe,
+        identifiantExterne: reel?.identifiantExterne,
+      }),
       reservation: {
-        lienExterne: construireLienHotel(element.nom, lieu, {
-          checkin: plage?.debut,
-          checkout: plage?.fin,
-        }),
-        fournisseur: 'Booking.com',
+        lienExterne: lienOfficiel,
+        fournisseur: 'Web',
+        typeLien: element.type === 'evenement' ? 'billetterie' : 'officiel',
       },
     };
   }
 
-  if (reel?.lienCarte) {
-    return { lieu, reservation: { lienExterne: reel.lienCarte, fournisseur: reel.source } };
+  if (reel) {
+    const confiance = confianceVerifiee({
+      source: `${reel.source} API`,
+      fournisseur: reel.source,
+      recupereLe: reel.recupereLe,
+      identifiantExterne: reel.identifiantExterne,
+    });
+    if (reel.lienCarte) {
+      return {
+        nom: reel.nom,
+        lieu,
+        confiance,
+        reservation: {
+          lienExterne: reel.lienCarte,
+          fournisseur: reel.source,
+          typeLien: 'carte',
+        },
+      };
+    }
+    return { nom: reel.nom, lieu, confiance };
   }
 
-  return { lieu };
+  return {
+    nom: nomSuggestion(element.type, options.ville),
+    // Le lieu écrit par le modèle n'est pas conservé : il ferait passer une
+    // localisation non vérifiée pour une adresse.
+    confiance: { niveau: 'suggestion' },
+  };
 }
 
 export async function genererParcours(
@@ -170,6 +253,20 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
     (contenu as { indisponible?: unknown }).indisponible === true
   ) {
     throw new AppError('Service IA momentanément indisponible, réessaie dans un instant', 503);
+  }
+  if (
+    typeof contenu === 'object' &&
+    contenu !== null &&
+    (contenu as { outilsIndisponibles?: unknown }).outilsIndisponibles === true
+  ) {
+    throw new AppError(
+      'Les sources nécessaires pour vérifier ce parcours sont momentanément indisponibles',
+      503
+    );
+  }
+  const refus = RefusGenerationSchema.safeParse(contenu);
+  if (refus.success) {
+    throw new AppError(refus.data.refus.message, 422);
   }
   const sortie = SortieGenerationSchema.safeParse(contenu);
   if (!sortie.success) {
@@ -217,12 +314,17 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
       elements: moment.elements.map((element) => ({
         id: idParRef.get(element.ref) as string,
         type: element.type,
-        nom: element.nom,
-        ...tracerLieuReel(element, boite, liensReels, brief.dates),
+        ...tracerLieuReel(element, boite, liensReels, {
+          ville: brief.lieux[0],
+        }),
         plage: element.plage,
         prix: element.prix,
+        prixEstime: element.prix !== undefined,
         justification: element.justification,
-        estAncre: element.estAncre,
+        // Une suggestion ne peut jamais devenir une ancre datée.
+        estAncre:
+          element.estAncre &&
+          boite.trouverLieuReel(element.nom) !== undefined,
         // Une dépendance vers une ref inventée est écartée, pas propagée.
         dependDe: element.dependDe
           .filter((ref) => idParRef.has(ref) && ref !== element.ref)

@@ -36,6 +36,7 @@ interface ReponseFoursquare {
 // Un lieu réel, dit dans le vocabulaire du domaine (nom, adresse, lien carte).
 // C'est ce que l'orchestrateur reçoit quand il cherche où poser un moment.
 export interface LieuReel {
+  identifiantExterne: string;
   nom: string;
   categorie: string;
   adresse?: string;
@@ -135,6 +136,7 @@ export async function foursquareRechercheLieux(
   const lieux = await chercherPlaces(ville, requete, Math.min(Math.max(limite, 1), 8));
 
   return lieux.map(p => ({
+    identifiantExterne: p.fsq_place_id,
     nom:       p.name,
     categorie: p.categories[0]?.name ?? 'Lieu',
     adresse:   [p.location?.address, p.location?.locality].filter(Boolean).join(', ') || undefined,

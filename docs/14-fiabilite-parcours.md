@@ -11,25 +11,26 @@ intake, génération, modification ciblée, préférences et partage. Elle ne pr
 pas encore qu'un parcours généré est suffisamment fiable pour une présentation
 publique.
 
-Le risque principal est le repli actuel : lorsqu'une recherche ou une boucle
-d'outils échoue, le système peut encore générer un parcours sans données
-réelles. Ce comportement assurait la continuité technique, mais il ne respecte
-plus l'exigence produit :
+Le risque principal identifié en F0 était le repli silencieux : lorsqu'une
+recherche ou une boucle d'outils échouait, le système pouvait encore générer un
+parcours sans données réelles. F1 remplace ce comportement pour la génération
+outillée et inscrit l'exigence suivante dans le domaine :
 
 > Mieux vaut expliquer qu'une donnée indispensable manque que présenter une
 > invention comme une réalité.
 
-## Politique de confiance à formaliser en F1
+## Contrat de confiance de F1
 
-Les quatre états ci-dessous définissent la direction. Leur schéma exact, leur
-persistance et leurs règles d'affichage seront décidés et testés au sprint F1.
+Trois niveaux sont persistés sur les éléments. Le refus est un résultat métier
+de génération, jamais un niveau enregistré. Voir
+[ADR-0008](decisions/ADR-0008.md), proposé avec F1.
 
-| Niveau | Signification | Présentation autorisée |
+| Niveau ou résultat | Signification | Présentation autorisée |
 |---|---|---|
 | **Vérifié** | Donnée retrouvée auprès d'une source réelle et validée | Nom réel, source, fournisseur et date de récupération visibles |
 | **Estimé** | Valeur calculée ou approximative, sans garantie en temps réel | Libellé explicite ; jamais présentée comme prix ou disponibilité actuelle |
 | **Suggestion** | Idée générique qui ne désigne pas un établissement ou événement confirmé | Formulation générique, sans faux nom propre ni faux lien |
-| **Refus** | Une donnée essentielle manque ou ne peut pas être vérifiée | Génération concernée arrêtée avec une explication utile |
+| **Refus métier** | Une donnée essentielle manque ou ne peut pas être vérifiée | Génération arrêtée avec une explication utile (`422`), sans élément persisté |
 
 Principes non négociables :
 
@@ -76,7 +77,7 @@ sa définition de terminé sont satisfaites.
 | Sprint | Objectif | Dépend de | Statut |
 |---|---|---|---|
 | **F0 — Audit du portage** | Matrice TripGenie → Experience AI des capacités utiles | — | Terminé |
-| **F1 — Vérité des données** | Politique de confiance, traçabilité et refus explicite | F0 | À faire |
+| **F1 — Vérité des données** | Politique de confiance, traçabilité et refus explicite | F0 | En cours |
 | **F2 — Lieux et événements** | Liens fiables pour activités, restaurants et événements | F1 | À faire |
 | **F3 — Hébergements** | Hébergements nommés vérifiés et liens correctement paramétrés | F1, F2 | À faire |
 | **F4 — Vols et transports** | Recherches réelles avec IATA, dates et voyageurs | F0, F1 | À faire |
@@ -110,6 +111,10 @@ introuvable, hôtel non vérifié, lien invalide, suggestions uniquement et refu
 faute de données essentielles.
 
 **Terminé lorsque :** aucun lieu inventé n'est présenté comme réel.
+
+**État :** implémentation et validation en cours. Une panne technique des
+sources rend un `503`, tandis qu'un manque métier de données essentielles rend
+un `422`. Une donnée facultative absente reste une suggestion générique.
 
 ### F2 — Lieux, activités, restaurants et événements
 

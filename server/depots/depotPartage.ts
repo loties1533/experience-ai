@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import prisma from '../db/prisma.js';
 import { AppError } from '../lib/AppError.js';
-import { ParcoursSchema, type Parcours } from '../domaine/parcours/index.js';
+import { ParcoursLectureSchema, type Parcours } from '../domaine/parcours/index.js';
 
-// Seule porte d'accès à la table `partages_parcours` (ADR-0008).
+// Seule porte d'accès à la table `partages_parcours`.
 //
 // Un lien = un jeton aléatoire attaché à UN participant. Le jeton ne dit rien
 // du parcours (ce n'est pas son id) et ne se devine pas : 32 octets tirés au
@@ -100,7 +100,7 @@ export async function chargerParcoursParJeton(jeton: string): Promise<AccesParJe
   });
   if (!ligne?.parcours) return null;
 
-  const resultat = ParcoursSchema.safeParse(ligne.parcours.contenu);
+  const resultat = ParcoursLectureSchema.safeParse(ligne.parcours.contenu);
   if (!resultat.success) {
     throw new AppError('Le contenu de ce parcours est corrompu', 500);
   }

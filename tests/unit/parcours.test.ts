@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ParcoursSchema,
+  ReservationSchema,
   ElementSchema,
   PlageHoraireSchema,
   elementsDependants,
@@ -185,13 +186,95 @@ describe('validerParcours — cohérence structurelle', () => {
           elements: [
             element('pause', {
               type: 'temps_libre',
-              reservation: { lienExterne: 'https://exemple.fr/resa' },
+              confiance: {
+                niveau: 'verifie',
+                source: 'Source de test',
+                fournisseur: 'Test',
+                recupereLe: '2026-07-28T10:00:00Z',
+              },
+              reservation: {
+                lienExterne: 'https://exemple.fr/resa',
+                fournisseur: 'Test',
+                typeLien: 'officiel',
+              },
             }),
           ],
         },
       ],
     });
     expect(validerParcours(parcours)).toHaveLength(1);
+  });
+
+  it('refuse un lien officiel sur une simple suggestion', () => {
+    const parcours = parcoursMinimal({
+      timeline: [
+        {
+          id: 'm1',
+          titre: 'Soirée',
+          elements: [
+            element('resto', {
+              type: 'restaurant',
+              reservation: {
+                lienExterne: 'https://exemple.fr',
+                fournisseur: 'Web',
+                typeLien: 'officiel',
+              },
+            }),
+          ],
+        },
+      ],
+    });
+    expect(validerParcours(parcours).some((e) => e.includes('exige un élément vérifié'))).toBe(true);
+  });
+
+  it('exige une provenance complète pour déclarer un élément vérifié', () => {
+    const resultat = ElementSchema.safeParse({
+      id: 'e-verifie',
+      type: 'restaurant',
+      nom: 'Chez Rose',
+      justification: 'sert l’intention',
+      confiance: { niveau: 'verifie' },
+    });
+    expect(resultat.success).toBe(false);
+  });
+
+  it('accepte explicitement le niveau estimé', () => {
+    const resultat = ElementSchema.parse({
+      id: 'e-estime',
+      type: 'activite',
+      nom: 'Activité à préciser',
+      justification: 'sert l’intention',
+      confiance: { niveau: 'estime', source: 'Calcul interne' },
+    });
+    expect(resultat.confiance).toEqual({ niveau: 'estime', source: 'Calcul interne' });
+  });
+
+  it('autorise un lien de recherche sur une suggestion sans la déclarer vérifiée', () => {
+    const parcours = parcoursMinimal({
+      timeline: [
+        {
+          id: 'm1',
+          titre: 'Recherche',
+          elements: [
+            element('idee', {
+              reservation: {
+                lienExterne: 'https://example.com/recherche?q=activite',
+                fournisseur: 'Moteur de recherche',
+                typeLien: 'recherche',
+              },
+            }),
+          ],
+        },
+      ],
+    });
+    expect(validerParcours(parcours)).toEqual([]);
+    expect(parcours.timeline[0].elements[0].confiance.niveau).toBe('suggestion');
+  });
+
+  it('exige les métadonnées de lien pour une nouvelle réservation', () => {
+    expect(
+      ReservationSchema.safeParse({ lienExterne: 'https://example.com/recherche' }).success
+    ).toBe(false);
   });
 
   it('exige deux participants et un organisateur pour une surprise (Sam & Léa)', () => {

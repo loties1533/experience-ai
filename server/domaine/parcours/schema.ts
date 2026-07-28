@@ -126,9 +126,40 @@ export const AlternativeSchema = z.object({
   ecartee: z.boolean().default(false),
 });
 
+export const NiveauConfianceSchema = z.enum(['verifie', 'estime', 'suggestion']);
+
+/**
+ * La confiance qualifie l'identité de l'élément, pas son prix. Un restaurant
+ * peut être vérifié tandis que son prix reste estimé (`prixEstime`).
+ *
+ * La variante `verifie` porte obligatoirement sa preuve : impossible de
+ * construire un objet « vérifié » sans dire d'où il vient et quand.
+ */
+export const ConfianceSchema = z.discriminatedUnion('niveau', [
+  z.object({
+    niveau: z.literal('verifie'),
+    source: z.string().min(1),
+    fournisseur: z.string().min(1),
+    recupereLe: DateTimeISOSchema,
+    identifiantExterne: z.string().min(1).optional(),
+  }),
+  z.object({
+    niveau: z.literal('estime'),
+    source: z.string().min(1).optional(),
+    fournisseur: z.string().min(1).optional(),
+    recupereLe: DateTimeISOSchema.optional(),
+  }),
+  z.object({
+    niveau: z.literal('suggestion'),
+  }),
+]);
+
+export const TypeLienExterneSchema = z.enum(['officiel', 'billetterie', 'recherche', 'carte']);
+
 export const ReservationSchema = z.object({
   lienExterne: z.url(),
-  fournisseur: z.string().optional(),
+  fournisseur: z.string().min(1),
+  typeLien: TypeLienExterneSchema,
 });
 
 export const ElementSchema = z.object({
@@ -138,6 +169,10 @@ export const ElementSchema = z.object({
   lieu: z.string().optional(),
   plage: PlageHoraireSchema.optional(),
   prix: z.number().nonnegative().optional(),
+  // Les prix produits aujourd'hui par le modèle ne sont pas des disponibilités
+  // temps réel. Le défaut honnête est donc « estimé ».
+  prixEstime: z.boolean().default(true),
+  confiance: ConfianceSchema.default({ niveau: 'suggestion' }),
   justification: z.string().min(1, 'chaque élément porte une justification'),
   statut: StatutElementSchema.default('propose'),
   estAncre: z.boolean().default(false),
@@ -161,6 +196,51 @@ export const ModificationSchema = z.object({
   elementId: z.string().optional(),
 });
 
+function estObjet(valeur: unknown): valeur is Record<string, unknown> {
+  return typeof valeur === 'object' && valeur !== null && !Array.isArray(valeur);
+}
+
+/**
+ * Compatibilité de lecture avec les agrégats créés avant F1.
+ *
+ * Une ancienne réservation n'avait pas toujours de fournisseur et ne portait
+ * pas de type de lien. On la classe au niveau le moins engageant (`recherche`)
+ * et on rend son origine legacy explicite. La fonction ne donne jamais le
+ * niveau `verifie` : l'absence de `confiance` reste normalisée par
+ * `ElementSchema` vers `suggestion`.
+ */
+function normaliserParcoursLegacy(valeur: unknown): unknown {
+  if (!estObjet(valeur) || !Array.isArray(valeur.timeline)) return valeur;
+
+  return {
+    ...valeur,
+    timeline: valeur.timeline.map((moment) => {
+      if (!estObjet(moment) || !Array.isArray(moment.elements)) return moment;
+      return {
+        ...moment,
+        elements: moment.elements.map((element) => {
+          if (!estObjet(element) || !estObjet(element.reservation)) return element;
+          const reservation = element.reservation;
+          return {
+            ...element,
+            reservation: {
+              ...reservation,
+              fournisseur:
+                reservation.fournisseur === undefined
+                  ? 'Inconnu (legacy)'
+                  : reservation.fournisseur,
+              typeLien:
+                reservation.typeLien === undefined
+                  ? 'recherche'
+                  : reservation.typeLien,
+            },
+          };
+        }),
+      };
+    }),
+  };
+}
+
 export const ParcoursSchema = z.object({
   id: z.string().min(1),
   intention: IntentionSchema,
@@ -172,6 +252,12 @@ export const ParcoursSchema = z.object({
   historique: z.array(ModificationSchema).default([]),
   timeline: z.array(MomentSchema).default([]),
 });
+
+/**
+ * À utiliser uniquement aux frontières de lecture persistée. Les nouvelles
+ * générations et écritures passent par `ParcoursSchema`, qui reste strict.
+ */
+export const ParcoursLectureSchema = z.preprocess(normaliserParcoursLegacy, ParcoursSchema);
 
 export type Role = z.infer<typeof RoleSchema>;
 export type Visibilite = z.infer<typeof VisibiliteSchema>;
@@ -186,6 +272,9 @@ export type Contrainte = z.infer<typeof ContrainteSchema>;
 export type Avis = z.infer<typeof AvisSchema>;
 export type Reaction = z.infer<typeof ReactionSchema>;
 export type Alternative = z.infer<typeof AlternativeSchema>;
+export type NiveauConfiance = z.infer<typeof NiveauConfianceSchema>;
+export type Confiance = z.infer<typeof ConfianceSchema>;
+export type TypeLienExterne = z.infer<typeof TypeLienExterneSchema>;
 export type Reservation = z.infer<typeof ReservationSchema>;
 export type Element = z.infer<typeof ElementSchema>;
 export type Moment = z.infer<typeof MomentSchema>;

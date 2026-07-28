@@ -70,6 +70,38 @@ describe('chargerParcours — la lecture revalide le contenu', () => {
     prismaMock.parcours.findFirst.mockResolvedValue({ contenu: { id: 'p1' } });
     await expect(chargerParcours(PROPRIETAIRE, 'p1')).rejects.toThrow('corrompu');
   });
+
+  it('normalise une ancienne réservation sans lui accorder le niveau vérifié', async () => {
+    prismaMock.parcours.findFirst.mockResolvedValue({
+      contenu: {
+        ...parcoursValide,
+        timeline: [
+          {
+            id: 'm1',
+            titre: 'Ancien parcours',
+            elements: [
+              {
+                id: 'e1',
+                type: 'activite',
+                nom: 'Ancienne activité',
+                justification: 'ancienne donnée persistée',
+                reservation: { lienExterne: 'https://example.com/recherche' },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const parcours = await chargerParcours(PROPRIETAIRE, 'p1');
+    const element = parcours?.timeline[0].elements[0];
+    expect(element?.confiance).toEqual({ niveau: 'suggestion' });
+    expect(element?.reservation).toEqual({
+      lienExterne: 'https://example.com/recherche',
+      fournisseur: 'Inconnu (legacy)',
+      typeLien: 'recherche',
+    });
+  });
 });
 
 describe('listerParcours', () => {

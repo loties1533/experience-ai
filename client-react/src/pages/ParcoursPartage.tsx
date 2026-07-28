@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
 import AvisGroupe from '../components/AvisGroupe'
+import { BadgeConfiance, LibelleLien, libelleLien } from '../components/ConfianceElement'
 import {
   chargerParcoursPartage, reagirSurElement,
   type Avis, type Element,
@@ -107,19 +108,24 @@ export default function ParcoursPartage() {
                 <li key={element.id} className="rounded-xl border border-encre/10 bg-white p-4">
                   <div className="flex flex-wrap items-start gap-2">
                     <div className="flex-1 min-w-0">
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-brume">
-                        {LIBELLES_TYPE[element.type]}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-brume">
+                          {LIBELLES_TYPE[element.type]}
+                        </span>
+                        <BadgeConfiance element={element} />
+                      </div>
                       <p className="font-semibold text-encre mt-1">{element.nom}</p>
                       <p className="text-xs text-brume mt-0.5">
                         {element.lieu}
-                        {element.prix !== undefined && <> · {element.prix} €</>}
+                        {element.prix !== undefined && (
+                          <> · {element.prix} €{element.prixEstime && ' estimés'}</>
+                        )}
                       </p>
                       {element.reservation && (
                         <a href={element.reservation.lienExterne} target="_blank" rel="noopener noreferrer"
                           className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
-                          aria-label={`Voir ${element.nom} sur la carte (nouvel onglet)`}>
-                          Voir sur la carte
+                          aria-label={`${libelleLien(element)} pour ${element.nom} (nouvel onglet)`}>
+                          <LibelleLien element={element} />
                         </a>
                       )}
                       <p className="text-sm text-encre-light mt-2 italic">« {element.justification} »</p>

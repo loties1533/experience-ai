@@ -105,6 +105,7 @@ export async function predictHQEventsSearch(
     console.log(`PredictHQ: ${donneesPredictHQ.results.length} événements trouvés pour ${city}`);
 
     return donneesPredictHQ.results.slice(0, 6).map(e => ({
+      id:          e.id,
       title:       e.title,
       category:    e.category.replace(/-/g, ' '),
       start:       e.start.slice(0, 10),

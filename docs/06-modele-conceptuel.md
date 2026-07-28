@@ -47,7 +47,7 @@ Il porte :
 Une tranche du parcours (matin, soir… ou une plage d'heures). **Granularité élastique** : de quelques heures (soirée) à une journée (voyage). Un Moment contient un ou plusieurs **Éléments**, y compris des **temps libres** assumés.
 
 ### Élément
-La matière concrète d'un moment. Il a un **type** (activité, resto, transport, hébergement, événement, temps libre), un **contenu** (nom, lieu, horaire, prix), une **justification**, un **statut** (proposé / accepté / à remplacer) et des **dépendances** (ce resto dépend du lieu du soir…).
+La matière concrète d'un moment. Il a un **type** (activité, resto, transport, hébergement, événement, temps libre), un **contenu** (nom, lieu, horaire, prix), une **justification**, un **niveau de confiance**, un **statut** (proposé / accepté / à remplacer) et des **dépendances** (ce resto dépend du lieu du soir…).
 - Un Élément peut être une **Ancre** : un événement daté (festival, match) autour duquel le reste du parcours s'organise.
 - Un Élément peut porter des **Alternatives**, des **Contraintes**, une **Réservation**.
 
@@ -57,7 +57,14 @@ La matière concrète d'un moment. Il a un **type** (activité, resto, transport
   - *filtre* (adapté aux enfants, mobilité → exclut des éléments) ;
   - *souple* (ambiance, niveau, rythme → oriente sans exclure).
 - **Alternative** — une option de remplacement d'un élément (plan B). Elle est soit **proposable**, soit **écartée** : écartée, elle reste dans le parcours (on n'efface pas une décision) mais n'est plus jamais offerte. *Forme retenue : un simple drapeau sur l'option, pas un objet « Arbitrage » — l'invariant 7 demande de ne plus reproposer, pas de modéliser la délibération.*
-- **Réservation** — un **lien externe** vers un service tiers. **Jamais un achat dans le produit** (Constitution #5).
+- **Confiance** — qualifie l'identité de l'élément :
+  - *vérifié* : source, fournisseur et date de récupération obligatoires ;
+  - *estimé* : valeur plausible mais non confirmée en temps réel ;
+  - *suggestion* : idée générique, sans prétention d'existence.
+  Le prix est qualifié séparément par `prixEstime`.
+- **Réservation** — un **lien externe** typé (officiel, billetterie, recherche
+  ou carte) vers un service tiers. Un lien autre qu'une recherche exige un
+  élément vérifié. **Jamais un achat dans le produit** (Constitution #5).
 - **Rôle** — la fonction d'un participant, définie par ses **responsabilités métier** (pas des « permissions » techniques — la technique les déduira plus tard) :
   - *organisateur* — responsable du parcours : décide, modifie, supprime ;
   - *participant* — contribue : propose, vote, ajuste ce qui lui est délégué ;
@@ -86,6 +93,9 @@ La matière concrète d'un moment. Il a un **type** (activité, resto, transport
    *Précision née du code :* le produit ne propose **que** les alternatives non écartées — c'est la seule liste que voient le front et l'IA de modification. Un arbitrage survit même au remplacement de l'élément qui le portait. La « demande explicite » reste possible : l'utilisateur peut toujours redemander lui-même ce qu'il avait écarté, ce qui lui est interdit, c'est de se le voir **reproposer**.
 8. Toute modification s'exerce dans le cadre des **responsabilités du rôle** de son auteur.
    *Précision née du code :* toute modification est signée par un participant ; son rôle doit couvrir la responsabilité engagée (tableau ci-dessus), sinon elle est refusée avec une explication — jamais appliquée à moitié.
+9. Un élément présenté comme **vérifié** porte sa provenance complète ; un lien
+   officiel, de billetterie ou de carte ne peut pas être rattaché à une simple
+   suggestion. Une ancre datée doit être vérifiée.
 
 ## Règle de primauté des invariants
 Quand une histoire casse un invariant, la première question n'est plus « comment changer le domaine ? » mais : **le journey est-il légitime, ou l'invariant protège-t-il quelque chose de plus important ?** Les invariants sont la Constitution du domaine ; ce sont parfois les histoires qui doivent s'adapter. (Sinon, les fondations bougent sans arrêt.)
