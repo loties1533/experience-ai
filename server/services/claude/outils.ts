@@ -1,11 +1,20 @@
 import { z } from 'zod';
-import { memoriser } from '../../lib/cacheMemoire.js';
-import { foursquareRechercheLieux } from '../foursquare.js';
-import { predictHQEventsSearch } from '../predictHQ.js';
+import { memoriser, memoriserSelonResultat } from '../../lib/cacheMemoire.js';
+import { rechercherLieuxFoursquare } from '../foursquare.js';
+import { rechercherEvenementsPredictHQ } from '../predictHQ.js';
+import { rechercheIndisponible } from '../rechercheExterne.js';
 import { getRealWeather } from '../weather.js';
 import type { BoiteAOutilsLLM } from './core.js';
 import type { OutilLLM } from '../providers.js';
 import type { TravelMode } from '../../lib/types.js';
+import type {
+  CandidatEvenementExterne,
+  CandidatLieuExterne,
+  CauseIndisponibilite,
+  ResultatRecherche,
+  TypeLieuRecherche,
+  TypeMetierRecherche,
+} from '../rechercheExterne.js';
 
 // LES OUTILS DU MODÈLE — de vrais lieux, pas des souvenirs d'entraînement.
 //
@@ -24,29 +33,61 @@ import type { TravelMode } from '../../lib/types.js';
 // programme plus vite, la météo change tout le temps.
 const DUREE_LIEUX_MS = 24 * 60 * 60 * 1000;
 const DUREE_EVENEMENTS_MS = 6 * 60 * 60 * 1000;
+const DUREE_RECHERCHE_VIDE_MS = 5 * 60 * 1000;
 const DUREE_METEO_MS = 3 * 60 * 60 * 1000;
 
 const AUCUN_RESULTAT =
   "Aucun résultat réel pour cette recherche. Continue sans inventer de nom d'établissement : reste générique et honnête.";
+const RECHERCHE_INDISPONIBLE =
+  "La recherche externe est momentanément indisponible. Ne présente aucune donnée comme vérifiée et reste générique si elle est facultative.";
 
-/** Ce qu'on retient d'un vrai lieu pour le rattacher au parcours ensuite. */
-export interface TraceLieu {
-  nom: string;
-  lieu?: string;
-  lienCarte?: string;
-  source: string;
+export type CandidatJournal = CandidatLieuExterne | CandidatEvenementExterne;
+
+export interface DemandeRapprochement {
   identifiantExterne?: string;
-  recupereLe: string;
+  nom: string;
+  villeDemandee: string;
+  typeMetierRecherche: TypeMetierRecherche;
+}
+
+export type BesoinEssentielRecherche =
+  | {
+      typeMetierRecherche: TypeLieuRecherche;
+      villeDemandee: string;
+      requete: string;
+    }
+  | {
+      typeMetierRecherche: 'evenement';
+      villeDemandee: string;
+      dateDebut: string;
+      dateFin: string;
+    };
+
+export interface RechercheTracee {
+  typeMetierRecherche: TypeMetierRecherche;
+  villeDemandee: string;
+  requete?: string;
+  dateDebut?: string;
+  dateFin?: string;
+  statut: ResultatRecherche<unknown>['statut'];
+  raison?: CauseIndisponibilite;
 }
 
 export interface BoiteAOutils extends BoiteAOutilsLLM {
-  /** Le vrai lieu derrière un nom proposé par le modèle, s'il vient bien d'une recherche. */
-  trouverLieuReel(nom: string): TraceLieu | undefined;
+  /** Rapproche uniquement une identité non ambiguë, dans la bonne ville et le bon type métier. */
+  rapprocherCandidat(demande: DemandeRapprochement): CandidatJournal | undefined;
+  /** Rend l'état de la recherche exacte désignée comme essentielle par le refus. */
+  statutRechercheEssentielle(
+    besoin: BesoinEssentielRecherche
+  ): RechercheTracee['statut'] | undefined;
+  /** Compatibilité temporaire : ne rend un candidat que si le nom exact est unique. */
+  trouverLieuReel(nom: string): CandidatJournal | undefined;
 }
 
 const EntreeLieuxSchema = z.object({
   ville: z.string().min(1),
   requete: z.string().min(1),
+  typeMetierRecherche: z.enum(['restaurant', 'activite', 'sortie']),
   limite: z.number().int().min(1).max(8).optional(),
 });
 
@@ -83,9 +124,14 @@ const DEFINITIONS: OutilLLM[] = [
           type: 'string',
           description: "Ce que l'on cherche, en mots-clés courts : « bar à cocktails », « restaurant bistronomique », « escape game »",
         },
+        typeMetierRecherche: {
+          type: 'string',
+          enum: ['restaurant', 'activite', 'sortie'],
+          description: 'Type métier exact qui sera produit dans le parcours',
+        },
         limite: { type: 'number', description: 'Nombre de lieux souhaités (1 à 8, 4 par défaut)' },
       },
-      required: ['ville', 'requete'],
+      required: ['ville', 'requete', 'typeMetierRecherche'],
     },
   },
   {
@@ -138,40 +184,99 @@ function jour(date: string): string {
  * Le CACHE, lui, est partagé entre toutes les générations — c'est tout l'objet
  * de `memoriser`.
  */
-export function creerBoiteAOutils(): BoiteAOutils {
-  const journal = new Map<string, TraceLieu>();
+export function creerBoiteAOutils(
+  options: { villesAutorisees?: string[] } = {}
+): BoiteAOutils {
+  const journal = new Map<string, CandidatJournal>();
+  const recherchesTracees: RechercheTracee[] = [];
+  const villesAutorisees = new Set((options.villesAutorisees ?? []).map(cleNom));
 
-  function retenir(trace: TraceLieu): void {
-    journal.set(cleNom(trace.nom), trace);
+  function cleCandidat(candidat: CandidatJournal): string {
+    return `${candidat.fournisseur}:${candidat.identifiantExterne}`;
+  }
+
+  function retenir(candidat: CandidatJournal): void {
+    journal.set(cleCandidat(candidat), candidat);
+  }
+
+  function estVilleAutorisee(ville: string): boolean {
+    return villesAutorisees.size === 0 || villesAutorisees.has(cleNom(ville));
+  }
+
+  function dureeCache<T>(
+    resultat: ResultatRecherche<T>,
+    dureeResultatValideMs: number
+  ): number | null {
+    if (resultat.statut === 'indisponible') return null;
+    if (resultat.statut === 'vide') return DUREE_RECHERCHE_VIDE_MS;
+    return dureeResultatValideMs;
+  }
+
+  function tracerRecherche<T>(
+    recherche: Omit<RechercheTracee, 'statut' | 'raison'>,
+    resultat: ResultatRecherche<T>
+  ): void {
+    recherchesTracees.push({
+      ...recherche,
+      statut: resultat.statut,
+      raison: resultat.statut === 'indisponible' ? resultat.raison : undefined,
+    });
+  }
+
+  async function rechercherAvecCache<T>(
+    cle: string,
+    calcul: () => Promise<ResultatRecherche<T>>,
+    dureeResultatValideMs: number,
+    fournisseur: string
+  ): Promise<ResultatRecherche<T>> {
+    try {
+      return await memoriserSelonResultat(
+        cle,
+        calcul,
+        (resultat) => dureeCache(resultat, dureeResultatValideMs)
+      );
+    } catch (erreur) {
+      console.error(`Recherche ${fournisseur} en échec :`, (erreur as Error).message);
+      return rechercheIndisponible(fournisseur, 'fournisseur');
+    }
   }
 
   async function chercherLieux(entree: unknown): Promise<string> {
     const params = EntreeLieuxSchema.safeParse(entree);
     if (!params.success) return "Recherche impossible : il faut une ville et ce que l'on cherche.";
 
-    const { ville, requete } = params.data;
-    const limite = params.data.limite ?? 4;
-    const lieux = await memoriser(
-      `lieux:${cleNom(ville)}:${cleNom(requete)}:${limite}`,
-      () => foursquareRechercheLieux(ville, requete, limite),
-      DUREE_LIEUX_MS
-    );
-    if (lieux.length === 0) return AUCUN_RESULTAT;
-
-    for (const lieu of lieux) {
-      retenir({
-        nom: lieu.nom,
-        lieu: lieu.adresse,
-        lienCarte: lieu.lienCarte,
-        source: 'Foursquare',
-        identifiantExterne: lieu.identifiantExterne,
-        recupereLe: new Date().toISOString(),
-      });
+    const { ville, requete, typeMetierRecherche } = params.data;
+    if (!estVilleAutorisee(ville)) {
+      return "Recherche impossible : la ville demandée ne fait pas partie du brief.";
     }
+    const limite = params.data.limite ?? 4;
+    const recherche = await rechercherAvecCache(
+      `lieux:${cleNom(ville)}:${typeMetierRecherche}:${cleNom(requete)}:${limite}`,
+      () => rechercherLieuxFoursquare(ville, requete, typeMetierRecherche, limite),
+      DUREE_LIEUX_MS,
+      'Foursquare'
+    );
+    tracerRecherche(
+      { villeDemandee: ville, requete, typeMetierRecherche },
+      recherche
+    );
+    if (recherche.statut === 'indisponible') {
+      return `${RECHERCHE_INDISPONIBLE} Fournisseur : ${recherche.fournisseur}.`;
+    }
+    if (recherche.statut === 'vide') return AUCUN_RESULTAT;
+
+    for (const lieu of recherche.resultats) retenir(lieu);
     // On ne transmet pas les liens au modèle : les liens, on les rattache
     // nous-mêmes ensuite. Il ne doit jamais avoir à écrire une URL.
     return JSON.stringify(
-      lieux.map((lieu) => ({ nom: lieu.nom, categorie: lieu.categorie, adresse: lieu.adresse }))
+      recherche.resultats.map((lieu) => ({
+        identifiantExterne: lieu.identifiantExterne,
+        nom: lieu.nom,
+        ville: lieu.villeDemandee,
+        categorie: lieu.categorieFournisseur,
+        typeMetierRecherche: lieu.typeMetierRecherche,
+        adresse: lieu.adresse,
+      }))
     );
   }
 
@@ -180,28 +285,45 @@ export function creerBoiteAOutils(): BoiteAOutils {
     if (!params.success) return 'Recherche impossible : il faut une ville et une date de début (AAAA-MM-JJ).';
 
     const { ville, genre } = params.data;
+    if (!estVilleAutorisee(ville)) {
+      return "Recherche impossible : la ville demandée ne fait pas partie du brief.";
+    }
     const debut = jour(params.data.dateDebut);
     const fin = jour(params.data.dateFin ?? params.data.dateDebut);
     const mode: TravelMode = genre ? MODE_PAR_GENRE[genre] : 'surprise';
 
-    const evenements = await memoriser(
+    const recherche = await rechercherAvecCache(
       `evenements:${cleNom(ville)}:${debut}:${fin}:${mode}`,
-      () => predictHQEventsSearch(ville, debut, fin, mode),
-      DUREE_EVENEMENTS_MS
+      () => rechercherEvenementsPredictHQ(ville, debut, fin, mode),
+      DUREE_EVENEMENTS_MS,
+      'PredictHQ'
     );
-    if (evenements.length === 0) return AUCUN_RESULTAT;
-
-    for (const evenement of evenements) {
-      retenir({
-        nom: evenement.title,
-        lieu: evenement.venue,
-        source: 'PredictHQ',
-        identifiantExterne: evenement.id,
-        recupereLe: new Date().toISOString(),
-      });
+    tracerRecherche(
+      {
+        villeDemandee: ville,
+        typeMetierRecherche: 'evenement',
+        dateDebut: debut,
+        dateFin: fin,
+      },
+      recherche
+    );
+    if (recherche.statut === 'indisponible') {
+      return `${RECHERCHE_INDISPONIBLE} Fournisseur : ${recherche.fournisseur}.`;
     }
+    if (recherche.statut === 'vide') return AUCUN_RESULTAT;
+
+    for (const evenement of recherche.resultats) retenir(evenement);
     return JSON.stringify(
-      evenements.map((e) => ({ nom: e.title, categorie: e.category, jour: e.start, lieu: e.venue }))
+      recherche.resultats.map((evenement) => ({
+        identifiantExterne: evenement.identifiantExterne,
+        nom: evenement.nom,
+        ville: evenement.villeDemandee,
+        categorie: evenement.categorieFournisseur,
+        typeMetierRecherche: evenement.typeMetierRecherche,
+        dateDebut: evenement.dateDebut,
+        dateFin: evenement.dateFin,
+        salle: evenement.salle,
+      }))
     );
   }
 
@@ -238,23 +360,65 @@ export function creerBoiteAOutils(): BoiteAOutils {
       } catch (erreur) {
         // Un connecteur qui tombe ne fait pas tomber la génération.
         console.error(`Outil ${nom} en échec :`, (erreur as Error).message);
-        return AUCUN_RESULTAT;
+        return RECHERCHE_INDISPONIBLE;
       }
     },
 
-    trouverLieuReel(nom: string): TraceLieu | undefined {
+    rapprocherCandidat(demande: DemandeRapprochement): CandidatJournal | undefined {
+      const villeDemandee = cleNom(demande.villeDemandee);
+      const nomDemande = cleNom(demande.nom);
+      if (!villeDemandee || !nomDemande) return undefined;
+
+      const compatibles = [...journal.values()].filter(
+        (candidat) =>
+          candidat.typeMetierRecherche === demande.typeMetierRecherche &&
+          cleNom(candidat.villeDemandee) === villeDemandee
+      );
+
+      if (demande.identifiantExterne) {
+        const parIdentifiant = compatibles.filter(
+          (candidat) => candidat.identifiantExterne === demande.identifiantExterne
+        );
+        return parIdentifiant.length === 1 ? parIdentifiant[0] : undefined;
+      }
+
+      const parIdentiteMetier = compatibles.filter(
+        (candidat) => cleNom(candidat.nom) === nomDemande
+      );
+      return parIdentiteMetier.length === 1 ? parIdentiteMetier[0] : undefined;
+    },
+
+    statutRechercheEssentielle(
+      besoin: BesoinEssentielRecherche
+    ): RechercheTracee['statut'] | undefined {
+      const correspondantes = recherchesTracees.filter((recherche) => {
+        if (
+          recherche.typeMetierRecherche !== besoin.typeMetierRecherche ||
+          cleNom(recherche.villeDemandee) !== cleNom(besoin.villeDemandee)
+        ) {
+          return false;
+        }
+        if (besoin.typeMetierRecherche === 'evenement') {
+          return (
+            recherche.dateDebut === besoin.dateDebut &&
+            recherche.dateFin === besoin.dateFin
+          );
+        }
+        return cleNom(recherche.requete ?? '') === cleNom(besoin.requete);
+      });
+      if (correspondantes.length === 0) return undefined;
+      if (correspondantes.some((recherche) => recherche.statut === 'ok')) return 'ok';
+      if (correspondantes.some((recherche) => recherche.statut === 'vide')) return 'vide';
+      return 'indisponible';
+    },
+
+    trouverLieuReel(nom: string): CandidatJournal | undefined {
       const cle = cleNom(nom);
       if (!cle) return undefined;
-      const exact = journal.get(cle);
-      if (exact) return exact;
-      // Le modèle rallonge parfois le nom (« Dîner au Petit Commerce ») : on
-      // accepte l'inclusion, mais jamais sur un fragment trop court, qui
-      // rapprocherait n'importe quoi de n'importe quoi.
-      if (cle.length < 5) return undefined;
-      for (const [cleConnue, trace] of journal) {
-        if (cleConnue.length >= 5 && (cle.includes(cleConnue) || cleConnue.includes(cle))) return trace;
-      }
-      return undefined;
+      const candidats = [...journal.values()].filter(
+        (candidat) => cleNom(candidat.nom) === cle
+      );
+      return candidats.length === 1 ? candidats[0] : undefined;
     },
   };
 }

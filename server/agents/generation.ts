@@ -15,6 +15,7 @@ import {
 } from '../domaine/parcours/index.js';
 import { normaliserDatesBrief, type Brief } from './brief.js';
 import type { PreferencesParcours } from '../domaine/preferences.js';
+import type { TypeMetierRecherche } from '../services/rechercheExterne.js';
 
 /** Types pour lesquels un vrai site officiel/billetterie vaut mieux qu'une carte. */
 const TYPES_AVEC_LIEN_REEL = new Set(['restaurant', 'activite', 'sortie', 'evenement']);
@@ -48,10 +49,13 @@ AVANT D'ÉCRIRE, CHERCHE. Tu disposes d'outils qui rendent de vrais lieux, de vr
 
 Puis réponds UNIQUEMENT avec l'une de ces deux formes JSON :
 1. Parcours possible : {"ambiance": string, "moments": [...]}.
-2. Donnée ESSENTIELLE introuvable (par exemple l'événement daté qui constitue le motif même du parcours) : {"refus":{"code":"donnees_essentielles_insuffisantes","message":string}}.
+2. Donnée ESSENTIELLE introuvable (par exemple l'événement daté qui constitue le motif même du parcours) :
+   - pour un lieu : {"refus":{"code":"donnees_essentielles_insuffisantes","message":string,"besoinEssentiel":{"typeMetierRecherche":"restaurant"|"activite"|"sortie","villeDemandee":string,"requete":string}}}
+   - pour un événement : {"refus":{"code":"donnees_essentielles_insuffisantes","message":string,"besoinEssentiel":{"typeMetierRecherche":"evenement","villeDemandee":string,"dateDebut":"AAAA-MM-JJ","dateFin":"AAAA-MM-JJ"}}}
+Le besoin essentiel doit reprendre exactement la recherche qui n'a pas permis de confirmer la donnée.
 Une donnée facultative absente ne justifie jamais un refus : reste générique DANS le parcours. N'écris JAMAIS de phrase d'explication hors du JSON.
-- Chaque moment : {"titre": string, "elements": [...]}.
-- Chaque élément : {"ref": string (identifiant court unique, ex "resto-soir-1"), "type": "activite"|"restaurant"|"sortie"|"transport"|"hebergement"|"evenement"|"temps_libre", "nom": string, "lieu": string, "plage": {"debut": ISO, "fin": ISO} (optionnel), "prix": number en euros (optionnel), "justification": string (POURQUOI cet élément sert l'intention — obligatoire), "dependDe": [refs] (optionnel), "estAncre": boolean (optionnel).
+- Chaque moment : {"titre": string, "ville": string, "elements": [...]}. "ville" doit reprendre exactement une ville du brief, surtout pour un parcours multi-ville.
+- Chaque élément : {"ref": string (identifiant court unique, ex "resto-soir-1"), "type": "activite"|"restaurant"|"sortie"|"transport"|"hebergement"|"evenement"|"temps_libre", "identifiantExterne": string (à recopier lorsqu'un outil l'a fourni), "nom": string, "lieu": string, "plage": {"debut": ISO, "fin": ISO} (optionnel), "prix": number en euros (optionnel), "justification": string (POURQUOI cet élément sert l'intention — obligatoire), "dependDe": [refs] (optionnel), "estAncre": boolean (optionnel).
 - "sortie" = ce qui se vit le soir (bar, club, tournée, apéro). Ne JAMAIS le ranger en "temps_libre".
 - "temps_libre" = une vraie respiration (repos, pause, réveil tranquille), rien d'autre.
 - Prévois des temps libres assumés (la respiration).
@@ -61,6 +65,7 @@ Une donnée facultative absente ne justifie jamais un refus : reste générique 
 const ElementGenereSchema = z.object({
   ref: z.string().min(1),
   type: TypeElementSchema,
+  identifiantExterne: z.string().min(1).optional(),
   nom: z.string().min(1),
   lieu: z.string().optional(),
   plage: PlageHoraireSchema.optional(),
@@ -76,6 +81,7 @@ const SortieGenerationSchema = z.object({
     .array(
       z.object({
         titre: z.string().min(1),
+        ville: z.string().min(1).optional(),
         plage: PlageHoraireSchema.optional(),
         elements: z.array(ElementGenereSchema).min(1),
       })
@@ -83,14 +89,59 @@ const SortieGenerationSchema = z.object({
     .min(1),
 });
 
+const BesoinEssentielSchema = z.union([
+  z.object({
+    typeMetierRecherche: z.enum(['restaurant', 'activite', 'sortie']),
+    villeDemandee: z.string().min(1),
+    requete: z.string().min(1),
+  }),
+  z.object({
+    typeMetierRecherche: z.literal('evenement'),
+    villeDemandee: z.string().min(1),
+    dateDebut: z.iso.date(),
+    dateFin: z.iso.date(),
+  }),
+]);
+
 const RefusGenerationSchema = z.object({
   refus: z.object({
     code: z.literal('donnees_essentielles_insuffisantes'),
     message: z.string().min(1),
+    besoinEssentiel: BesoinEssentielSchema.optional(),
   }),
 });
 
 type ElementGenere = z.infer<typeof ElementGenereSchema>;
+
+function cleTexte(texte: string): string {
+  return texte
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function villeDuMoment(villeProposee: string | undefined, villesDuBrief: string[]): string | undefined {
+  if (villeProposee) {
+    const cleVille = cleTexte(villeProposee);
+    const villeValidee = villesDuBrief.find((ville) => cleTexte(ville) === cleVille);
+    if (villeValidee) return villeValidee;
+  }
+  return villesDuBrief.length === 1 ? villesDuBrief[0] : undefined;
+}
+
+function typeRecherchePour(typeElement: TypeElement): TypeMetierRecherche | undefined {
+  if (
+    typeElement === 'restaurant' ||
+    typeElement === 'activite' ||
+    typeElement === 'sortie' ||
+    typeElement === 'evenement'
+  ) {
+    return typeElement;
+  }
+  return undefined;
+}
 
 function confianceVerifiee(args: {
   source: string;
@@ -152,8 +203,22 @@ function tracerLieuReel(
     typeLien: 'officiel' | 'billetterie' | 'recherche' | 'carte';
   };
 } {
-  const reel = boite.trouverLieuReel(element.nom);
-  const lieu = reel?.lieu ?? element.lieu;
+  const typeMetierRecherche = typeRecherchePour(element.type);
+  const reel =
+    typeMetierRecherche && options.ville
+      ? boite.rapprocherCandidat({
+          identifiantExterne: element.identifiantExterne,
+          nom: element.nom,
+          villeDemandee: options.ville,
+          typeMetierRecherche,
+        })
+      : undefined;
+  const lieuReel = reel
+    ? reel.typeMetierRecherche === 'evenement'
+      ? reel.salle
+      : reel.adresse
+    : undefined;
+  const lieu = lieuReel ?? element.lieu;
 
   // Un temps libre ne se réserve pas (invariant 4) : rien à y rattacher.
   if (element.type === 'temps_libre') {
@@ -164,40 +229,40 @@ function tracerLieuReel(
     };
   }
 
-  const lienOfficiel = liensReels.get(element.nom);
-  if (lienOfficiel) {
-    return {
-      nom: element.nom,
-      lieu,
-      confiance: confianceVerifiee({
-        source: lienOfficiel,
-        fournisseur: reel?.source ?? 'Recherche Web',
-        recupereLe: reel?.recupereLe,
-        identifiantExterne: reel?.identifiantExterne,
-      }),
-      reservation: {
-        lienExterne: lienOfficiel,
-        fournisseur: 'Web',
-        typeLien: element.type === 'evenement' ? 'billetterie' : 'officiel',
-      },
-    };
-  }
-
   if (reel) {
+    const lienOfficiel = liensReels.get(element.nom);
+    if (lienOfficiel) {
+      return {
+        nom: reel.nom,
+        lieu,
+        confiance: confianceVerifiee({
+          source: reel.source,
+          fournisseur: reel.fournisseur,
+          recupereLe: reel.recupereLe,
+          identifiantExterne: reel.identifiantExterne,
+        }),
+        reservation: {
+          lienExterne: lienOfficiel,
+          fournisseur: 'Web',
+          typeLien: element.type === 'evenement' ? 'billetterie' : 'officiel',
+        },
+      };
+    }
+
     const confiance = confianceVerifiee({
-      source: `${reel.source} API`,
-      fournisseur: reel.source,
+      source: reel.source,
+      fournisseur: reel.fournisseur,
       recupereLe: reel.recupereLe,
       identifiantExterne: reel.identifiantExterne,
     });
-    if (reel.lienCarte) {
+    if ('lienCarte' in reel && reel.lienCarte) {
       return {
         nom: reel.nom,
         lieu,
         confiance,
         reservation: {
           lienExterne: reel.lienCarte,
-          fournisseur: reel.source,
+          fournisseur: reel.fournisseur,
           typeLien: 'carte',
         },
       };
@@ -233,7 +298,7 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
 
   // Une boîte par génération : le journal des lieux trouvés appartient à CE
   // parcours (le cache des appels, lui, est partagé — cf. lib/cacheMemoire).
-  const boite = creerBoiteAOutils();
+  const boite = creerBoiteAOutils({ villesAutorisees: brief.lieux });
   const brut = await callAIAvecOutils(prompt, SYSTEM_GENERATION, boite, 'pack');
   // Un modèle outillé peut conclure en prose ou tronquer son JSON : c'est une
   // sortie inexploitable, pas une panne du serveur.
@@ -266,6 +331,15 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
   }
   const refus = RefusGenerationSchema.safeParse(contenu);
   if (refus.success) {
+    const statutRecherche = refus.data.refus.besoinEssentiel
+      ? boite.statutRechercheEssentielle(refus.data.refus.besoinEssentiel)
+      : undefined;
+    if (statutRecherche === 'indisponible') {
+      throw new AppError(
+        'Les sources nécessaires pour vérifier ce parcours sont momentanément indisponibles',
+        503
+      );
+    }
     throw new AppError(refus.data.refus.message, 422);
   }
   const sortie = SortieGenerationSchema.safeParse(contenu);
@@ -307,30 +381,41 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
     participants: [{ id: randomUUID(), nom: 'Organisateur', role: 'organisateur' }],
     budget: { mode: 'individuel', montantTotal: brief.budgetTotal },
     ambiance: sortie.data.ambiance ?? brief.ambiance,
-    timeline: sortie.data.moments.map((moment) => ({
-      id: randomUUID(),
-      titre: moment.titre,
-      plage: moment.plage,
-      elements: moment.elements.map((element) => ({
-        id: idParRef.get(element.ref) as string,
-        type: element.type,
-        ...tracerLieuReel(element, boite, liensReels, {
-          ville: brief.lieux[0],
+    timeline: sortie.data.moments.map((moment) => {
+      const ville = villeDuMoment(moment.ville, brief.lieux);
+      return {
+        id: randomUUID(),
+        titre: moment.titre,
+        plage: moment.plage,
+        elements: moment.elements.map((element) => {
+          const typeMetierRecherche = typeRecherchePour(element.type);
+          const candidat =
+            typeMetierRecherche && ville
+              ? boite.rapprocherCandidat({
+                  identifiantExterne: element.identifiantExterne,
+                  nom: element.nom,
+                  villeDemandee: ville,
+                  typeMetierRecherche,
+                })
+              : undefined;
+          return {
+            id: idParRef.get(element.ref) as string,
+            type: element.type,
+            ...tracerLieuReel(element, boite, liensReels, { ville }),
+            plage: element.plage,
+            prix: element.prix,
+            prixEstime: element.prix !== undefined,
+            justification: element.justification,
+            // Une suggestion ne peut jamais devenir une ancre datée.
+            estAncre: element.estAncre && candidat !== undefined,
+            // Une dépendance vers une ref inventée est écartée, pas propagée.
+            dependDe: element.dependDe
+              .filter((ref) => idParRef.has(ref) && ref !== element.ref)
+              .map((ref) => idParRef.get(ref) as string),
+          };
         }),
-        plage: element.plage,
-        prix: element.prix,
-        prixEstime: element.prix !== undefined,
-        justification: element.justification,
-        // Une suggestion ne peut jamais devenir une ancre datée.
-        estAncre:
-          element.estAncre &&
-          boite.trouverLieuReel(element.nom) !== undefined,
-        // Une dépendance vers une ref inventée est écartée, pas propagée.
-        dependDe: element.dependDe
-          .filter((ref) => idParRef.has(ref) && ref !== element.ref)
-          .map((ref) => idParRef.get(ref) as string),
-      })),
-    })),
+      };
+    }),
   });
 
   const erreurs = validerParcours(parcours);

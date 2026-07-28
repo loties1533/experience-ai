@@ -56,6 +56,47 @@ export function memoriser<T>(
   return valeur;
 }
 
+/**
+ * Variante pour les appels dont la durée de cache dépend du résultat.
+ *
+ * Une durée `null` signifie que la valeur ne doit jamais rester en cache
+ * (indisponibilité technique, par exemple). La promesse reste partagée pendant
+ * l'appel en cours, puis elle est retirée dès que son résultat est connu.
+ */
+export function memoriserSelonResultat<T>(
+  cle: string,
+  calcul: () => Promise<T>,
+  dureeViePour: (resultat: T) => number | null
+): Promise<T> {
+  const maintenant = Date.now();
+  const connue = cache.get(cle);
+  if (connue && connue.expireA > maintenant) return connue.valeur as Promise<T>;
+
+  const valeur = calcul()
+    .then((resultat) => {
+      const entree = cache.get(cle);
+      if (entree?.valeur !== valeur) return resultat;
+
+      const dureeVieMs = dureeViePour(resultat);
+      if (dureeVieMs === null) {
+        cache.delete(cle);
+      } else {
+        entree.expireA = Date.now() + dureeVieMs;
+      }
+      return resultat;
+    })
+    .catch((erreur: unknown) => {
+      if (cache.get(cle)?.valeur === valeur) cache.delete(cle);
+      throw erreur;
+    });
+
+  // L'entrée partage l'appel en cours. Son expiration réelle sera fixée à la
+  // résolution selon le statut obtenu.
+  cache.set(cle, { valeur, expireA: Number.POSITIVE_INFINITY });
+  if (cache.size > NOMBRE_MAX_ENTREES) purger(maintenant);
+  return valeur;
+}
+
 /** Vide le cache — utilisé par les tests, qui doivent partir d'une page blanche. */
 export function viderCacheMemoire(): void {
   cache.clear();

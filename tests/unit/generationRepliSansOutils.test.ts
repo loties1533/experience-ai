@@ -12,12 +12,14 @@ vi.mock('../../server/services/providers.js', async (importOriginal) => {
   const reel = await importOriginal<typeof import('../../server/services/providers.js')>();
   return { ...reel, callClaude: vi.fn(), callClaudeOutils: vi.fn(), callGemini: vi.fn() };
 });
-vi.mock('../../server/services/foursquare.js', () => ({ foursquareRechercheLieux: vi.fn() }));
-vi.mock('../../server/services/predictHQ.js', () => ({ predictHQEventsSearch: vi.fn() }));
+vi.mock('../../server/services/foursquare.js', () => ({ rechercherLieuxFoursquare: vi.fn() }));
+vi.mock('../../server/services/predictHQ.js', () => ({
+  rechercherEvenementsPredictHQ: vi.fn(),
+}));
 vi.mock('../../server/services/weather.js', () => ({ getRealWeather: vi.fn() }));
 
 const { callClaudeOutils, callGemini } = await import('../../server/services/providers.js');
-const { foursquareRechercheLieux } = await import('../../server/services/foursquare.js');
+const { rechercherLieuxFoursquare } = await import('../../server/services/foursquare.js');
 const { genererParcours } = await import('../../server/agents/generation.js');
 const { BriefSchema } = await import('../../server/agents/brief.js');
 
@@ -31,7 +33,7 @@ const brief = BriefSchema.parse({
 beforeEach(() => {
   vi.mocked(callClaudeOutils).mockReset();
   vi.mocked(callGemini).mockReset();
-  vi.mocked(foursquareRechercheLieux).mockReset();
+  vi.mocked(rechercherLieuxFoursquare).mockReset();
 });
 
 describe('génération sans clé Anthropic — indisponibilité honnête', () => {
@@ -44,7 +46,7 @@ describe('génération sans clé Anthropic — indisponibilité honnête', () =>
 
     expect(callClaudeOutils).not.toHaveBeenCalled();
     expect(callGemini).not.toHaveBeenCalled();
-    expect(foursquareRechercheLieux).not.toHaveBeenCalled();
+    expect(rechercherLieuxFoursquare).not.toHaveBeenCalled();
   });
 
   it('explique que les sources de vérification sont indisponibles', async () => {

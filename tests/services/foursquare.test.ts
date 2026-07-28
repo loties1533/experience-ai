@@ -1,200 +1,252 @@
-// =============================================
-// TRIPGENIE — tests/services/foursquare.test.ts
-// Tests du service Foursquare Places API :
-//   - mapping vers le format Activite
-//   - liens TheFork
-//   - gestion des erreurs / clé manquante
-// =============================================
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+const requeteFetch = vi.fn();
+global.fetch = requeteFetch as typeof fetch;
 
-const mockFetch = vi.fn();
-global.fetch = mockFetch as any;
+process.env.FOURSQUARE_API_KEY = 'cle-foursquare-test';
 
-process.env.FOURSQUARE_API_KEY = 'fsq3-test-key-vitest';
+const { rechercherLieuxFoursquare } = await import('../../server/services/foursquare.js');
 
-const { foursquareRestaurantSearch } = await import('../../server/services/foursquare.js');
-
-// ---- Réponse Foursquare fictive ----
-const MOCK_FSQ_RESPONSE = {
+const REPONSE_FOURSQUARE = {
   results: [
     {
       fsq_place_id: 'fsq-001',
-      name:       'El Chiringuito',
-      rating:     9.1,
-      price:      3,
-      categories: [{ id: 13065, name: 'Fine Dining' }],
-      location:   { locality: 'Ibiza', address: 'Passeig de ses Pitiuses' }
+      name: 'Le Point Rouge',
+      categories: [{ fsq_category_id: '13065', name: 'Cocktail Bar' }],
+      location: { locality: 'Bordeaux', address: '3 rue Sainte-Colombe' },
     },
-    {
-      fsq_place_id: 'fsq-002',
-      name:       'Lio Restaurant',
-      rating:     8.7,
-      price:      4,
-      categories: [{ id: 13003, name: 'Spanish Restaurant' }],
-      location:   { locality: 'Ibiza', address: 'Marina Ibiza' }
-    },
-    {
-      fsq_place_id: 'fsq-003',
-      name:       'Sa Caleta',
-      rating:     8.3,
-      price:      2,
-      categories: [{ id: 13072, name: 'Seafood' }],
-      location:   { locality: 'Ibiza', address: 'Sant Josep' }
-    }
-  ]
+  ],
 };
 
 beforeEach(() => {
-  mockFetch.mockReset();
+  process.env.FOURSQUARE_API_KEY = 'cle-foursquare-test';
+  requeteFetch.mockReset();
 });
 
-// ============================================================
-// Cas nominal
-// ============================================================
-describe('foursquareRestaurantSearch — cas nominal', () => {
+afterEach(() => {
+  vi.useRealTimers();
+});
 
-  it('retourne des activités avec les propriétés requises', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => MOCK_FSQ_RESPONSE });
+describe('rechercherLieuxFoursquare — identité et provenance', () => {
+  it('valide et transforme la réponse externe en candidat structuré', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-28T08:15:00.000Z'));
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => REPONSE_FOURSQUARE,
+    });
 
-    const results = await foursquareRestaurantSearch('Ibiza', 'party');
+    const recherche = await rechercherLieuxFoursquare(
+      'Bordeaux',
+      'bar à cocktails',
+      'sortie',
+      4
+    );
 
-    expect(results).toHaveLength(3);
-    results.forEach(r => {
-      expect(r).toHaveProperty('name');
-      expect(r).toHaveProperty('category');
-      expect(r).toHaveProperty('price');
-      expect(r).toHaveProperty('booking_url');
+    expect(recherche).toEqual({
+      statut: 'ok',
+      recupereLe: '2026-07-28T08:15:00.000Z',
+      resultats: [
+        {
+          identifiantExterne: 'fsq-001',
+          nom: 'Le Point Rouge',
+          villeDemandee: 'Bordeaux',
+          categorieFournisseur: 'Cocktail Bar',
+          typeMetierRecherche: 'sortie',
+          adresse: '3 rue Sainte-Colombe, Bordeaux',
+          lienCarte:
+            'https://www.google.com/maps/search/?api=1&query=Le%20Point%20Rouge%20Bordeaux',
+          fournisseur: 'Foursquare',
+          source: 'https://places-api.foursquare.com/places/search',
+          recupereLe: '2026-07-28T08:15:00.000Z',
+        },
+      ],
     });
   });
 
-  it('booking_url pointe vers Google Maps (universel, bonne ville partout)', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => MOCK_FSQ_RESPONSE });
-    const results = await foursquareRestaurantSearch('Ibiza', 'party');
-    results.forEach(r => {
-      expect(r.booking_url).toContain('google.com/maps');
+  it.each([
+    ['restaurant', 'restaurant bistronomique', 'French Restaurant'],
+    ['activite', 'escape game', 'Escape Room'],
+    ['sortie', 'bar à cocktails', 'Cocktail Bar'],
+  ] as const)('porte le type métier %s sur le chemin réellement utilisé', async (type, requete, categorie) => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            ...REPONSE_FOURSQUARE.results[0],
+            categories: [{ fsq_category_id: 'categorie-test', name: categorie }],
+          },
+        ],
+      }),
+    });
+
+    const recherche = await rechercherLieuxFoursquare('Bordeaux', requete, type);
+
+    expect(recherche.statut).toBe('ok');
+    if (recherche.statut !== 'ok') throw new Error('résultat attendu');
+    expect(recherche.resultats[0].typeMetierRecherche).toBe(type);
+    expect(recherche.resultats[0]).not.toHaveProperty('prix');
+    expect(String(requeteFetch.mock.calls[0][0])).toContain('places-api.foursquare.com');
+  });
+
+  it('écarte une catégorie fournisseur incompatible avec le type métier', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => REPONSE_FOURSQUARE,
+    });
+
+    const recherche = await rechercherLieuxFoursquare(
+      'Bordeaux',
+      'restaurant',
+      'restaurant'
+    );
+
+    expect(recherche.statut).toBe('vide');
+  });
+
+  it('conserve la catégorie qui prouve le type métier quand elle n’est pas la première', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            ...REPONSE_FOURSQUARE.results[0],
+            categories: [
+              { fsq_category_id: 'hotel', name: 'Hotel' },
+              { fsq_category_id: 'restaurant', name: 'French Restaurant' },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const recherche = await rechercherLieuxFoursquare(
+      'Bordeaux',
+      'restaurant français',
+      'restaurant'
+    );
+
+    expect(recherche).toMatchObject({
+      statut: 'ok',
+      resultats: [{ categorieFournisseur: 'French Restaurant' }],
     });
   });
 
-  it('le nom du restaurant est inclus dans la booking_url', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => MOCK_FSQ_RESPONSE });
-    const results = await foursquareRestaurantSearch('Ibiza', 'party');
-    // encodeURIComponent produit %20 (pas +)
-    const decoded = decodeURIComponent(results[0].booking_url ?? '');
-    expect(decoded).toContain('El Chiringuito');
-  });
+  it('envoie les en-têtes officiels imposés par Foursquare', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => REPONSE_FOURSQUARE,
+    });
 
-  it('utilise le header Authorization Bearer + la version de l\'API', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => MOCK_FSQ_RESPONSE });
-    await foursquareRestaurantSearch('Ibiza', 'party');
-    const headers = mockFetch.mock.calls[0][1]?.headers;
-    expect(headers?.Authorization).toBe('Bearer fsq3-test-key-vitest');
-    expect(headers?.['X-Places-Api-Version']).toBeTruthy();
-  });
+    await rechercherLieuxFoursquare('Bordeaux', 'restaurant', 'restaurant');
 
-  it('appelle le nouvel endpoint places-api (pas le legacy v3)', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => MOCK_FSQ_RESPONSE });
-    await foursquareRestaurantSearch('Ibiza', 'party');
-    const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toContain('places-api.foursquare.com');
-    expect(url).not.toContain('api.foursquare.com/v3');
-  });
-
-  it('limit=3 dans l\'URL', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => MOCK_FSQ_RESPONSE });
-    await foursquareRestaurantSearch('Ibiza', 'party');
-    const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toContain('limit=3');
+    const options = requeteFetch.mock.calls[0][1] as RequestInit;
+    expect(options.headers).toMatchObject({
+      Authorization: 'Bearer cle-foursquare-test',
+      'X-Places-Api-Version': '2025-06-17',
+      Accept: 'application/json',
+    });
   });
 });
 
-// ============================================================
-// Mapping prix
-// ============================================================
-describe('foursquareRestaurantSearch — mapping des prix', () => {
+describe('rechercherLieuxFoursquare — états de recherche', () => {
+  it('distingue une vraie recherche vide', async () => {
+    requeteFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) });
 
-  it('price=1 ($) correspond à ~15€', async () => {
-    const r = { results: [{ ...MOCK_FSQ_RESPONSE.results[0], price: 1, name: 'Budget' }] };
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => r });
-    const [result] = await foursquareRestaurantSearch('Paris', 'student');
-    expect(result.price).toBe(15);
-    expect(result.price_range).toBe('$');
+    const recherche = await rechercherLieuxFoursquare('Bordeaux', 'aquarium', 'activite');
+
+    expect(recherche.statut).toBe('vide');
+    if (recherche.statut !== 'vide') throw new Error('vide attendu');
+    expect(recherche.resultats).toEqual([]);
+    expect(Number.isNaN(Date.parse(recherche.recupereLe))).toBe(false);
   });
 
-  it('price=4 ($$$$) correspond à ~120€', async () => {
-    const r = { results: [{ ...MOCK_FSQ_RESPONSE.results[0], price: 4, name: 'Luxe' }] };
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => r });
-    const [result] = await foursquareRestaurantSearch('Paris', 'relax');
-    expect(result.price).toBe(120);
-    expect(result.price_range).toBe('$$$$');
-  });
-
-  it('price absent → fallback $$ (~35€)', async () => {
-    const r = { results: [{ ...MOCK_FSQ_RESPONSE.results[0], price: undefined, name: 'Sans prix' }] };
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => r });
-    const [result] = await foursquareRestaurantSearch('Paris', 'relax');
-    expect(result.price).toBe(35);
-    expect(result.price_range).toBe('$$');
-  });
-});
-
-// ============================================================
-// Requêtes par mode
-// ============================================================
-describe('foursquareRestaurantSearch — queries par mode', () => {
-
-  it('mode party : requête contient "bar" ou "nightclub"', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => MOCK_FSQ_RESPONSE });
-    await foursquareRestaurantSearch('Ibiza', 'party');
-    const url = mockFetch.mock.calls[0][0] as string;
-    expect(url).toMatch(/bar|nightclub|lounge/i);
-  });
-
-  it('premium=true : requête contient "fine dining" quel que soit le mode', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => MOCK_FSQ_RESPONSE });
-    // premium est un axe indépendant du mode (ici relax) → catégories haut de gamme.
-    await foursquareRestaurantSearch('Monaco', 'relax', true);
-    // URLSearchParams encode les espaces avec +, decodeURIComponent ne les décode pas → replace
-    const url = decodeURIComponent(mockFetch.mock.calls[0][0] as string).replace(/\+/g, ' ');
-    expect(url).toMatch(/fine dining|wine bar/i);
-  });
-});
-
-// ============================================================
-// Gestion des erreurs
-// ============================================================
-describe('foursquareRestaurantSearch — erreurs', () => {
-
-  it('retourne [] si FOURSQUARE_API_KEY manquante', async () => {
-    const orig = process.env.FOURSQUARE_API_KEY;
+  it('distingue une configuration absente', async () => {
     process.env.FOURSQUARE_API_KEY = '';
-    vi.resetModules();
-    const { foursquareRestaurantSearch: fn } = await import('../../server/services/foursquare.js?v=' + Date.now());
-    const r = await fn('Ibiza', 'party');
-    expect(r).toEqual([]);
-    process.env.FOURSQUARE_API_KEY = orig;
+
+    await expect(
+      rechercherLieuxFoursquare('Bordeaux', 'restaurant', 'restaurant')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'Foursquare',
+      raison: 'configuration_absente',
+    });
+    expect(requeteFetch).not.toHaveBeenCalled();
   });
 
-  it('retourne [] si API renvoie 401 (clé invalide)', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 401 });
-    const results = await foursquareRestaurantSearch('Ibiza', 'party');
-    expect(results).toEqual([]);
+  it.each([
+    [401, 'authentification'],
+    [403, 'authentification'],
+    [429, 'quota'],
+    [500, 'fournisseur'],
+  ] as const)('convertit HTTP %s en %s', async (statut, raison) => {
+    requeteFetch.mockResolvedValueOnce({ ok: false, status: statut });
+
+    await expect(
+      rechercherLieuxFoursquare('Bordeaux', 'restaurant', 'restaurant')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'Foursquare',
+      raison,
+    });
   });
 
-  it('retourne [] si API renvoie 0 résultats', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) });
-    const results = await foursquareRestaurantSearch('Ibiza', 'party');
-    expect(results).toEqual([]);
+  it('distingue un timeout', async () => {
+    const erreur = new Error('The operation timed out');
+    erreur.name = 'TimeoutError';
+    requeteFetch.mockRejectedValueOnce(erreur);
+
+    await expect(
+      rechercherLieuxFoursquare('Bordeaux', 'restaurant', 'restaurant')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'Foursquare',
+      raison: 'timeout',
+    });
   });
 
-  it('retourne [] si fetch throw (timeout)', async () => {
-    mockFetch.mockRejectedValueOnce(new Error('AbortError'));
-    const results = await foursquareRestaurantSearch('Ibiza', 'party');
-    expect(results).toEqual([]);
+  it('distingue une panne réseau', async () => {
+    requeteFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+
+    await expect(
+      rechercherLieuxFoursquare('Bordeaux', 'restaurant', 'restaurant')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'Foursquare',
+      raison: 'reseau',
+    });
   });
 
-  it('ne throw jamais — toujours un tableau même en cas de panne', async () => {
-    mockFetch.mockRejectedValueOnce(new Error('Network failure'));
-    await expect(foursquareRestaurantSearch('Ibiza', 'party')).resolves.toEqual([]);
+  it('refuse une réponse externe invalide au lieu de promouvoir ses données', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ results: [{ fsq_place_id: '', name: 42 }] }),
+    });
+
+    await expect(
+      rechercherLieuxFoursquare('Bordeaux', 'restaurant', 'restaurant')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'Foursquare',
+      raison: 'reponse_invalide',
+    });
+  });
+
+  it('classe un JSON illisible comme réponse invalide', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('JSON incomplet');
+      },
+    });
+
+    await expect(
+      rechercherLieuxFoursquare('Bordeaux', 'restaurant', 'restaurant')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'Foursquare',
+      raison: 'reponse_invalide',
+    });
   });
 });
