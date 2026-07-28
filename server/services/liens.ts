@@ -4,10 +4,12 @@
 // preuves observables. Aucun LLM ne choisit l'URL et le rang Tavily ne départage
 // jamais plusieurs candidats admissibles.
 
+import { parse as analyserDomaine } from 'tldts';
 import type {
   DemandeResolutionLien,
-  LienResolu,
+  ResultatResolutionLien,
 } from './liens/contrat.js';
+import { controlerAccessibiliteLien } from './liens/controleRedirections.js';
 import {
   classifierCandidatLien,
   comparerVilleEtAdresse,
@@ -44,6 +46,26 @@ function normaliserUrl(url: string): string {
   return url.trim().toLowerCase().replace(/^http:\/\//, 'https://').replace(/\/+$/, '');
 }
 
+export function domaineEnregistrableLien(
+  valeur: string,
+): string | null {
+  try {
+    const hote = new URL(valeur).hostname;
+    const analyse = analyserDomaine(hote, {
+      allowPrivateDomains: true,
+    });
+    if (
+      !analyse.domain ||
+      (analyse.isIcann !== true && analyse.isPrivate !== true)
+    ) {
+      return null;
+    }
+    return analyse.domain.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Filet anti-hallucination : ne garde l'URL proposée par le LLM que si elle
  * correspond (après normalisation) à une URL réellement présente dans le
@@ -77,12 +99,61 @@ function construireRequeteResolution(
 
 export async function resoudreLien(
   demande: DemandeResolutionLien,
-): Promise<LienResolu> {
+): Promise<ResultatResolutionLien> {
   const recherche = await rechercherWeb(
     construireRequeteResolution(demande),
     8,
   );
-  return selectionnerLien(demande, recherche);
+  const selection = selectionnerLien(demande, recherche);
+  if (selection.statut !== 'resolu') {
+    return selection;
+  }
+
+  const controle = await controlerAccessibiliteLien(selection.url);
+  if (controle.statut === 'refuse') {
+    return {
+      statut: 'refuse',
+      cleDemande: selection.cleDemande,
+      raison: controle.raison,
+      constateLe: controle.constateLe,
+    };
+  }
+  if (controle.statut === 'indisponible') {
+    return {
+      statut: 'indisponible',
+      cleDemande: selection.cleDemande,
+      origine: 'controle_reseau',
+      raison: controle.raison,
+      constateLe: controle.constateLe,
+    };
+  }
+
+  const domaineInitial = domaineEnregistrableLien(selection.url);
+  const domaineFinal = domaineEnregistrableLien(
+    controle.urlFinale,
+  );
+  if (
+    !domaineInitial ||
+    !domaineFinal ||
+    domaineInitial !== domaineFinal
+  ) {
+    return {
+      statut: 'refuse',
+      cleDemande: selection.cleDemande,
+      raison: 'changement_domaine_enregistrable',
+      constateLe: controle.controleLe,
+    };
+  }
+
+  return {
+    ...selection,
+    urlInitiale: controle.urlInitiale,
+    url: controle.urlFinale,
+    domaine: new URL(controle.urlFinale).hostname,
+    redirections: controle.redirections,
+    controleLe: controle.controleLe,
+    statutHttp: controle.statutHttp,
+  };
 }
 
 /**

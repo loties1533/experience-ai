@@ -16,6 +16,12 @@ import type {
 vi.mock('../../server/services/tools/webSearch.js', () => ({
   rechercherWeb: vi.fn(),
 }));
+vi.mock(
+  '../../server/services/liens/controleRedirections.js',
+  () => ({
+    controlerAccessibiliteLien: vi.fn(),
+  }),
+);
 vi.mock('../../server/services/claude/core.js', () => ({
   callAI: vi.fn(),
 }));
@@ -23,10 +29,14 @@ vi.mock('../../server/services/claude/core.js', () => ({
 const { rechercherWeb } = await import(
   '../../server/services/tools/webSearch.js'
 );
+const { controlerAccessibiliteLien } = await import(
+  '../../server/services/liens/controleRedirections.js'
+);
 const { callAI } = await import('../../server/services/claude/core.js');
 const {
   cleDemandeResolutionLien,
   DemandeResolutionLienInvalide,
+  domaineEnregistrableLien,
   estPageGenerique,
   estSourceExclue,
   extraireUrlsContexte,
@@ -163,6 +173,16 @@ function attendreDemandeInvalide(
 
 beforeEach(() => {
   vi.mocked(rechercherWeb).mockReset();
+  vi.mocked(controlerAccessibiliteLien)
+    .mockReset()
+    .mockImplementation(async (urlInitiale) => ({
+      statut: 'accessible',
+      urlInitiale,
+      urlFinale: urlInitiale,
+      statutHttp: 200,
+      redirections: [],
+      controleLe: DATE_RECUPERATION,
+    }));
   vi.mocked(callAI).mockReset();
 });
 
@@ -849,8 +869,37 @@ describe('clé de demande structurée', () => {
   );
 });
 
+describe('domaine enregistrable des liens', () => {
+  it('normalise la casse et le point terminal DNS', () => {
+    expect(
+      domaineEnregistrableLien(
+        'https://RESERVATION.THEFORK.FR./restaurant/123',
+      ),
+    ).toBe('thefork.fr');
+  });
+
+  it('normalise un domaine internationalisé via URL', () => {
+    expect(
+      domaineEnregistrableLien('https://BÜCHER.de/catalogue'),
+    ).toBe('xn--bcher-kva.de');
+    expect(
+      domaineEnregistrableLien(
+        'https://xn--bcher-kva.de/catalogue',
+      ),
+    ).toBe('xn--bcher-kva.de');
+  });
+
+  it.each([
+    'https://localhost/page',
+    'https://service.invalid/page',
+    'valeur sans URL',
+  ])('refuse l’absence de domaine enregistrable : %s', (url) => {
+    expect(domaineEnregistrableLien(url)).toBeNull();
+  });
+});
+
 describe('intégration structurée et compatibilité', () => {
-  it('résout une demande structurée avec un seul appel Tavily', async () => {
+  it('conserve le type reservation après le contrôle réseau', async () => {
     vi.mocked(rechercherWeb).mockResolvedValueOnce(
       rechercheOk(candidatReservation()),
     );
@@ -859,15 +908,232 @@ describe('intégration structurée et compatibilité', () => {
 
     expect(resultat).toMatchObject({
       statut: 'resolu',
+      typeLien: 'reservation',
       cleDemande:
         'Foursquare:fsq-point-rouge:sortie:bordeaux:le-point-rouge',
+      controleLe: DATE_RECUPERATION,
+      statutHttp: 200,
     });
     expect(rechercherWeb).toHaveBeenCalledOnce();
     expect(rechercherWeb).toHaveBeenCalledWith(
       expect.stringContaining('"Le Point Rouge"'),
       8,
     );
+    expect(controlerAccessibiliteLien).toHaveBeenCalledOnce();
+    expect(controlerAccessibiliteLien).toHaveBeenCalledWith(
+      candidatReservation().url,
+    );
   });
+
+  it('conserve le type billetterie et les preuves après redirection', async () => {
+    vi.mocked(rechercherWeb).mockResolvedValueOnce(
+      rechercheOk(candidatBilletterie()),
+    );
+    vi.mocked(controlerAccessibiliteLien).mockResolvedValueOnce({
+      statut: 'accessible',
+      urlInitiale: candidatBilletterie().url,
+      urlFinale:
+        'https://www.ticketmaster.fr/fr/manifestation/festival-du-port/12345',
+      statutHttp: 200,
+      redirections: [
+        'https://www.ticketmaster.fr/fr/manifestation/festival-du-port/12345',
+      ],
+      controleLe: DATE_RECUPERATION,
+    });
+
+    const resultat = await resoudreLien(demandeEvenement());
+
+    expect(resultat).toMatchObject({
+      statut: 'resolu',
+      typeLien: 'billetterie',
+      urlInitiale: candidatBilletterie().url,
+      url:
+        'https://www.ticketmaster.fr/fr/manifestation/festival-du-port/12345',
+      domaine: 'www.ticketmaster.fr',
+      redirections: [
+        'https://www.ticketmaster.fr/fr/manifestation/festival-du-port/12345',
+      ],
+    });
+    if (resultat.statut === 'resolu') {
+      expect(resultat.preuves.map((preuve) => preuve.nature)).toContain(
+        'date_evenement',
+      );
+      expect(resultat.typeLien).not.toBe('officiel');
+    }
+  });
+
+  it('ne transfère pas une réservation TheFork vers un autre domaine enregistrable', async () => {
+    vi.mocked(rechercherWeb).mockResolvedValueOnce(
+      rechercheOk(candidatReservation()),
+    );
+    vi.mocked(controlerAccessibiliteLien).mockResolvedValueOnce({
+      statut: 'accessible',
+      urlInitiale: candidatReservation().url,
+      urlFinale: 'https://autre-domaine-public.com/page',
+      statutHttp: 200,
+      redirections: ['https://autre-domaine-public.com/page'],
+      controleLe: DATE_RECUPERATION,
+    });
+
+    const resultat = await resoudreLien(demandeLieu());
+
+    expect(resultat).toEqual({
+      statut: 'refuse',
+      cleDemande:
+        'Foursquare:fsq-point-rouge:sortie:bordeaux:le-point-rouge',
+      raison: 'changement_domaine_enregistrable',
+      constateLe: DATE_RECUPERATION,
+    });
+  });
+
+  it('ne transfère pas une billetterie Ticketmaster vers un domaine non reconnu', async () => {
+    vi.mocked(rechercherWeb).mockResolvedValueOnce(
+      rechercheOk(candidatBilletterie()),
+    );
+    vi.mocked(controlerAccessibiliteLien).mockResolvedValueOnce({
+      statut: 'accessible',
+      urlInitiale: candidatBilletterie().url,
+      urlFinale: 'https://billets-autres.com/page',
+      statutHttp: 200,
+      redirections: ['https://billets-autres.com/page'],
+      controleLe: DATE_RECUPERATION,
+    });
+
+    const resultat = await resoudreLien(demandeEvenement());
+
+    expect(resultat).toEqual({
+      statut: 'refuse',
+      cleDemande:
+        'PredictHQ:phq-festival-port:evenement:bordeaux:festival-du-port',
+      raison: 'changement_domaine_enregistrable',
+      constateLe: DATE_RECUPERATION,
+    });
+  });
+
+  it('conserve une réservation entre sous-domaines du même domaine enregistrable', async () => {
+    vi.mocked(rechercherWeb).mockResolvedValueOnce(
+      rechercheOk(candidatReservation()),
+    );
+    vi.mocked(controlerAccessibiliteLien).mockResolvedValueOnce({
+      statut: 'accessible',
+      urlInitiale: candidatReservation().url,
+      urlFinale:
+        'https://reservation.thefork.fr/restaurant/le-point-rouge-r12345',
+      statutHttp: 200,
+      redirections: [
+        'https://reservation.thefork.fr/restaurant/le-point-rouge-r12345',
+      ],
+      controleLe: DATE_RECUPERATION,
+    });
+
+    const resultat = await resoudreLien(demandeLieu());
+
+    expect(resultat).toMatchObject({
+      statut: 'resolu',
+      typeLien: 'reservation',
+      domaine: 'reservation.thefork.fr',
+    });
+  });
+
+  it('refuse une destination finale sans domaine enregistrable', async () => {
+    vi.mocked(rechercherWeb).mockResolvedValueOnce(
+      rechercheOk(candidatReservation()),
+    );
+    vi.mocked(controlerAccessibiliteLien).mockResolvedValueOnce({
+      statut: 'accessible',
+      urlInitiale: candidatReservation().url,
+      urlFinale: 'https://localhost/page',
+      statutHttp: 200,
+      redirections: ['https://localhost/page'],
+      controleLe: DATE_RECUPERATION,
+    });
+
+    await expect(resoudreLien(demandeLieu())).resolves.toMatchObject({
+      statut: 'refuse',
+      raison: 'changement_domaine_enregistrable',
+    });
+  });
+
+  it('retire le statut résolu quand le contrôle refuse le lien', async () => {
+    vi.mocked(rechercherWeb).mockResolvedValueOnce(
+      rechercheOk(candidatReservation()),
+    );
+    vi.mocked(controlerAccessibiliteLien).mockResolvedValueOnce({
+      statut: 'refuse',
+      raison: 'destination_interdite',
+      constateLe: DATE_RECUPERATION,
+    });
+
+    await expect(resoudreLien(demandeLieu())).resolves.toEqual({
+      statut: 'refuse',
+      cleDemande:
+        'Foursquare:fsq-point-rouge:sortie:bordeaux:le-point-rouge',
+      raison: 'destination_interdite',
+      constateLe: DATE_RECUPERATION,
+    });
+  });
+
+  it('conserve une panne réseau comme indisponible, jamais introuvable', async () => {
+    vi.mocked(rechercherWeb).mockResolvedValueOnce(
+      rechercheOk(candidatReservation()),
+    );
+    vi.mocked(controlerAccessibiliteLien).mockResolvedValueOnce({
+      statut: 'indisponible',
+      raison: 'erreur_dns',
+      constateLe: DATE_RECUPERATION,
+    });
+
+    await expect(resoudreLien(demandeLieu())).resolves.toEqual({
+      statut: 'indisponible',
+      cleDemande:
+        'Foursquare:fsq-point-rouge:sortie:bordeaux:le-point-rouge',
+      origine: 'controle_reseau',
+      raison: 'erreur_dns',
+      constateLe: DATE_RECUPERATION,
+    });
+  });
+
+  it.each([
+    [
+      'ambigu',
+      rechercheOk(
+        candidatReservation(),
+        candidatReservation({
+          url:
+            'https://www.opentable.com/r/' +
+            'le-point-rouge-bordeaux',
+        }),
+      ),
+    ],
+    [
+      'introuvable',
+      {
+        statut: 'vide',
+        resultats: [],
+        fournisseur: 'Tavily',
+        recupereLe: DATE_RECUPERATION,
+      } satisfies ResultatRechercheWeb,
+    ],
+    [
+      'indisponible',
+      {
+        statut: 'indisponible',
+        fournisseur: 'Tavily',
+        raison: 'quota',
+        constateLe: DATE_RECUPERATION,
+      } satisfies ResultatRechercheWeb,
+    ],
+  ])(
+    'ne lance aucun contrôle réseau après une sélection %s',
+    async (statut, recherche) => {
+      vi.mocked(rechercherWeb).mockResolvedValueOnce(recherche);
+
+      const resultat = await resoudreLien(demandeLieu());
+
+      expect(resultat.statut).toBe(statut);
+      expect(controlerAccessibiliteLien).not.toHaveBeenCalled();
+    },
+  );
 
   it('n’effectue aucun appel réseau supplémentaire pendant la sélection pure', () => {
     const requeteReseau = vi.fn();
@@ -894,6 +1160,7 @@ describe('intégration structurée et compatibilité', () => {
       ]),
     );
     expect(rechercherWeb).not.toHaveBeenCalled();
+    expect(controlerAccessibiliteLien).not.toHaveBeenCalled();
     expect(callAI).not.toHaveBeenCalled();
   });
 
@@ -902,6 +1169,7 @@ describe('intégration structurée et compatibilité', () => {
 
     expect(liens.size).toBe(0);
     expect(rechercherWeb).not.toHaveBeenCalled();
+    expect(controlerAccessibiliteLien).not.toHaveBeenCalled();
     expect(callAI).not.toHaveBeenCalled();
   });
 });
