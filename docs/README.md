@@ -35,4 +35,5 @@
 sprints F0 → F9.
 
 **Docs vivants :** [questions-ouvertes](questions-ouvertes.md) ·
+[audit F0 TripGenie → Experience AI](audits/tripgenie-vers-experience-ai.md) ·
 [decisions/ (ADR-0001 → 0007)](decisions/)

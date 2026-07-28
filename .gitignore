@@ -27,6 +27,8 @@ docs/*
 !docs/*.md
 !docs/architecture/
 !docs/architecture/**
+!docs/audits/
+!docs/audits/**
 !docs/SPRINTS.md
 !docs/decisions/
 !docs/decisions/**
