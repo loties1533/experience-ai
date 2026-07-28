@@ -169,13 +169,18 @@ export async function callAIAvecOutils(
   userPrompt: string,
   systemPrompt: string,
   boite: BoiteAOutilsLLM,
-  context: ContexteIA = 'pack'
+  _context: ContexteIA = 'pack'
 ): Promise<string> {
-  // La boucle d'outils est propre à l'API Anthropic. Sans clé, on retombe sur
-  // l'appel simple (et sa cascade de fournisseurs) : le parcours sera construit
-  // SANS données réelles, mais il sera construit. L'utilisateur ne voit jamais
-  // une panne technique parce qu'une clé manque.
-  if (!CLE_ANTHROPIC) return callAI(userPrompt, systemPrompt, context);
+  // La boucle d'outils est propre à l'API Anthropic. Un fournisseur sans outils
+  // peut reformuler ou interpréter, mais il ne peut pas garantir les lieux d'un
+  // parcours. Depuis F1 on signale l'indisponibilité au lieu d'abaisser
+  // silencieusement la confiance des données.
+  if (!CLE_ANTHROPIC) {
+    return JSON.stringify({
+      outilsIndisponibles: true,
+      message: 'Les sources de vérification sont momentanément indisponibles.',
+    });
+  }
 
   const messages: MessageLLM[] = [{ role: 'user', content: userPrompt }];
 
@@ -204,15 +209,11 @@ export async function callAIAvecOutils(
     console.error('Boucle d’outils interrompue :', (erreur as Error).message);
   }
 
-  // Boucle en panne (réseau, quota, délai dépassé) : on génère sans données
-  // réelles plutôt que de rendre une erreur à quelqu'un qui attend son
-  // parcours. Le system prompt d'origine explique comment chercher — repris
-  // tel quel ici, le modèle tente parfois d'appeler un outil en prose (une
-  // syntaxe d'invocation inventée, en plein milieu du JSON) puisqu'aucun outil
-  // n'est réellement fourni à cet appel simple. On le prévient explicitement.
-  return callAI(
-    userPrompt,
-    `${systemPrompt}\n\nAUCUN OUTIL N'EST DISPONIBLE POUR CETTE RÉPONSE : ne cherche rien, n'appelle rien, réponds directement en JSON avec ce que tu sais déjà, reste générique si besoin.`,
-    context
-  );
+  // La boucle elle-même n'a pas pu terminer : aucune preuve n'existe que les
+  // recherches nécessaires ont été exécutées. On ne masque plus cet échec
+  // derrière une génération simple.
+  return JSON.stringify({
+    outilsIndisponibles: true,
+    message: 'Les sources de vérification sont momentanément indisponibles.',
+  });
 }

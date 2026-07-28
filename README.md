@@ -12,7 +12,7 @@
 [![Express](https://img.shields.io/badge/Express-4-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com)
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org)
-[![Vitest](https://img.shields.io/badge/Vitest-327_tests-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Vitest](https://img.shields.io/badge/Vitest-suite_automatisee-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
 
 [Documentation produit](docs/README.md) · [Modèle de domaine](docs/06-modele-conceptuel.md) · [Décisions (ADR)](docs/11-decisions.md) · [Suivi des sprints](docs/SPRINTS.md)
 
@@ -35,8 +35,9 @@ L'utilisateur décrit son envie en langage naturel → l'IA dialogue jusqu'à co
 - **Partage au groupe** par lien, avec visibilité privée / partagée / surprise (le héros d'un EVG ne voit rien de ce qu'on lui prépare)
 - Le groupe **réagit** aux éléments (pour/contre) — l'organisateur tranche, l'avis éclaire sans décider
 - **Mémoire simple** : les préférences enregistrées orientent les générations suivantes
-- Cache mémoire des recherches externes ; stratégie de repli en cours de
-  durcissement pour ne jamais présenter une suggestion comme une donnée réelle
+- Cache mémoire des recherches externes ; chaque élément affiche son niveau
+  **Vérifié / Estimé / Suggestion**, et l'absence des outils indispensables
+  provoque une indisponibilité technique explicite
 
 Un week-end romantique, un EVG, un festival, un séjour NBA, une soirée improvisée : **même moteur**, aucune notion de voyage câblée en dur.
 
@@ -58,6 +59,8 @@ Le domaine porte des **invariants** qui doivent toujours être vrais ([doc 06](d
 6. L'utilisateur garde le dernier mot
 7. Un arbitrage est définitif — une option écartée n'est jamais reproposée
 8. Toute modification s'exerce dans le cadre du rôle de son auteur
+9. Un élément vérifié porte sa provenance ; un lien officiel, de billetterie
+   ou de carte ne peut pas habiller une simple suggestion
 
 ---
 
@@ -117,22 +120,24 @@ sequenceDiagram
     A-->>F: parcours complet
 ```
 
-> **Limite connue et chantier prioritaire.** Sans clé API ou après l'échec
-> d'une boucle d'outils, le système peut encore générer sans données réelles.
-> Cette continuité technique n'est plus considérée comme acceptable lorsqu'elle
-> donne l'apparence d'un lieu ou événement vérifié. Le
-> [plan de fiabilité](docs/14-fiabilite-parcours.md) introduit les niveaux
-> Vérifié / Estimé / Suggestion / Refus et remplace ce repli silencieux.
+> **Contrat F1 en cours de validation.** Une génération outillée indisponible ne retombe plus sur un
+> modèle sans sources : l'API renvoie une erreur technique `503`. Une recherche
+> exécutée mais vide peut encore produire une idée générique, toujours marquée
+> **Suggestion**, sans faux nom propre ni faux lien. Les éléments vérifiés
+> conservent leur source, leur fournisseur et leur date de récupération. Un
+> manque métier de données essentielles produit un refus `422`. Voir
+> le [plan de fiabilité](docs/14-fiabilite-parcours.md) et
+> [ADR-0008](docs/decisions/ADR-0008.md).
 
 ### Modification ciblée : le cœur du produit
 
 *« Le paddle du samedi matin, remplace-le par quelque chose de moins physique »* ne régénère pas le parcours : le domaine cible l'élément, calcule ses dépendants (`elementsDependants`), et ne touche à rien d'autre. Vérifié en conditions réelles — sur un parcours de 11 éléments, 1 seul change, les 10 autres restent identiques au caractère près.
 
-### Cascade LLM (repli automatique)
+### Cascade LLM pour les tâches sans outils
 
 ```mermaid
 flowchart LR
-    Req["callAI() / callAIAvecOutils()"] --> C{"Claude Haiku"}
+    Req["callAI()"] --> C{"Claude Haiku"}
     C -->|"OK"| Out["Réponse JSON"]
     C -->|"échec"| G{"Gemini 2.0 Flash"}
     G -->|"OK"| Out
@@ -141,6 +146,11 @@ flowchart LR
     O -->|"échec"| M["Indisponibilité explicite<br/>(refusée par Zod en aval)"]
     M --> Out
 ```
+
+La génération de parcours suit un contrat plus strict : sa boucle d'outils
+Claude ne bascule pas vers `callAI()` si elle est indisponible. Tant que les
+autres fournisseurs ne prennent pas eux-mêmes en charge les outils, elle
+signale honnêtement l'indisponibilité au lieu de produire des lieux non vérifiés.
 
 D'autres diagrammes (authentification, scalabilité) sont dans [`docs/architecture/`](docs/architecture/) — en Mermaid inline, rendus nativement par GitHub.
 
@@ -185,9 +195,9 @@ npm run dev:all
 npx vitest run
 ```
 
-327 tests : domaine (logique pure, quelques millisecondes), dépôts (Prisma
-mocké), agents (LLM mocké — aucun test n'appelle une vraie API), routes,
-authentification, partage et validation des entrées.
+La suite couvre le domaine, les dépôts (Prisma mocké), les agents (LLM mocké —
+aucun test n'appelle une vraie API), les routes, l'authentification, le partage
+et la validation des entrées.
 
 ---
 
@@ -230,11 +240,11 @@ Deux règles de gouvernance :
 
 Le modèle de domaine est **stable pour le MVP** : validé par crash-test contre six parcours très différents (passionné solo, couple avec surprise, soirée improvisée, famille, EVG, festival), puis par une recette manuelle de bout en bout qui a corrigé deux défauts réels (le brief qui perdait des informations, la génération qui échouait sur des dates de fin légitimes).
 
-Ce socle fonctionnel n'est pas encore une preuve de fiabilité des données. Le
-prochain chantier est **« Aucun faux parcours présenté comme réel »** :
-audit du portage TripGenie, traçabilité et niveaux de confiance, liens réels,
-hébergements et vols vérifiables, génération progressive et benchmark des
-modèles. Voir le [plan détaillé](docs/14-fiabilite-parcours.md) et les
+F0 est validé et **F1 — vérité des données** est en cours : provenance
+persistée, niveaux de confiance visibles, suggestions génériques, refus métier
+et panne technique sont séparés. F2 — liens fiables pour les lieux et
+événements — reste à faire après validation de F1. Voir le
+[plan détaillé](docs/14-fiabilite-parcours.md) et les
 [futurs sprints](docs/SPRINTS.md).
 
 **Aucun vertical n'est retenu comme périmètre de validation.** Le scénario NBA

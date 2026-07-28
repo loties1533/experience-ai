@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
 import AvisGroupe from '../components/AvisGroupe'
+import { BadgeConfiance, LibelleLien, libelleLien } from '../components/ConfianceElement'
 import PanneauPartage from '../components/PanneauPartage'
 import {
   chargerParcours, modifierParcours,
@@ -126,6 +127,7 @@ export default function ParcoursDetail() {
                           {LIBELLES_TYPE[element.type]}
                         </span>
                         {element.estAncre && <span className="badge-statut bg-lagon/10 text-lagon-dark">Ancre</span>}
+                        <BadgeConfiance element={element} />
                         {element.statut === 'accepte' && <span className="badge-accepte">Accepté</span>}
                         {element.statut === 'propose' && <span className="badge-propose">Proposé</span>}
                         {element.statut === 'a_remplacer' && <span className="badge-a-remplacer">À remplacer</span>}
@@ -134,14 +136,16 @@ export default function ParcoursDetail() {
                       <p className="font-semibold text-encre mt-1">{element.nom}</p>
                       <p className="text-xs text-brume mt-0.5">
                         {element.lieu}
-                        {element.prix !== undefined && <> · {element.prix} €</>}
+                        {element.prix !== undefined && (
+                          <> · {element.prix} €{element.prixEstime && ' estimés'}</>
+                        )}
                       </p>
                       {/* Un vrai lieu, trouvé pour ce parcours : on y conduit, on ne vend rien */}
                       {element.reservation && (
                         <a href={element.reservation.lienExterne} target="_blank" rel="noopener noreferrer"
                           className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
-                          aria-label={`Voir ${element.nom} sur la carte (nouvel onglet)`}>
-                          Voir sur la carte
+                          aria-label={`${libelleLien(element)} pour ${element.nom} (nouvel onglet)`}>
+                          <LibelleLien element={element} />
                         </a>
                       )}
                       {/* La justification : la cohérence visible (Constitution #4) */}

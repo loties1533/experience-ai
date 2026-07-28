@@ -76,6 +76,7 @@ describe('predictHQEventsSearch — cas nominal', () => {
 
     expect(events).toHaveLength(2);
     expect(events[0]).toHaveProperty('title');
+    expect(events[0]).toHaveProperty('id', 'evt-001');
     expect(events[0]).toHaveProperty('start');
     expect(events[0]).toHaveProperty('venue');
     expect(events[0]).toHaveProperty('category');

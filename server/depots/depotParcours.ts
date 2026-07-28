@@ -1,13 +1,17 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../db/prisma.js';
 import { AppError } from '../lib/AppError.js';
-import { ParcoursSchema, type Parcours } from '../domaine/parcours/index.js';
+import {
+  ParcoursLectureSchema,
+  ParcoursSchema,
+  type Parcours,
+} from '../domaine/parcours/index.js';
 
 // Seule porte d'accès à la table `parcours` (ADR-0007) :
 // - à l'écriture, l'agrégat est revalidé et les colonnes de projection
 //   (intention, visibilite) sont dérivées du contenu — jamais fournies à part ;
-// - à la lecture, le contenu est revalidé par ParcoursSchema : une ligne
-//   corrompue ne franchit pas cette frontière.
+// - à la lecture, le contenu est normalisé par ParcoursLectureSchema puis
+//   revalidé : une réservation legacy reste lisible sans devenir « vérifiée ».
 
 export interface ResumeParcours {
   id: string;
@@ -46,7 +50,7 @@ export async function chargerParcours(userId: string, parcoursId: string): Promi
   });
   if (!ligne) return null;
 
-  const resultat = ParcoursSchema.safeParse(ligne.contenu);
+  const resultat = ParcoursLectureSchema.safeParse(ligne.contenu);
   if (!resultat.success) {
     throw new AppError('Le contenu de ce parcours est corrompu', 500);
   }

@@ -7,8 +7,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // exercé, c'est la boucle d'outils, le cache, le repli quand une recherche ne
 // rend rien, et la frontière de méfiance envers la sortie du modèle.
 
-// La boucle d'outils n'existe que sur l'API Anthropic : sans clé, la génération
-// bascule sur l'appel simple. On en pose donc une (fausse) pour l'activer.
+// La boucle d'outils n'existe que sur l'API Anthropic. On pose une clé factice
+// pour l'activer ; sans elle, F1 exige une indisponibilité technique explicite.
 process.env.ANTHROPIC_API_KEY = 'cle-de-test-vitest';
 
 vi.mock('../../server/services/providers.js', async (importOriginal) => {
@@ -19,7 +19,7 @@ vi.mock('../../server/services/foursquare.js', () => ({ foursquareRechercheLieux
 vi.mock('../../server/services/predictHQ.js', () => ({ predictHQEventsSearch: vi.fn() }));
 vi.mock('../../server/services/weather.js', () => ({ getRealWeather: vi.fn() }));
 // Le résolveur de vrais liens a sa propre suite (tests/unit/liens.test.ts) : ici
-// on ne teste que la PRIORITÉ dans tracerLieuReel (lien réel > Booking > carte).
+// on ne teste que la PRIORITÉ dans tracerLieuReel (lien réel > carte).
 vi.mock('../../server/services/liens.js', () => ({ resoudreLiensReels: vi.fn() }));
 
 const { callClaude, callClaudeOutils } = await import('../../server/services/providers.js');
@@ -44,6 +44,7 @@ const brief = BriefSchema.parse({
 
 const LIEUX_TROUVES = [
   {
+    identifiantExterne: 'fsq-point-rouge',
     nom: 'Le Point Rouge',
     categorie: 'Cocktail Bar',
     adresse: '3 rue Sainte-Colombe, Bordeaux',
@@ -118,6 +119,15 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
     // Le lien vient du connecteur, jamais du modèle — et c'est un lien, pas un achat.
     expect(element.reservation?.lienExterne).toBe(LIEUX_TROUVES[0].lienCarte);
     expect(element.reservation?.fournisseur).toBe('Foursquare');
+    expect(element.reservation?.typeLien).toBe('carte');
+    expect(element.confiance).toMatchObject({
+      niveau: 'verifie',
+      source: 'Foursquare API',
+      fournisseur: 'Foursquare',
+      identifiantExterne: 'fsq-point-rouge',
+    });
+    if (element.confiance.niveau !== 'verifie') throw new Error('preuve attendue');
+    expect(Number.isNaN(Date.parse(element.confiance.recupereLe))).toBe(false);
   });
 
   it('ne rattache aucun lien à un nom que le modèle a inventé', async () => {
@@ -144,8 +154,8 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
   });
 });
 
-describe('le repli — sans données réelles, mais jamais d’erreur technique', () => {
-  it('continue quand la recherche ne rend rien (clé absente côté connecteur)', async () => {
+describe('la dégradation explicite des données réelles', () => {
+  it('reste générique et marque suggestion quand une recherche exécutée ne rend rien', async () => {
     vi.mocked(foursquareRechercheLieux).mockResolvedValue([]);
     vi.mocked(callClaudeOutils)
       .mockResolvedValueOnce(tourOutil('chercher_lieux', { ville: 'Bordeaux', requete: 'bar' }))
@@ -155,7 +165,8 @@ describe('le repli — sans données réelles, mais jamais d’erreur technique'
 
     const resultats = vi.mocked(callClaudeOutils).mock.calls[1][1][2].content as Array<{ content: string }>;
     expect(resultats[0].content).toContain('Aucun résultat réel');
-    expect(parcours.timeline[0].elements[0].nom).toBe('Un bar à cocktails du centre');
+    expect(parcours.timeline[0].elements[0].nom).toBe('Une sortie à choisir à Bordeaux');
+    expect(parcours.timeline[0].elements[0].confiance).toEqual({ niveau: 'suggestion' });
   });
 
   it('continue quand le connecteur tombe en panne', async () => {
@@ -164,17 +175,18 @@ describe('le repli — sans données réelles, mais jamais d’erreur technique'
       .mockResolvedValueOnce(tourOutil('chercher_lieux', { ville: 'Bordeaux', requete: 'bar' }))
       .mockResolvedValueOnce(tourReponse('Un bar du centre'));
 
-    await expect(genererParcours(brief)).resolves.toBeTruthy();
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+    expect(element.nom).toBe('Une sortie à choisir à Bordeaux');
+    expect(element.lieu).toBeUndefined();
+    expect(element.confiance).toEqual({ niveau: 'suggestion' });
+    expect(element.reservation).toBeUndefined();
   });
 
-  it('génère sans outils quand la boucle elle-même échoue', async () => {
+  it('signale une panne technique quand la boucle d’outils elle-même échoue', async () => {
     vi.mocked(callClaudeOutils).mockRejectedValue(new Error('quota dépassé'));
-    vi.mocked(callClaude).mockResolvedValue(JSON.stringify({ moments: tourTexteMinimal() }));
 
-    const parcours = await genererParcours(brief);
-
-    expect(callClaude).toHaveBeenCalledOnce();
-    expect(parcours.timeline[0].elements[0].nom).toBe('Une virée dans les bars du centre');
+    await expect(genererParcours(brief)).rejects.toMatchObject({ statusCode: 503 });
+    expect(callClaude).not.toHaveBeenCalled();
   });
 
   it('ne répond jamais un message technique sur une sortie inexploitable', async () => {
@@ -182,17 +194,32 @@ describe('le repli — sans données réelles, mais jamais d’erreur technique'
     await expect(genererParcours(brief)).rejects.toThrow('inexploitable');
   });
 
-  it('signale un service indisponible (503) quand plus aucun fournisseur ne répond', async () => {
-    // Boucle d'outils en échec, puis l'appel simple échoue aussi : le mode
-    // secours renvoie { indisponible: true }. On veut un 503 honnête, pas un
-    // 502 « réessaie » (réessayer tout de suite ne changerait rien).
+  it('signale un service indisponible (503) quand la boucle outillée ne répond plus', async () => {
     vi.mocked(callClaudeOutils).mockRejectedValue(new Error('quota dépassé'));
-    vi.mocked(callClaude).mockRejectedValue(new Error('quota dépassé'));
     await expect(genererParcours(brief)).rejects.toMatchObject({ statusCode: 503 });
+  });
+
+  it('distingue un refus métier (422) quand une donnée essentielle manque', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce([
+      {
+        type: 'text',
+        text: JSON.stringify({
+          refus: {
+            code: 'donnees_essentielles_insuffisantes',
+            message: 'Le match demandé ne peut pas être confirmé sur ces dates.',
+          },
+        }),
+      },
+    ]);
+
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 422,
+      message: 'Le match demandé ne peut pas être confirmé sur ces dates.',
+    });
   });
 });
 
-describe('tracerLieuReel — priorité du lien (réel > Booking > carte)', () => {
+describe('tracerLieuReel — priorité du lien et preuve', () => {
   it('préfère le vrai lien (site officiel/billetterie) à la carte du connecteur', async () => {
     vi.mocked(resoudreLiensReels).mockResolvedValue(
       new Map([['Le Point Rouge', 'https://lepointrouge.fr/']])
@@ -205,9 +232,41 @@ describe('tracerLieuReel — priorité du lien (réel > Booking > carte)', () =>
 
     expect(element.reservation?.lienExterne).toBe('https://lepointrouge.fr/');
     expect(element.reservation?.fournisseur).toBe('Web');
+    expect(element.reservation?.typeLien).toBe('officiel');
+    expect(element.confiance.niveau).toBe('verifie');
   });
 
-  it('construit un lien Booking.com pré-rempli pour un hébergement, sans lien réel trouvé', async () => {
+  it('qualifie en billetterie le lien vérifié d’un événement', async () => {
+    vi.mocked(resoudreLiensReels).mockResolvedValue(
+      new Map([['Festival du Port', 'https://billetterie.example/festival-du-port']])
+    );
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce([
+      {
+        type: 'text',
+        text: JSON.stringify({
+          moments: [
+            {
+              titre: 'Le festival',
+              elements: [
+                {
+                  ref: 'festival-1',
+                  type: 'evenement',
+                  nom: 'Festival du Port',
+                  justification: 'le temps fort demandé',
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    ]);
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+    expect(element.reservation?.typeLien).toBe('billetterie');
+    expect(element.confiance.niveau).toBe('verifie');
+  });
+
+  it('ne rattache aucun lien externe à un hébergement non vérifié', async () => {
     vi.mocked(callClaudeOutils).mockResolvedValueOnce([
       {
         type: 'text',
@@ -234,27 +293,12 @@ describe('tracerLieuReel — priorité du lien (réel > Booking > carte)', () =>
 
     const [element] = (await genererParcours(brief)).timeline[0].elements;
 
-    expect(element.reservation?.fournisseur).toBe('Booking.com');
-    expect(element.reservation?.lienExterne).toContain('booking.com/searchresults.html');
-    expect(element.reservation?.lienExterne).toContain('checkin=2026-08-15');
+    expect(element.nom).toBe('Un hébergement à choisir à Bordeaux');
+    expect(element.confiance).toEqual({ niveau: 'suggestion' });
+    expect(element.reservation).toBeUndefined();
   });
-});
 
-function tourTexteMinimal() {
-  return [
-    {
-      titre: 'Le samedi soir',
-      elements: [
-        {
-          ref: 'bar-1',
-          type: 'sortie',
-          nom: 'Une virée dans les bars du centre',
-          justification: 'le temps fort de la soirée',
-        },
-      ],
-    },
-  ];
-}
+});
 
 describe('le cache — deux générations sur la même ville ne repaient pas', () => {
   it('ne cherche qu’une fois pour deux boîtes à outils différentes', async () => {
@@ -307,6 +351,7 @@ describe('les outils — l’entrée vient du modèle, donc elle est validée', 
   it('cherche les événements sur la période demandée et retient leur salle', async () => {
     vi.mocked(predictHQEventsSearch).mockResolvedValue([
       {
+        id: 'evt-la-femme',
         title: 'Concert de La Femme',
         category: 'concerts',
         start: '2026-09-05',
@@ -328,5 +373,18 @@ describe('les outils — l’entrée vient du modèle, donc elle est validée', 
     const trace = boite.trouverLieuReel('Concert de La Femme');
     expect(trace?.lieu).toBe('Rock School Barbey');
     expect(trace?.lienCarte).toBeUndefined();
+    expect(trace?.identifiantExterne).toBe('evt-la-femme');
+    expect(trace?.recupereLe).toBeTruthy();
+  });
+
+  it('rend une absence explicite quand aucun événement réel n’est trouvé', async () => {
+    vi.mocked(predictHQEventsSearch).mockResolvedValue([]);
+    const reponse = await creerBoiteAOutils().executer('chercher_evenements', {
+      ville: 'Bordeaux',
+      dateDebut: '2026-09-04',
+      dateFin: '2026-09-06',
+    });
+
+    expect(reponse).toContain('Aucun résultat réel');
   });
 });

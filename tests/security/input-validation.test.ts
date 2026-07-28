@@ -13,6 +13,7 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import app from '../../server/index.js';
 import { ParcoursSchema, type Parcours } from '../../server/domaine/parcours/index.js';
+import { AppError } from '../../server/lib/AppError.js';
 
 process.env.JWT_SECRET = 'test-secret-for-vitest';
 
@@ -64,6 +65,7 @@ const PARCOURS: Parcours = ParcoursSchema.parse({
 vi.mock('../../server/agents/generation.js', () => ({
   genererParcours: vi.fn(async () => PARCOURS),
 }));
+const { genererParcours } = await import('../../server/agents/generation.js');
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
@@ -166,6 +168,23 @@ describe('POST /api/parcours — validation du brief', () => {
     const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF_VALIDE });
     expect(res.status).toBe(201);
     expect(res.body.parcours.id).toBe(PARCOURS_ID);
+  });
+
+  it('422 quand la génération refuse faute de données essentielles fiables', async () => {
+    vi.mocked(genererParcours).mockRejectedValueOnce(
+      new AppError('Le match demandé ne peut pas être confirmé sur ces dates.', 422)
+    );
+    const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF_VALIDE });
+    expect(res.status).toBe(422);
+    expect(res.body.message).toContain('ne peut pas être confirmé');
+  });
+
+  it('503 quand les sources de vérification sont techniquement indisponibles', async () => {
+    vi.mocked(genererParcours).mockRejectedValueOnce(
+      new AppError('Les sources de vérification sont momentanément indisponibles.', 503)
+    );
+    const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF_VALIDE });
+    expect(res.status).toBe(503);
   });
 });
 

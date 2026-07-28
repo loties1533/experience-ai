@@ -25,12 +25,17 @@ S'y ajoute l'**intake** (`agents/intake.ts`) : le dialogue de cadrage (doc 05, �
    Gemini → OpenRouter. Elle assure la disponibilité du raisonnement, mais ne
    doit pas autoriser une baisse silencieuse de la qualité des données.
 
-## Limite actuelle
+## Contrat de repli F1 en cours de validation
 
-Après l'échec de la boucle d'outils, l'orchestrateur peut appeler le modèle sans
-données réelles afin de produire quand même un parcours. Ce comportement est
-explicitement **à remplacer en F1** : une suggestion générique peut être
-acceptable, une invention présentée comme réelle ne l'est pas.
+La génération outillée ne retombe plus sur un modèle sans outils après l'échec
+de sa boucle. Elle renvoie une indisponibilité explicite. Une recherche bien
+exécutée mais sans résultat peut produire une suggestion générique, sans nom
+propre ni faux lien. Chaque élément final porte un niveau de confiance ; un
+élément vérifié conserve sa source, son fournisseur et sa date de récupération.
+
+La cascade Claude → Gemini → OpenRouter reste active pour les tâches sans
+outils. L'étendre à la génération suppose d'abord une vraie prise en charge des
+outils par chaque fournisseur, à mesurer en F6.
 
 ## Architecture cible
 
@@ -46,8 +51,8 @@ budget, les participants et les décisions. Il pilote :
 
 La génération deviendra progressive : plan global, recherches spécialisées,
 sélection contrainte, assemblage puis validation finale. Les données porteront
-une source et un niveau **Vérifié / Estimé / Suggestion** ; les données
-essentielles absentes provoqueront un **Refus**.
+déjà une source et un niveau **Vérifié / Estimé / Suggestion** ; la suite doit
+appliquer ce contrat à chaque connecteur spécialisé et aux lots progressifs.
 
 Un sous-agent futur n'est accepté que si une fonction déterministe ne suffit
 pas et si son contrat, ses données d'entrée et sa validation sont explicites.

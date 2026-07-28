@@ -9,9 +9,9 @@
 //   - Aucune dépendance de génération à brancher sur chaque route.
 //   - Le contrat d'API est versionné avec le code.
 //
-// Le détail du Parcours (éléments, dépendances, historique) n'est pas recopié
-// ici : il est décrit par Zod dans server/domaine/parcours/schema.ts, seule
-// autorité. La spec renvoie un objet libre plutôt qu'une copie qui divergerait.
+// Zod reste l'autorité sur le détail du Parcours. La spec documente néanmoins
+// les champs F1 visibles par les clients (confiance, prix et lien externe), afin
+// que l'incertitude ne disparaisse pas à la frontière HTTP.
 // =============================================
 
 // Schémas réutilisables (composants) ------------------------------------------
@@ -34,6 +34,79 @@ const schemas = {
       created_at: { type: 'string', format: 'date-time' },
     },
   },
+  Confiance: {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['niveau', 'source', 'fournisseur', 'recupereLe'],
+        properties: {
+          niveau:              { type: 'string', enum: ['verifie'] },
+          source:              { type: 'string' },
+          fournisseur:         { type: 'string' },
+          recupereLe:          { type: 'string', format: 'date-time' },
+          identifiantExterne:  { type: 'string' },
+        },
+      },
+      {
+        type: 'object',
+        required: ['niveau'],
+        properties: {
+          niveau:      { type: 'string', enum: ['estime'] },
+          source:      { type: 'string' },
+          fournisseur: { type: 'string' },
+          recupereLe:  { type: 'string', format: 'date-time' },
+        },
+      },
+      {
+        type: 'object',
+        required: ['niveau'],
+        properties: {
+          niveau: { type: 'string', enum: ['suggestion'] },
+        },
+      },
+    ],
+    discriminator: { propertyName: 'niveau' },
+    description:
+      'Confiance persistée sur un élément. Un refus de génération est un résultat métier HTTP 422, jamais un quatrième niveau.',
+  },
+  Reservation: {
+    type: 'object',
+    required: ['lienExterne', 'fournisseur', 'typeLien'],
+    properties: {
+      lienExterne: { type: 'string', format: 'uri' },
+      fournisseur: { type: 'string' },
+      typeLien: {
+        type: 'string',
+        enum: ['officiel', 'billetterie', 'recherche', 'carte'],
+      },
+    },
+  },
+  Element: {
+    type: 'object',
+    required: ['id', 'type', 'nom', 'justification', 'confiance', 'prixEstime'],
+    additionalProperties: true,
+    properties: {
+      id:            { type: 'string' },
+      type:          { type: 'string' },
+      nom:           { type: 'string' },
+      lieu:          { type: 'string' },
+      prix:          { type: 'number', minimum: 0 },
+      prixEstime:    { type: 'boolean' },
+      justification: { type: 'string' },
+      confiance:     { $ref: '#/components/schemas/Confiance' },
+      reservation:   { $ref: '#/components/schemas/Reservation' },
+    },
+  },
+  Moment: {
+    type: 'object',
+    required: ['id', 'titre', 'elements'],
+    additionalProperties: true,
+    properties: {
+      id:       { type: 'string' },
+      titre:    { type: 'string' },
+      elements: { type: 'array', items: { $ref: '#/components/schemas/Element' } },
+    },
+  },
   Parcours: {
     type: 'object',
     description: 'Agrégat complet (doc 06) : intention, contexte, éléments, dépendances, historique. Forme faisant foi : ParcoursSchema (Zod).',
@@ -42,7 +115,7 @@ const schemas = {
       id:         { type: 'string', format: 'uuid' },
       intention:  { type: 'object', additionalProperties: true },
       visibilite: { type: 'string', enum: ['prive', 'partage', 'surprise'] },
-      elements:   { type: 'array', items: { type: 'object', additionalProperties: true } },
+      timeline:   { type: 'array', items: { $ref: '#/components/schemas/Moment' } },
     },
   },
   ResumeParcours: {
@@ -57,7 +130,7 @@ const schemas = {
   EtatPartage: {
     type: 'object',
     description:
-      'Le partage vu par l\'organisateur (ADR-0008) : la visibilité, et le lien de CHAQUE participant. ' +
+      'Le partage vu par l\'organisateur : la visibilité, et le lien de CHAQUE participant. ' +
       'Le serveur ne rend qu\'un chemin — le navigateur y met son origine.',
     properties: {
       visibilite: { type: 'string', enum: ['prive', 'partage', 'surprise'] },
@@ -256,7 +329,9 @@ export const openapiSpec = {
           400: badRequest,
           401: unauthorized,
           429: { description: 'Trop de générations (rate-limit)', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          422: { description: 'Refus métier : données essentielles insuffisamment fiables', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           502: { description: 'Génération inexploitable (sortie refusée à la validation)', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          503: { description: 'Fournisseur IA ou sources de vérification indisponibles', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
         },
       },
       get: {

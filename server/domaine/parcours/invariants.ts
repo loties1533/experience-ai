@@ -255,6 +255,18 @@ export function validerParcours(parcours: Parcours): string[] {
     if (element.type === 'temps_libre' && element.reservation) {
       erreurs.push(`un temps libre ne se réserve pas (« ${element.nom} »)`);
     }
+    if (
+      element.reservation &&
+      element.reservation.typeLien !== 'recherche' &&
+      element.confiance.niveau !== 'verifie'
+    ) {
+      erreurs.push(
+        `un lien ${element.reservation.typeLien} exige un élément vérifié (« ${element.nom} »)`
+      );
+    }
+    if (element.type === 'evenement' && element.estAncre && element.confiance.niveau !== 'verifie') {
+      erreurs.push(`un événement daté non vérifié ne peut pas être une ancre (« ${element.nom} »)`);
+    }
     // L'id d'une alternative porte la mémoire de l'arbitrage (invariant 7) :
     // deux options homonymes rendraient « écartée » ambigu.
     const idsAlternatives = new Set(element.alternatives.map((a) => a.id));

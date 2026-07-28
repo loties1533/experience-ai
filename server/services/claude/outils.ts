@@ -35,6 +35,8 @@ export interface TraceLieu {
   lieu?: string;
   lienCarte?: string;
   source: string;
+  identifiantExterne?: string;
+  recupereLe: string;
 }
 
 export interface BoiteAOutils extends BoiteAOutilsLLM {
@@ -157,7 +159,14 @@ export function creerBoiteAOutils(): BoiteAOutils {
     if (lieux.length === 0) return AUCUN_RESULTAT;
 
     for (const lieu of lieux) {
-      retenir({ nom: lieu.nom, lieu: lieu.adresse, lienCarte: lieu.lienCarte, source: 'Foursquare' });
+      retenir({
+        nom: lieu.nom,
+        lieu: lieu.adresse,
+        lienCarte: lieu.lienCarte,
+        source: 'Foursquare',
+        identifiantExterne: lieu.identifiantExterne,
+        recupereLe: new Date().toISOString(),
+      });
     }
     // On ne transmet pas les liens au modèle : les liens, on les rattache
     // nous-mêmes ensuite. Il ne doit jamais avoir à écrire une URL.
@@ -183,7 +192,13 @@ export function creerBoiteAOutils(): BoiteAOutils {
     if (evenements.length === 0) return AUCUN_RESULTAT;
 
     for (const evenement of evenements) {
-      retenir({ nom: evenement.title, lieu: evenement.venue, source: 'PredictHQ' });
+      retenir({
+        nom: evenement.title,
+        lieu: evenement.venue,
+        source: 'PredictHQ',
+        identifiantExterne: evenement.id,
+        recupereLe: new Date().toISOString(),
+      });
     }
     return JSON.stringify(
       evenements.map((e) => ({ nom: e.title, categorie: e.category, jour: e.start, lieu: e.venue }))

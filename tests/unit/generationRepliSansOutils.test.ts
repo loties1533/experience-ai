@@ -1,13 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// LE REPLI SANS CLÉ ANTHROPIC.
+// LE REFUS SANS BOUCLE D'OUTILS.
 //
 // La boucle d'outils est propre à l'API Anthropic. Sans cette clé, le produit
-// ne doit pas s'arrêter : il génère par la voie simple, avec le fournisseur
-// disponible, et donc SANS données réelles. Le parcours est plus générique,
-// mais il existe — l'utilisateur ne voit jamais une panne parce qu'une clé
-// manque. Ce fichier est séparé du reste parce que la présence de la clé se lit
-// au chargement des modules.
+// ne bascule plus vers un fournisseur incapable d'exécuter les recherches.
+// Une indisponibilité explicite vaut mieux qu'un faux parcours.
 process.env.ANTHROPIC_API_KEY = '';
 process.env.GEMINI_API_KEY = 'cle-gemini-de-test-vitest';
 
@@ -31,47 +28,26 @@ const brief = BriefSchema.parse({
   lieux: ['Bordeaux'],
 });
 
-const SORTIE_SANS_DONNEES_REELLES = JSON.stringify({
-  ambiance: 'festive',
-  moments: [
-    {
-      titre: 'Le samedi soir',
-      elements: [
-        {
-          ref: 'bar-1',
-          type: 'sortie',
-          nom: 'Une virée dans les bars du centre',
-          justification: 'le temps fort de la soirée',
-        },
-      ],
-    },
-  ],
-});
-
 beforeEach(() => {
   vi.mocked(callClaudeOutils).mockReset();
-  vi.mocked(callGemini).mockReset().mockResolvedValue(SORTIE_SANS_DONNEES_REELLES);
+  vi.mocked(callGemini).mockReset();
   vi.mocked(foursquareRechercheLieux).mockReset();
 });
 
-describe('génération sans clé Anthropic — mode « sans données réelles »', () => {
-  it('construit quand même le parcours, par la voie simple', async () => {
-    const parcours = await genererParcours(brief);
-
-    expect(parcours.timeline[0].elements[0].nom).toBe('Une virée dans les bars du centre');
-    expect(callGemini).toHaveBeenCalledOnce();
+describe('génération sans clé Anthropic — indisponibilité honnête', () => {
+  it('signale un statut 503 explicite', async () => {
+    await expect(genererParcours(brief)).rejects.toMatchObject({ statusCode: 503 });
   });
 
-  it('n’ouvre aucune boucle d’outils et n’appelle aucun connecteur', async () => {
-    await genererParcours(brief);
+  it('n’appelle ni fournisseur simple ni connecteur', async () => {
+    await expect(genererParcours(brief)).rejects.toBeTruthy();
 
     expect(callClaudeOutils).not.toHaveBeenCalled();
+    expect(callGemini).not.toHaveBeenCalled();
     expect(foursquareRechercheLieux).not.toHaveBeenCalled();
   });
 
-  it('n’invente aucun lien externe faute de source réelle', async () => {
-    const [element] = (await genererParcours(brief)).timeline[0].elements;
-
-    expect(element.reservation).toBeUndefined();
+  it('explique que les sources de vérification sont indisponibles', async () => {
+    await expect(genererParcours(brief)).rejects.toThrow('sources nécessaires');
   });
 });

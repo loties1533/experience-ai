@@ -21,6 +21,7 @@ export type TravelMode = 'party' | 'student' | 'group' | 'relax' | 'surprise';
 
 // Événement réel renvoyé par un connecteur événementiel (PredictHQ).
 export interface EventSearchResult {
+  id: string;
   title: string;
   category: string;
   start: string;
