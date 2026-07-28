@@ -289,13 +289,21 @@ export async function foursquareRechercheLieux(
   requete: string,
   limite = 4,
 ): Promise<LieuReel[]> {
-  const recherche = await rechercherLieuxFoursquare(ville, requete, 'activite', limite);
+  // Compatibilité de l'export historique : cette recherche est volontairement
+  // générique et ne connaît pas le type métier F2-A. Le filtre conservateur
+  // reste réservé à `rechercherLieuxFoursquare`.
+  const recherche = await rechercherLieuxBruts(
+    ville,
+    requete,
+    Math.min(Math.max(limite, 1), 8)
+  );
   if (recherche.statut !== 'ok') return [];
   return recherche.resultats.map((lieu) => ({
-    identifiantExterne: lieu.identifiantExterne,
-    nom: lieu.nom,
-    categorie: lieu.categorieFournisseur,
-    adresse: lieu.adresse,
-    lienCarte: lieu.lienCarte,
+    identifiantExterne: lieu.fsq_place_id,
+    nom: lieu.name,
+    categorie: lieu.categories[0]?.name ?? 'Lieu',
+    adresse:
+      [lieu.location.address, lieu.location.locality].filter(Boolean).join(', ') || undefined,
+    lienCarte: lienGoogleMaps(lieu.name, ville),
   }));
 }

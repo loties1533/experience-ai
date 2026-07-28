@@ -5,7 +5,9 @@ global.fetch = requeteFetch as typeof fetch;
 
 process.env.FOURSQUARE_API_KEY = 'cle-foursquare-test';
 
-const { rechercherLieuxFoursquare } = await import('../../server/services/foursquare.js');
+const { foursquareRechercheLieux, rechercherLieuxFoursquare } = await import(
+  '../../server/services/foursquare.js'
+);
 
 const REPONSE_FOURSQUARE = {
   results: [
@@ -248,5 +250,39 @@ describe('rechercherLieuxFoursquare — états de recherche', () => {
       fournisseur: 'Foursquare',
       raison: 'reponse_invalide',
     });
+  });
+});
+
+describe('foursquareRechercheLieux — compatibilité historique', () => {
+  it.each([
+    ['restaurant', 'French Restaurant'],
+    ['bar', 'Cocktail Bar'],
+    ['activité', 'Escape Room'],
+  ])('reste générique et retourne un %s', async (_typeLieu, categorie) => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            ...REPONSE_FOURSQUARE.results[0],
+            categories: [{ fsq_category_id: 'categorie-test', name: categorie }],
+          },
+        ],
+      }),
+    });
+
+    const lieux = await foursquareRechercheLieux('Bordeaux', _typeLieu);
+
+    expect(lieux).toEqual([
+      {
+        identifiantExterne: 'fsq-001',
+        nom: 'Le Point Rouge',
+        categorie,
+        adresse: '3 rue Sainte-Colombe, Bordeaux',
+        lienCarte:
+          'https://www.google.com/maps/search/?api=1&query=Le%20Point%20Rouge%20Bordeaux',
+      },
+    ]);
+    expect(lieux[0]).not.toHaveProperty('prix');
   });
 });
