@@ -11,7 +11,7 @@
 
 | Sprint | Objectif | Statut |
 |---|---|---|
-| F0 — Audit du portage | Matrice TripGenie → Experience AI | À faire |
+| F0 — Audit du portage | Matrice TripGenie → Experience AI | En revue |
 | F1 — Vérité des données | Confiance, traçabilité et refus explicite | À faire |
 | F2 — Lieux et événements | Liens fiables par ville et établissement | À faire |
 | F3 — Hébergements | Existence vérifiée et recherche Booking correcte | À faire |
@@ -26,12 +26,15 @@
 
 **F0 — Audit du portage**
 
-- [ ] Inventorier les services, types, utilitaires et tests de TripGenie
-- [ ] Classer chaque brique : porté / à adapter / à réécrire / abandonné
-- [ ] Relier chaque brique à son équivalent actuel ou à son manque
-- [ ] Documenter son contrat, ses dépendances et ses tests
-- [ ] Vérifier en priorité : liens locaux, Booking, vols, IATA et contrôles de cohérence
+- [x] Inventorier les services, types, utilitaires et tests de TripGenie
+- [x] Classer chaque brique : porté / à adapter / à réécrire / abandonné
+- [x] Relier chaque brique à son équivalent actuel ou à son manque
+- [x] Documenter son contrat, ses dépendances et ses tests
+- [x] Vérifier en priorité : liens locaux, Booking, vols, IATA et contrôles de cohérence
 - [ ] Faire valider la matrice avant toute suppression ou réécriture
+
+Rapport soumis à validation :
+[`docs/audits/tripgenie-vers-experience-ai.md`](audits/tripgenie-vers-experience-ai.md).
 
 **F1 — Politique à préparer pendant F0**
 
