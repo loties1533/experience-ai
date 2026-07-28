@@ -242,8 +242,10 @@ Le modèle de domaine est **stable pour le MVP** : validé par crash-test contre
 
 F0 et **F1 — vérité des données** sont validés : provenance
 persistée, niveaux de confiance visibles, suggestions génériques, refus métier
-et panne technique sont séparés. F2 — liens fiables pour les lieux et
-événements — reste à faire. Voir le
+et panne technique sont séparés. **F2 — lieux et événements** est en cours :
+F2-A (identité, provenance et états de recherche) est validé par la
+[PR #25](https://github.com/loties1533/experience-ai/pull/25), tandis que F2-B
+(résolution fiable des liens) reste à faire. Voir le
 [plan détaillé](docs/14-fiabilite-parcours.md) et les
 [futurs sprints](docs/SPRINTS.md).
 

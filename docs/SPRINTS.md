@@ -13,7 +13,7 @@
 |---|---|---|
 | F0 — Audit du portage | Matrice TripGenie → Experience AI | Terminé |
 | F1 — Vérité des données | Confiance, traçabilité et refus explicite | Terminé |
-| F2 — Lieux et événements | Liens fiables par ville et établissement | À faire |
+| F2 — Lieux et événements | Liens fiables par ville et établissement | En cours |
 | F3 — Hébergements | Existence vérifiée et recherche Booking correcte | À faire |
 | F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | À faire |
 | F5 — Génération progressive | Plan global puis lots validés | À faire |
@@ -46,6 +46,33 @@ Rapport validé :
 - [x] Afficher le niveau de confiance et le caractère estimé des prix
 - [x] Valider les scénarios F1 par la suite automatisée
 - [x] Faire accepter [ADR-0008](decisions/ADR-0008.md) dans la PR
+
+**F2 — Lieux et événements** *(en cours)*
+
+**F2-A — Identité, provenance et états de recherche** *(terminé)*
+
+> Livré par la [PR #25](https://github.com/loties1533/experience-ai/pull/25).
+>
+> Commits :
+> `bb2f7f1b84e7c17ab1823bfae891a14db8a01728` et
+> `8023b6f98fccd05910540655b83b86a88a13da1d`.
+
+- [x] Distinguer les recherches `ok`, `vide` et `indisponible`
+- [x] Conserver la provenance Foursquare ou PredictHQ
+- [x] Différencier le cache des résultats valides, vides et indisponibles
+- [x] Rapprocher les candidats par identité, ville et type métier
+- [x] Empêcher un lien Web seul de produire le niveau Vérifié
+- [x] Distinguer déterministement le refus métier `422` de la panne essentielle `503`
+- [x] Utiliser la ville propre à chaque moment dans un parcours multi-ville
+- [x] Préserver le comportement générique de l'adaptateur historique
+  `foursquareRechercheLieux` pour les restaurants, bars/sorties et activités
+- [x] Valider localement 361/361 tests, le typecheck et le lint
+
+**F2-B — Résolution fiable des liens** *(à faire)*
+
+- [ ] Fiabiliser Tavily et `server/services/liens.ts`
+- [ ] Introduire le contrat structuré `LienResolu`
+- [ ] Contrôler prudemment les domaines et les redirections
 
 > **Note historique.** Les revues R6 ci-dessous expliquent pourquoi le système
 > avait été conçu pour « sortir un parcours dans tous les cas ». Elles restent

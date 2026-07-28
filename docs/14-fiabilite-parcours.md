@@ -78,7 +78,7 @@ sa définition de terminé sont satisfaites.
 |---|---|---|---|
 | **F0 — Audit du portage** | Matrice TripGenie → Experience AI des capacités utiles | — | Terminé |
 | **F1 — Vérité des données** | Politique de confiance, traçabilité et refus explicite | F0 | Terminé |
-| **F2 — Lieux et événements** | Liens fiables pour activités, restaurants et événements | F1 | À faire |
+| **F2 — Lieux et événements** | Liens fiables pour activités, restaurants et événements | F1 | En cours |
 | **F3 — Hébergements** | Hébergements nommés vérifiés et liens correctement paramétrés | F1, F2 | À faire |
 | **F4 — Vols et transports** | Recherches réelles avec IATA, dates et voyageurs | F0, F1 | À faire |
 | **F5 — Génération progressive** | Plan puis lots validés, reprise locale en cas d'échec | F1 | À faire |
@@ -121,6 +121,36 @@ un `422`. Une donnée facultative absente reste une suggestion générique.
 Utiliser la ville du moment plutôt qu'une destination globale, renforcer
 l'association nom/résultat, valider domaine et redirections, stocker la source
 et tester les homonymes ou succursales.
+
+#### F2-A — Identité, provenance et états de recherche — Terminé
+
+F2-A a été livré par la
+[PR #25](https://github.com/loties1533/experience-ai/pull/25), avec les commits :
+
+- `bb2f7f1b84e7c17ab1823bfae891a14db8a01728` — contrat et recherches externes ;
+- `8023b6f98fccd05910540655b83b86a88a13da1d` — compatibilité de l'adaptateur
+  Foursquare historique.
+
+Preuves de livraison :
+
+- contrat discriminé `ok | vide | indisponible` ;
+- provenance Foursquare ou PredictHQ conservée avec la date de récupération et
+  l'identifiant externe ;
+- cache différencié selon les résultats valides, vides ou indisponibles ;
+- rapprochement conservateur par identité, ville et type métier ;
+- impossibilité pour un lien Web seul de produire le niveau Vérifié ;
+- distinction déterministe entre refus métier `422` et panne technique
+  essentielle `503` ;
+- ville propre à chaque moment pour les parcours multi-villes ;
+- comportement générique de `foursquareRechercheLieux` préservé pour les
+  restaurants, bars/sorties et activités ;
+- 361/361 tests réussis localement, typecheck et lint réussis.
+
+#### F2-B — Résolution fiable des liens — À faire
+
+Tavily, `server/services/liens.ts`, le contrat `LienResolu`, le contrôle des
+domaines et celui des redirections restent explicitement à traiter dans F2-B.
+Le chantier F2 reste donc **En cours**.
 
 **Terminé lorsque :** sur un échantillon documenté de 20 éléments, chaque lien
 affiché mène au bon lieu ou événement ; l'absence de résultat fiable ne produit
