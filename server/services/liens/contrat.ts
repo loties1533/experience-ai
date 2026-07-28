@@ -52,7 +52,8 @@ export type DemandeResolutionLien =
 export interface CandidatLien {
   url: string;
   domaine: string;
-  typeLienPossible?: TypeLienProuve;
+  typeLienPossible: TypeLienProuve;
+  rang: number;
   fournisseurRecherche: 'Tavily';
   recupereLe: string;
   preuves: PreuveLien[];
@@ -61,9 +62,11 @@ export interface CandidatLien {
 export type LienResolu =
   | {
       statut: 'resolu';
+      cleDemande: string;
       url: string;
       typeLien: TypeLienProuve;
       domaine: string;
+      rang: number;
       fournisseurRecherche: 'Tavily';
       recupereLe: string;
       preuves: PreuveLien[];
@@ -71,17 +74,20 @@ export type LienResolu =
     }
   | {
       statut: 'ambigu';
+      cleDemande: string;
       candidats: CandidatLien[];
       fournisseurRecherche: 'Tavily';
       recupereLe: string;
     }
   | {
       statut: 'introuvable';
+      cleDemande: string;
       fournisseurRecherche: 'Tavily';
       recupereLe: string;
     }
   | {
       statut: 'indisponible';
+      cleDemande: string;
       fournisseurRecherche: 'Tavily';
       raison: CauseIndisponibilite;
       /**
