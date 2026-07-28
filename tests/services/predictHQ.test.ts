@@ -1,194 +1,310 @@
-// =============================================
-// TRIPGENIE — tests/services/predictHQ.test.ts
-// Tests du service PredictHQ :
-//   - recherche de place ID
-//   - recherche d'événements
-//   - mapping vers le format Evenement
-//   - gestion des erreurs / clé manquante
-// =============================================
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+const requeteFetch = vi.fn();
+global.fetch = requeteFetch as typeof fetch;
 
-// ---- Mock fetch avant l'import du service ----
-const mockFetch = vi.fn();
-global.fetch = mockFetch as any;
+process.env.PREDICTHQ_API_KEY = 'cle-predicthq-test';
 
-// ---- Mock env ----
-process.env.PREDICTHQ_API_KEY = 'test-phq-key-vitest';
+const { rechercherEvenementsPredictHQ } = await import(
+  '../../server/services/predictHQ.js'
+);
 
-// Import dynamique après mock pour que process.env soit pris en compte
-const { predictHQEventsSearch } = await import('../../server/services/predictHQ.js');
-
-// ---- Réponses API fictives ----
-const MOCK_PLACE_RESPONSE = {
-  results: [{ id: 'place-ibiza-123', name: 'Ibiza', country: 'ES' }]
+const REPONSE_VILLE = {
+  results: [{ id: 'place-bordeaux', name: 'Bordeaux', type: 'locality' }],
 };
 
-const MOCK_EVENTS_RESPONSE = {
+const REPONSE_EVENEMENTS = {
   results: [
     {
-      id:           'evt-001',
-      title:        'Amnesia Opening Party',
-      category:     'concerts',
-      start:        '2025-07-15T22:00:00Z',
-      end:          '2025-07-16T06:00:00Z',
-      local_rank:   95,
-      description:  'La fête de l\'année à Ibiza',
-      entities:     [{ type: 'venue', name: 'Amnesia Club', formatted_address: 'Carretera Ibiza a San Antonio' }],
-      labels:       ['music', 'nightlife'],
-      predicted_attendance: 5000
+      id: 'evt-001',
+      title: 'Concert de La Femme',
+      category: 'performing-arts',
+      start: '2026-09-05T20:00:00Z',
+      end: '2026-09-05T22:00:00Z',
+      description: 'Concert à Bordeaux',
+      entities: [
+        {
+          type: 'venue',
+          name: 'Rock School Barbey',
+          formatted_address: '18 cours Barbey, Bordeaux',
+        },
+      ],
+      local_rank: 90,
     },
-    {
-      id:           'evt-002',
-      title:        'DC-10 Monday Club',
-      category:     'festivals',
-      start:        '2025-07-21T23:00:00Z',
-      end:          '2025-07-22T07:00:00Z',
-      local_rank:   88,
-      description:  'Soirée techno légendaire',
-      entities:     [{ type: 'venue', name: 'DC-10', formatted_address: 'Carretera Aeropuerto' }],
-      labels:       ['music'],
-      predicted_attendance: 2000
-    }
-  ]
+  ],
 };
 
-// ---- Reset fetch mock avant chaque test ----
 beforeEach(() => {
-  mockFetch.mockReset();
+  process.env.PREDICTHQ_API_KEY = 'cle-predicthq-test';
+  requeteFetch.mockReset();
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
-// ============================================================
-// Cas nominal — recherche réussie
-// ============================================================
-describe('predictHQEventsSearch — cas nominal', () => {
+describe('rechercherEvenementsPredictHQ — identité et provenance', () => {
+  it('valide et transforme les réponses externes en candidat événement', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-28T09:30:00.000Z'));
+    requeteFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_VILLE })
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_EVENEMENTS });
 
-  it('retourne des événements mappés au format Evenement', async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_PLACE_RESPONSE })
-      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_EVENTS_RESPONSE });
+    const recherche = await rechercherEvenementsPredictHQ(
+      'Bordeaux',
+      '2026-09-04',
+      '2026-09-06',
+      'relax'
+    );
 
-    const events = await predictHQEventsSearch('Ibiza', '2025-07-15', '2025-07-22', 'party');
-
-    expect(events).toHaveLength(2);
-    expect(events[0]).toHaveProperty('title');
-    expect(events[0]).toHaveProperty('id', 'evt-001');
-    expect(events[0]).toHaveProperty('start');
-    expect(events[0]).toHaveProperty('venue');
-    expect(events[0]).toHaveProperty('category');
+    expect(recherche).toEqual({
+      statut: 'ok',
+      recupereLe: '2026-07-28T09:30:00.000Z',
+      resultats: [
+        {
+          identifiantExterne: 'evt-001',
+          nom: 'Concert de La Femme',
+          villeDemandee: 'Bordeaux',
+          villeConfirmee: 'Bordeaux',
+          salle: 'Rock School Barbey, 18 cours Barbey, Bordeaux',
+          categorieFournisseur: 'performing arts',
+          typeMetierRecherche: 'evenement',
+          fournisseur: 'PredictHQ',
+          source: 'https://api.predicthq.com/v1/events/',
+          recupereLe: '2026-07-28T09:30:00.000Z',
+          dateDebut: '2026-09-05T20:00:00Z',
+          dateFin: '2026-09-05T22:00:00Z',
+          description: 'Concert à Bordeaux',
+        },
+      ],
+    });
   });
 
-  it('le premier événement a le local_rank le plus élevé', async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_PLACE_RESPONSE })
-      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_EVENTS_RESPONSE });
+  it('utilise la recherche textuelle quand la ville PredictHQ est réellement vide', async () => {
+    requeteFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_EVENEMENTS });
 
-    const events = await predictHQEventsSearch('Ibiza', '2025-07-15', '2025-07-22', 'party');
-    expect(events[0].title).toBe('Amnesia Opening Party');
+    const recherche = await rechercherEvenementsPredictHQ(
+      'Bordeaux',
+      '2026-09-04',
+      '2026-09-06',
+      'party'
+    );
+
+    expect(recherche.statut).toBe('ok');
+    expect(String(requeteFetch.mock.calls[1][0])).toContain('q=Bordeaux');
   });
 
-  it('retourne au maximum 6 événements', async () => {
-    const manyEvents = {
-      results: Array.from({ length: 20 }, (_, i) => ({
-        id: `evt-${i}`, title: `Event ${i}`, category: 'concerts',
-        start: '2025-07-15T20:00:00Z', end: '2025-07-15T23:00:00Z',
-        local_rank: 80 - i, description: '', entities: [], labels: []
-      }))
+  it('conserve les champs de protocole PredictHQ dans la requête', async () => {
+    requeteFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_VILLE })
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_EVENEMENTS });
+
+    await rechercherEvenementsPredictHQ(
+      'Bordeaux',
+      '2026-09-04',
+      '2026-09-06',
+      'party'
+    );
+
+    const url = String(requeteFetch.mock.calls[1][0]);
+    expect(url).toContain('active.gte=2026-09-04');
+    expect(url).toContain('active.lte=2026-09-06');
+    expect(url).toContain('place.scope=place-bordeaux');
+    expect((requeteFetch.mock.calls[1][1] as RequestInit).headers).toMatchObject({
+      Authorization: 'Bearer cle-predicthq-test',
+    });
+  });
+
+  it('écarte localement un événement situé hors de la ville demandée', async () => {
+    const evenementLyon = {
+      results: [
+        {
+          ...REPONSE_EVENEMENTS.results[0],
+          entities: [
+            {
+              type: 'venue',
+              name: 'Transbordeur',
+              formatted_address: '3 boulevard Stalingrad, Lyon',
+            },
+          ],
+        },
+      ],
     };
-    mockFetch
-      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_PLACE_RESPONSE })
-      .mockResolvedValueOnce({ ok: true, json: async () => manyEvents });
+    requeteFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => evenementLyon });
 
-    const events = await predictHQEventsSearch('Ibiza', '2025-07-15', '2025-07-22', 'party');
-    expect(events.length).toBeLessThanOrEqual(6);
+    const recherche = await rechercherEvenementsPredictHQ(
+      'Bordeaux',
+      '2026-09-04',
+      '2026-09-06',
+      'party'
+    );
+
+    expect(recherche.statut).toBe('vide');
   });
 
-  it('utilise les bons Authorization header', async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_PLACE_RESPONSE })
-      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_EVENTS_RESPONSE });
+  it('écarte localement un événement hors de la période demandée', async () => {
+    const evenementHorsPeriode = {
+      results: [
+        {
+          ...REPONSE_EVENEMENTS.results[0],
+          start: '2026-09-08T20:00:00Z',
+          end: '2026-09-08T22:00:00Z',
+        },
+      ],
+    };
+    requeteFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_VILLE })
+      .mockResolvedValueOnce({ ok: true, json: async () => evenementHorsPeriode });
 
-    await predictHQEventsSearch('Ibiza', '2025-07-15', '2025-07-22', 'party');
+    const recherche = await rechercherEvenementsPredictHQ(
+      'Bordeaux',
+      '2026-09-04',
+      '2026-09-06',
+      'party'
+    );
 
-    const calls = mockFetch.mock.calls;
-    expect(calls[0][1]?.headers?.Authorization).toBe('Bearer test-phq-key-vitest');
-    expect(calls[1][1]?.headers?.Authorization).toBe('Bearer test-phq-key-vitest');
+    expect(recherche.statut).toBe('vide');
   });
 });
 
-// ============================================================
-// Clé API manquante
-// ============================================================
-describe('predictHQEventsSearch — clé API absente', () => {
+describe('rechercherEvenementsPredictHQ — états de recherche', () => {
+  it('distingue une vraie recherche vide', async () => {
+    requeteFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_VILLE })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) });
 
-  it('retourne [] sans crasher si PREDICTHQ_API_KEY est vide', async () => {
-    const originalKey = process.env.PREDICTHQ_API_KEY;
+    const recherche = await rechercherEvenementsPredictHQ(
+      'Bordeaux',
+      '2026-09-04',
+      '2026-09-06',
+      'party'
+    );
+
+    expect(recherche.statut).toBe('vide');
+  });
+
+  it('distingue une configuration absente', async () => {
     process.env.PREDICTHQ_API_KEY = '';
 
-    // Réimporter dynamiquement sans la clé
-    vi.resetModules();
-    const { predictHQEventsSearch: fn } = await import('../../server/services/predictHQ.js?nocache=' + Date.now());
-    const events = await fn('Ibiza', '2025-07-15', '2025-07-22', 'party');
-    expect(events).toEqual([]);
-
-    process.env.PREDICTHQ_API_KEY = originalKey;
-  });
-});
-
-// ============================================================
-// Gestion d'erreur — API PredictHQ en panne
-// ============================================================
-describe('predictHQEventsSearch — erreurs API', () => {
-
-  it('retourne [] si la recherche de place échoue (404)', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({ detail: 'Not found' }) });
-    const events = await predictHQEventsSearch('VilleInexistante', '2025-07-15', '2025-07-22', 'party');
-    expect(events).toEqual([]);
+    await expect(
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'PredictHQ',
+      raison: 'configuration_absente',
+    });
+    expect(requeteFetch).not.toHaveBeenCalled();
   });
 
-  it('retourne [] si la recherche d\'événements échoue (500)', async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_PLACE_RESPONSE })
-      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ detail: 'Server error' }) });
-    const events = await predictHQEventsSearch('Ibiza', '2025-07-15', '2025-07-22', 'party');
-    expect(events).toEqual([]);
+  it('ne transforme pas une erreur HTTP de recherche de ville en recherche vide', async () => {
+    requeteFetch.mockResolvedValueOnce({ ok: false, status: 401 });
+
+    await expect(
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'PredictHQ',
+      raison: 'authentification',
+    });
+    expect(requeteFetch).toHaveBeenCalledOnce();
   });
 
-  it('retourne [] si fetch throw (réseau coupé)', async () => {
-    mockFetch.mockRejectedValue(new Error('Network Error'));
-    const events = await predictHQEventsSearch('Ibiza', '2025-07-15', '2025-07-22', 'party');
-    expect(events).toEqual([]);
+  it.each([
+    [429, 'quota'],
+    [500, 'fournisseur'],
+  ] as const)('convertit HTTP %s de recherche d’événements en %s', async (statut, raison) => {
+    requeteFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_VILLE })
+      .mockResolvedValueOnce({ ok: false, status: statut });
+
+    await expect(
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'PredictHQ',
+      raison,
+    });
   });
 
-  it('retourne [] si aucun résultat de place', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) });
-    const events = await predictHQEventsSearch('VilleSansCoordonnées', '2025-07-15', '2025-07-22', 'party');
-    expect(events).toEqual([]);
+  it('distingue un timeout', async () => {
+    const erreur = new Error('signal aborted');
+    erreur.name = 'AbortError';
+    requeteFetch.mockRejectedValueOnce(erreur);
+
+    await expect(
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'PredictHQ',
+      raison: 'timeout',
+    });
   });
-});
 
-// ============================================================
-// Catégories par mode
-// ============================================================
-describe('predictHQEventsSearch — catégories par mode', () => {
+  it('distingue une panne réseau', async () => {
+    requeteFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
 
-  const MODES = ['party', 'student', 'group', 'relax', 'surprise'] as const;
+    await expect(
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'PredictHQ',
+      raison: 'reseau',
+    });
+  });
 
-  MODES.forEach(mode => {
-    it(`mode ${mode} : fetch appelé avec des catégories`, async () => {
-      mockFetch
-        .mockResolvedValueOnce({ ok: true, json: async () => MOCK_PLACE_RESPONSE })
-        .mockResolvedValueOnce({ ok: true, json: async () => MOCK_EVENTS_RESPONSE });
+  it('refuse une réponse externe invalide', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ results: [{ id: 12 }] }),
+    });
 
-      await predictHQEventsSearch('Paris', '2025-08-01', '2025-08-07', mode);
+    await expect(
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'PredictHQ',
+      raison: 'reponse_invalide',
+    });
+  });
 
-      // Le 2ème appel fetch (events) doit avoir une URL avec "category"
-      const eventsUrl = mockFetch.mock.calls[1]?.[0] as string;
-      expect(eventsUrl).toContain('category');
+  it('refuse une date événementielle qui n’est pas une date ISO', async () => {
+    requeteFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_VILLE })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [{ ...REPONSE_EVENEMENTS.results[0], start: 'demain soir' }],
+        }),
+      });
+
+    await expect(
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'PredictHQ',
+      raison: 'reponse_invalide',
+    });
+  });
+
+  it('classe un JSON illisible comme réponse invalide', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('JSON incomplet');
+      },
+    });
+
+    await expect(
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'PredictHQ',
+      raison: 'reponse_invalide',
     });
   });
 });
