@@ -8,7 +8,7 @@
 
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/Node.js-18.17+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com)
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org)
@@ -85,7 +85,10 @@ server/
 │   ├── claude/
 │   │   ├── core.ts             ← cascade de fournisseurs LLM + boucle d'outils
 │   │   └── outils.ts           ← chercher_lieux · chercher_evenements · consulter_meteo
-│   ├── foursquare.ts · predictHQ.ts · weather.ts · smartSearch.ts
+│   ├── tools/webSearch.ts       ← candidats Web structurés fournis par Tavily
+│   ├── liens.ts                 ← sélection métier puis contrôle réseau
+│   ├── liens/                   ← contrat, validation URL, sélection, DNS et redirections
+│   └── foursquare.ts · predictHQ.ts · weather.ts · smartSearch.ts
 ├── depots/                     ← la seule frontière avec PostgreSQL
 │   ├── depotParcours.ts        ← valide à chaque lecture, projette à chaque écriture
 │   ├── depotPartage.ts         ← un jeton de partage par participant
@@ -128,6 +131,23 @@ sequenceDiagram
 > manque métier de données essentielles produit un refus `422`. Voir
 > le [plan de fiabilité](docs/14-fiabilite-parcours.md) et
 > [ADR-0008](docs/decisions/ADR-0008.md).
+
+### Résolution sécurisée des liens
+
+Foursquare et PredictHQ établissent l'identité métier ; Tavily fournit ensuite
+des candidats Web sans décider seul. La sélection est déterministe, puis le
+candidat unique passe par la validation de l'URL, le contrôle DNS/SSRF, une
+connexion Undici épinglée et le contrôle manuel des redirections. Une ambiguïté
+ne produit aucun lien, et une redirection vers un autre domaine enregistrable
+invalide les preuves de réservation ou de billetterie. Faute de preuve externe
+forte, F2-B ne produit actuellement aucun lien qualifié d'officiel.
+
+La résolution sécurisée des liens est implémentée jusqu'à **F2-B4**. Son
+intégration dans la génération des parcours reste prévue dans **F2-B5** :
+`resoudreLiensReels` demeure volontairement neutralisé et aucun lien nouveau
+n'est encore exposé au client. Le
+[pipeline détaillé](docs/architecture/README.md#pipeline-de-résolution-des-liens)
+est documenté avec ses limites actuelles.
 
 ### Modification ciblée : le cœur du produit
 
@@ -174,12 +194,16 @@ partages_parcours      — un jeton par participant, jamais par parcours (la sur
 
 ## Démarrage
 
+Prérequis : **Node.js >= 18.17**, npm, Docker et Docker Compose. `undici`
+assure le transport HTTP épinglé et `tldts` la comparaison des domaines
+enregistrables.
+
 ```bash
 # 1. Dépendances
 npm install
 
 # 2. Configuration
-cp .env.example .env        # renseigner JWT_SECRET et au moins une clé LLM
+cp .env.example .env        # JWT_SECRET, une clé LLM et les connecteurs utiles
 
 # 3. Base de données
 docker compose up -d db
@@ -189,10 +213,17 @@ npx prisma migrate deploy
 npm run dev:all
 ```
 
+`TAVILY_API_KEY` active uniquement la recherche Web de **candidats de liens** :
+elle ne valide jamais automatiquement un site officiel. Les variables
+Foursquare et PredictHQ sont détaillées, avec les autres clés réellement lues,
+dans [`.env.example`](.env.example).
+
 ### Tests
 
 ```bash
-npx vitest run
+npm test
+npx tsc --noEmit
+npm run lint
 ```
 
 La suite couvre le domaine, les dépôts (Prisma mocké), les agents (LLM mocké —
@@ -240,12 +271,12 @@ Deux règles de gouvernance :
 
 Le modèle de domaine est **stable pour le MVP** : validé par crash-test contre six parcours très différents (passionné solo, couple avec surprise, soirée improvisée, famille, EVG, festival), puis par une recette manuelle de bout en bout qui a corrigé deux défauts réels (le brief qui perdait des informations, la génération qui échouait sur des dates de fin légitimes).
 
-F0 et **F1 — vérité des données** sont validés : provenance
-persistée, niveaux de confiance visibles, suggestions génériques, refus métier
-et panne technique sont séparés. **F2 — lieux et événements** est en cours :
-F2-A (identité, provenance et états de recherche) est validé par la
-[PR #25](https://github.com/loties1533/experience-ai/pull/25), tandis que F2-B
-(résolution fiable des liens) reste à faire. Voir le
+F0 et **F1 — vérité des données** sont validés : provenance persistée, niveaux
+de confiance visibles, suggestions génériques, refus métier et panne technique
+sont séparés. **F2 — lieux et événements** reste en cours : F2-A est terminé,
+ainsi que F2-B1 à F2-B4 pour la résolution sécurisée des liens. **F2-B5 reste à
+faire** pour activer ces liens dans la génération et définir leur exposition
+finale. Voir le
 [plan détaillé](docs/14-fiabilite-parcours.md) et les
 [futurs sprints](docs/SPRINTS.md).
 

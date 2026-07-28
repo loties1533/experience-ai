@@ -146,10 +146,33 @@ Preuves de livraison :
   restaurants, bars/sorties et activités ;
 - 361/361 tests réussis localement, typecheck et lint réussis.
 
-#### F2-B — Résolution fiable des liens — À faire
+#### F2-B — Résolution fiable des liens — En cours
 
-Tavily, `server/services/liens.ts`, le contrat `LienResolu`, le contrôle des
-domaines et celui des redirections restent explicitement à traiter dans F2-B.
+Sous-lots terminés :
+
+- **F2-B1** — contrat discriminé `LienResolu` et validation pure des URL ;
+- **F2-B2** — connecteur Tavily structuré, avec distinction entre résultat
+  valide, recherche vide et indisponibilité technique ;
+- **F2-B3** — sélection conservatrice et déterministe : le rang Tavily ou un
+  LLM ne peut pas décider, l'ambiguïté ne produit aucun lien, et réservation ou
+  billetterie exigent des preuves explicites ;
+- **F2-B4** — validation HTTPS et DNS, protection SSRF, connexion Undici
+  épinglée, redirections manuelles et refus d'un changement de domaine
+  enregistrable.
+
+Foursquare et PredictHQ fournissent l'identité métier ; Tavily propose des
+candidats Web. Le contrôle réseau intervient uniquement après la sélection
+d'un candidat unique et distingue un lien `accessible`, `refuse` ou
+`indisponible`. Une panne réseau ne devient ni une recherche vide ni un résultat
+introuvable. Une URL accessible ne suffit pas à prouver un site officiel et,
+faute de preuve externe forte, F2-B ne produit actuellement aucun lien
+`officiel`.
+
+**F2-B5 — À faire :** activer ce pipeline dans la génération des parcours,
+définir les champs persistés et exposés, mettre à jour l'OpenAPI et intégrer
+l'affichage client. Jusqu'alors, `resoudreLiensReels` reste neutralisé et les
+liens sécurisés ne sont pas encore produits dans les parcours.
+
 Le chantier F2 reste donc **En cours**.
 
 **Terminé lorsque :** sur un échantillon documenté de 20 éléments, chaque lien
