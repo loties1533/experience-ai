@@ -96,3 +96,70 @@ export type LienResolu =
        */
       constateLe: string;
     };
+
+export type RaisonRefusControleLien =
+  | 'url_invalide'
+  | 'destination_interdite'
+  | 'https_vers_http'
+  | 'boucle_redirection'
+  | 'trop_de_redirections'
+  | 'location_absente'
+  | 'location_invalide'
+  | 'statut_http_inacceptable';
+
+export type RaisonIndisponibiliteControleLien =
+  | 'timeout'
+  | 'erreur_reseau'
+  | 'erreur_dns'
+  | 'resolution_dns_invalide';
+
+export type RaisonRefusResolutionLien =
+  | RaisonRefusControleLien
+  | 'changement_domaine_enregistrable';
+
+export type ResultatControleLien =
+  | {
+      statut: 'accessible';
+      urlInitiale: string;
+      urlFinale: string;
+      statutHttp: number;
+      redirections: string[];
+      controleLe: string;
+    }
+  | {
+      statut: 'refuse';
+      raison: RaisonRefusControleLien;
+      constateLe: string;
+    }
+  | {
+      statut: 'indisponible';
+      raison: RaisonIndisponibiliteControleLien;
+      constateLe: string;
+    };
+
+type LienSelectionne = Extract<LienResolu, { statut: 'resolu' }>;
+type LienNonSelectionne = Exclude<LienResolu, { statut: 'resolu' }>;
+
+export type ResultatResolutionLien =
+  | (Omit<LienSelectionne, 'url' | 'domaine' | 'redirections'> & {
+      urlInitiale: string;
+      url: string;
+      domaine: string;
+      redirections: string[];
+      controleLe: string;
+      statutHttp: number;
+    })
+  | LienNonSelectionne
+  | {
+      statut: 'refuse';
+      cleDemande: string;
+      raison: RaisonRefusResolutionLien;
+      constateLe: string;
+    }
+  | {
+      statut: 'indisponible';
+      cleDemande: string;
+      origine: 'controle_reseau';
+      raison: RaisonIndisponibiliteControleLien;
+      constateLe: string;
+    };
