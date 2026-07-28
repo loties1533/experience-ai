@@ -68,11 +68,24 @@ Rapport validé :
   `foursquareRechercheLieux` pour les restaurants, bars/sorties et activités
 - [x] Valider localement 361/361 tests, le typecheck et le lint
 
-**F2-B — Résolution fiable des liens** *(à faire)*
+**F2-B — Résolution fiable des liens** *(en cours : B1 à B4 terminés, B5 à faire)*
 
-- [ ] Fiabiliser Tavily et `server/services/liens.ts`
-- [ ] Introduire le contrat structuré `LienResolu`
-- [ ] Contrôler prudemment les domaines et les redirections
+> F2-B1 à F2-B3 ont été livrés par la
+> [PR #27](https://github.com/loties1533/experience-ai/pull/27). F2-B4 a été
+> livré par la [PR #28](https://github.com/loties1533/experience-ai/pull/28).
+
+- [x] **F2-B1** — définir `LienResolu` et la validation pure des URL
+- [x] **F2-B2** — structurer Tavily avec les états `ok`, `vide` et
+  `indisponible`
+- [x] **F2-B3** — sélectionner les candidats de manière déterministe, sans LLM
+  décisionnaire ni premier résultat arbitraire
+- [x] **F2-B4** — contrôler HTTPS, DNS, SSRF et redirections avec un transport
+  Undici épinglé ; refuser le transfert de preuve entre domaines enregistrables
+- [ ] **F2-B5** — activer le résolveur dans la génération, définir la
+  persistance, l'OpenAPI et l'exposition client
+
+> Jusqu'à F2-B5, `resoudreLiensReels` reste neutralisé : les nouveaux liens
+> sécurisés ne sont pas encore intégrés aux parcours. F2 reste **En cours**.
 
 > **Note historique.** Les revues R6 ci-dessous expliquent pourquoi le système
 > avait été conçu pour « sortir un parcours dans tous les cas ». Elles restent
