@@ -1,13 +1,15 @@
 # Audit F0 — TripGenie-app vers Experience AI
 
-**Date : 28 juillet 2026 · Statut : En revue**
+**Date : 28 juillet 2026 · Statut : Terminé**
 
 ## Périmètre
 
 Comparaison en lecture seule de :
 
-- `/Users/alexislaubert/tripgenie-app` — état courant et historique Git utile ;
-- `/Users/alexislaubert/experience-ai-1` — état courant avant F1.
+- [`loties1533/tripgenie-app`](https://github.com/loties1533/tripgenie-app)
+  — état courant et historique Git utile ;
+- [`loties1533/experience-ai`](https://github.com/loties1533/experience-ai)
+  — état courant avant F1.
 
 L'historique du même dépôt `tripgenie-app` a été consulté car les versions les
 plus avancées des liens de réservation, de Booking et des vols apparaissent

@@ -75,7 +75,7 @@ sa définition de terminé sont satisfaites.
 
 | Sprint | Objectif | Dépend de | Statut |
 |---|---|---|---|
-| **F0 — Audit du portage** | Matrice TripGenie → Experience AI des capacités utiles | — | En revue |
+| **F0 — Audit du portage** | Matrice TripGenie → Experience AI des capacités utiles | — | Terminé |
 | **F1 — Vérité des données** | Politique de confiance, traçabilité et refus explicite | F0 | À faire |
 | **F2 — Lieux et événements** | Liens fiables pour activités, restaurants et événements | F1 | À faire |
 | **F3 — Hébergements** | Hébergements nommés vérifiés et liens correctement paramétrés | F1, F2 | À faire |
@@ -96,8 +96,7 @@ la décision.
 **Terminé lorsque :** aucune suppression ou réécriture n'est décidée sans que
 la fonction réelle de la brique soit comprise.
 
-**Résultat proposé :** audit réalisé le 28 juillet 2026 et soumis à validation.
-Voir la
+**Résultat :** audit terminé et validé le 28 juillet 2026. Voir la
 [matrice TripGenie → Experience AI](audits/tripgenie-vers-experience-ai.md).
 
 ### F1 — Vérité des données et stratégie de repli
