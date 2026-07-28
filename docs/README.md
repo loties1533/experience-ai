@@ -5,7 +5,7 @@
 ## Trois niveaux (à ne pas mélanger)
 - **Founder Book** — vision, origine, intuition, *pourquoi*.
 - **Documentation Produit** — *comment fonctionne le produit*. → **ce dossier**.
-- **Documentation Technique** — *comment fonctionne le code*. → `docs/architecture/` (à venir).
+- **Documentation Technique** — *comment fonctionne le code*. → [`architecture/`](architecture/).
 
 ## Règles de gouvernance
 - Chaque document a un **rôle unique**.
@@ -23,11 +23,16 @@
 | 05 | [product-journey](05-product-journey.md) | ✅ |
 | 06 | [modele-conceptuel](06-modele-conceptuel.md) | ✅ |
 | 07 | [capacites-produit](07-capacites-produit.md) | ✅ |
-| 08 | [architecture-ia](08-architecture-ia.md) | 🟡 différé (à l'étape build) |
-| 09 | [roadmap](09-roadmap.md) | ✅ |
+| 08 | [architecture-ia](08-architecture-ia.md) | 🟡 actuel + cible en évolution |
+| 09 | [roadmap](09-roadmap.md) | 🟡 chantier fiabilité actif |
 | 10 | [business](10-business.md) | ✅ |
 | 11 | [decisions (index ADR)](11-decisions.md) | ✅ |
 | 12 | [glossaire](12-glossaire.md) | ✅ |
 | 13 | [principes-evolution](13-principes-evolution.md) | ✅ |
+| 14 | [fiabilite-parcours](14-fiabilite-parcours.md) | 🟡 plan de reprise actif |
 
-**Docs vivants :** [questions-ouvertes](questions-ouvertes.md) · [decisions/ (ADR-0001 → 0006)](decisions/)
+**Suivi d'exécution :** [SPRINTS](SPRINTS.md) — historique R1 → R8 et futurs
+sprints F0 → F9.
+
+**Docs vivants :** [questions-ouvertes](questions-ouvertes.md) ·
+[decisions/ (ADR-0001 → 0007)](decisions/)

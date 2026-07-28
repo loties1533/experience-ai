@@ -12,7 +12,7 @@
 [![Express](https://img.shields.io/badge/Express-4-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com)
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org)
-[![Vitest](https://img.shields.io/badge/Vitest-290_tests-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
+[![Vitest](https://img.shields.io/badge/Vitest-327_tests-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)](https://vitest.dev)
 
 [Documentation produit](docs/README.md) · [Modèle de domaine](docs/06-modele-conceptuel.md) · [Décisions (ADR)](docs/11-decisions.md) · [Suivi des sprints](docs/SPRINTS.md)
 
@@ -35,7 +35,8 @@ L'utilisateur décrit son envie en langage naturel → l'IA dialogue jusqu'à co
 - **Partage au groupe** par lien, avec visibilité privée / partagée / surprise (le héros d'un EVG ne voit rien de ce qu'on lui prépare)
 - Le groupe **réagit** aux éléments (pour/contre) — l'organisateur tranche, l'avis éclaire sans décider
 - **Mémoire simple** : les préférences enregistrées orientent les générations suivantes
-- Cache mémoire des recherches externes ; repli propre si une clé API manque
+- Cache mémoire des recherches externes ; stratégie de repli en cours de
+  durcissement pour ne jamais présenter une suggestion comme une donnée réelle
 
 Un week-end romantique, un EVG, un festival, un séjour NBA, une soirée improvisée : **même moteur**, aucune notion de voyage câblée en dur.
 
@@ -116,7 +117,12 @@ sequenceDiagram
     A-->>F: parcours complet
 ```
 
-Repli : sans clé API ou en cas d'échec d'un connecteur, la génération continue en mode « sans données réelles » — jamais d'erreur technique exposée à l'utilisateur.
+> **Limite connue et chantier prioritaire.** Sans clé API ou après l'échec
+> d'une boucle d'outils, le système peut encore générer sans données réelles.
+> Cette continuité technique n'est plus considérée comme acceptable lorsqu'elle
+> donne l'apparence d'un lieu ou événement vérifié. Le
+> [plan de fiabilité](docs/14-fiabilite-parcours.md) introduit les niveaux
+> Vérifié / Estimé / Suggestion / Refus et remplace ce repli silencieux.
 
 ### Modification ciblée : le cœur du produit
 
@@ -179,7 +185,9 @@ npm run dev:all
 npx vitest run
 ```
 
-290 tests : domaine (logique pure, quelques millisecondes), dépôts (Prisma mocké), agents (LLM mocké — aucun test n'appelle une vraie API), routes, authentification, partage, validation des entrées.
+327 tests : domaine (logique pure, quelques millisecondes), dépôts (Prisma
+mocké), agents (LLM mocké — aucun test n'appelle une vraie API), routes,
+authentification, partage et validation des entrées.
 
 ---
 
@@ -222,4 +230,14 @@ Deux règles de gouvernance :
 
 Le modèle de domaine est **stable pour le MVP** : validé par crash-test contre six parcours très différents (passionné solo, couple avec surprise, soirée improvisée, famille, EVG, festival), puis par une recette manuelle de bout en bout qui a corrigé deux défauts réels (le brief qui perdait des informations, la génération qui échouait sur des dates de fin légitimes).
 
-**Aucun vertical n'est retenu comme périmètre de validation.** Le choix d'un premier marché reste une question ouverte (voir [questions ouvertes](docs/questions-ouvertes.md)) — le produit, lui, ne dépend d'aucun d'entre eux.
+Ce socle fonctionnel n'est pas encore une preuve de fiabilité des données. Le
+prochain chantier est **« Aucun faux parcours présenté comme réel »** :
+audit du portage TripGenie, traçabilité et niveaux de confiance, liens réels,
+hébergements et vols vérifiables, génération progressive et benchmark des
+modèles. Voir le [plan détaillé](docs/14-fiabilite-parcours.md) et les
+[futurs sprints](docs/SPRINTS.md).
+
+**Aucun vertical n'est retenu comme périmètre de validation.** Le scénario NBA
+servira d'abord de test de robustesse et l'EVG de test de valeur, après la
+fiabilisation. Le choix du premier marché reste une
+[question ouverte](docs/questions-ouvertes.md).

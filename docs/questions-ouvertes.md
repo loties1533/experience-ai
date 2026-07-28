@@ -12,7 +12,13 @@
 - Comment représenter les **temps libres** sans que ça ressemble à un trou ?
 
 ## IA / technique
-- Quand faut-il **plusieurs agents** plutôt qu'un seul appel ?
+- Quels services spécialisés justifieront réellement un **sous-agent LLM**,
+  plutôt qu'une fonction déterministe pilotée par l'orchestrateur ?
+- Quelles données sont **essentielles** selon le type de parcours et doivent
+  provoquer un refus lorsqu'elles manquent ?
+- Quel seuil et quelle méthode de rapprochement prouvent qu'un résultat désigne
+  le bon établissement, notamment pour les homonymes et succursales ?
+- Quel modèle gagne le benchmark F6 sur qualité, stabilité, coût et délai ?
 - Comment garder les **coûts IA / API soutenables** à l'échelle ?
 - Jusqu'où pousser la **fraîcheur des données** (horaires, dispos, prix) ?
 

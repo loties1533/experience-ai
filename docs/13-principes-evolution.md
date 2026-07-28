@@ -13,6 +13,8 @@ Une nouvelle fonctionnalité entre **seulement si elle coche TOUT** :
 - ✓ elle respecte la **philosophie** et la **Constitution** ;
 - ✓ elle est **compatible avec tous les contextes** (solo / couple / groupe / famille) ;
 - ✓ elle ne crée **pas de dette produit**.
+- ✓ elle ne dégrade pas la **vérité des données** : source, confiance et
+  incertitude restent explicites ([doc 14](14-fiabilite-parcours.md)).
 
 **Un seul « non » → la fonctionnalité ne rentre pas.**
 

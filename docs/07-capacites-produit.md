@@ -16,6 +16,14 @@
 - **Partager le parcours au groupe** par un lien, avec une **visibilité choisie** (privé / partagé / surprise : le héros ne voit rien).
 - **Réagir à plusieurs** sur les éléments (l'avis du groupe éclaire la décision) — l'organisateur tranche (invariant 8).
 
+### Condition de sortie du MVP
+
+Ces capacités sont implémentées, mais leur présence ne suffit pas à déclarer le
+MVP présentable. La sortie exige aussi la fiabilité décrite dans le
+[doc 14](14-fiabilite-parcours.md) : provenance des données, niveaux de
+confiance visibles, absence de faux lieux présentés comme réels, liens vérifiés
+et refus explicite lorsqu'une donnée essentielle manque.
+
 > **Pourquoi le partage est dans le MVP.** Ce n'est pas une fonctionnalité liée à l'EVG : c'est la conséquence directe du contexte « avec qui » (doc 03, propriété 2). Dès qu'un parcours se vit à plusieurs, il doit pouvoir se partager pour se modifier ensemble — sinon l'organisateur reste seul avec la charge, ce que le produit prétend justement supprimer (doc 02). Le domaine le porte déjà : `Participants`, `Rôles`, `Visibilité`, budget partagé. Le scénario de référence (doc 05) l'inclut explicitement.
 
 ## V2

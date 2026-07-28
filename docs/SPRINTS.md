@@ -1,5 +1,51 @@
 # Suivi Agile — Experience AI (refonte) puis TripGenie (historique)
 
+## Chantier fiabilité — plan actif à partir du 28 juillet 2026
+
+> La refonte R1 → R8 a livré le socle fonctionnel. Elle ne prouve pas encore la
+> vérité des lieux, événements, hébergements, prix et liens proposés.
+> Le nouveau cap est : **Aucun faux parcours présenté comme réel.**
+>
+> Les critères, dépendances et définitions de terminé détaillés vivent dans le
+> [doc 14](14-fiabilite-parcours.md). Cette section est le board d'exécution.
+
+| Sprint | Objectif | Statut |
+|---|---|---|
+| F0 — Audit du portage | Matrice TripGenie → Experience AI | À faire |
+| F1 — Vérité des données | Confiance, traçabilité et refus explicite | À faire |
+| F2 — Lieux et événements | Liens fiables par ville et établissement | À faire |
+| F3 — Hébergements | Existence vérifiée et recherche Booking correcte | À faire |
+| F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | À faire |
+| F5 — Génération progressive | Plan global puis lots validés | À faire |
+| F6 — Benchmark modèles | Choix mesuré du modèle de production | À faire |
+| F7 — Dialogue fiable | Dates relatives et absence de répétitions | À faire |
+| F8 — Modification complète | Régénération atomique des seuls dépendants | À faire |
+| F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
+
+### Board — prochain travail
+
+**F0 — Audit du portage**
+
+- [ ] Inventorier les services, types, utilitaires et tests de TripGenie
+- [ ] Classer chaque brique : porté / à adapter / à réécrire / abandonné
+- [ ] Relier chaque brique à son équivalent actuel ou à son manque
+- [ ] Documenter son contrat, ses dépendances et ses tests
+- [ ] Vérifier en priorité : liens locaux, Booking, vols, IATA et contrôles de cohérence
+- [ ] Faire valider la matrice avant toute suppression ou réécriture
+
+**F1 — Politique à préparer pendant F0**
+
+- [ ] Définir les champs source, fournisseur, récupéré le et niveau de confiance
+- [ ] Classer les données essentielles par type de parcours
+- [ ] Définir les règles Vérifié / Estimé / Suggestion / Refus
+- [ ] Définir les messages utilisateur et les scénarios de panne
+- [ ] Préparer l'ADR de remplacement du repli silencieux
+
+> **Note historique.** Les revues R6 ci-dessous expliquent pourquoi le système
+> avait été conçu pour « sortir un parcours dans tous les cas ». Elles restent
+> conservées comme historique, mais cette stratégie est désormais à remplacer
+> par F1.
+
 ## Refonte Experience AI — plan de build
 
 > Démarré le 23 juillet 2026, une fois les étapes produit 1→5 verrouillées
@@ -36,7 +82,7 @@
 - [x] Préférences utilisateur (schéma + dépôt) injectées dans la génération
 - [x] Routes GET/PUT `/api/parcours/preferences`
 
-**R6 — Bascule & nettoyage** *(en cours)*
+**R6 — Bascule & nettoyage** *(terminé le 24/07)*
 - [x] Front basculé sur les routes `parcours` (R6a, 23/07)
 - [x] **Suppression** du modèle Pack (routes trips/votes, services pack, tables) — jamais deux modèles qui cohabitent
 - [x] Cache des appels externes (maîtrise des coûts)
@@ -665,6 +711,11 @@ conservés au sprint R6b n'étaient appelés par personne.
 
 # TripGenie — Suivi Agile historique (sprints, revues et rétrospectives)
 
+> **Archive uniquement.** Tout ce qui suit concerne l'ancien projet TripGenie.
+> Le board Trello, les anciennes issues et leurs statuts ne pilotent pas
+> Experience AI. Le suivi actuel d'Experience AI se trouve en tête de ce
+> document, conformément à l'[ADR-0006](decisions/ADR-0006.md).
+
 Projet mené en solo selon une approche Scrum, découpé en six sprints d'environ une
 semaine. N'étant pas en équipe, j'ai tenu tour à tour les rôles de chef de projet,
 de gestion de version, de qualité et de développement. Le suivi au quotidien se
@@ -687,7 +738,7 @@ MoSCoW.
 | S4 — CRUD et fonctionnalités | 20 – 24 juin | Parcours complet, diagrammes, recette et corrections | Terminé |
 | S5 — Industrialisation | 25 juin – 1 juillet | Migration Prisma, PostgreSQL en Docker, documentation | Terminé |
 | S6 — Finalisation et mise en production | 2 – 8 juillet | Intégration continue, déploiement, accessibilité, performances | Terminé |
-| S7 — Harmonisation et lisibilité | 9 – 13 juillet | Cohérence visuelle de l'interface, uniformisation des textes, clarté et allègement du code | En cours |
+| S7 — Harmonisation et lisibilité | 9 – 13 juillet | Cohérence visuelle de l'interface, uniformisation des textes, clarté et allègement du code | Clos avec TripGenie |
 
 Priorisation MoSCoW : indispensable (authentification, génération, modification,
 score) ; souhaitable (préférences, votes, collaborateurs, données réelles) ;
@@ -769,8 +820,12 @@ petites incohérences ne s'accumulent.
 
 ---
 
-## Outils de suivi
+## Outils de suivi historiques de TripGenie
 
-- Board Trello (planification et statut des cartes) : https://trello.com/b/GfQ3gMc8/tripgenie-agile-board
-- GitHub Issues (suivi des bugs et des tâches, douze issues fermées)
-- GitHub Actions (intégration continue : tests et typecheck à chaque push)
+Ces références sont conservées comme traces du projet précédent ; elles ne
+représentent pas l'état actuel d'Experience AI.
+
+- Board Trello TripGenie :
+  https://trello.com/b/GfQ3gMc8/tripgenie-agile-board
+- Anciennes GitHub Issues TripGenie : douze issues fermées
+- Ancienne intégration continue TripGenie : tests et typecheck à chaque push
