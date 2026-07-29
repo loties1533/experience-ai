@@ -4,6 +4,8 @@ export const CHEMIN_AUTHENTIFICATION_AMADEUS =
   '/v1/security/oauth2/token' as const;
 export const CHEMIN_LIEUX_AMADEUS =
   '/v1/reference-data/locations' as const;
+export const CHEMIN_VOLS_AMADEUS =
+  '/v2/shopping/flight-offers' as const;
 
 export interface ConfigurationAmadeus {
   cleApi: string;

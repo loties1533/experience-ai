@@ -78,6 +78,12 @@ const LONGUEUR_MIN_RECHERCHE_LIEU_AERIEN = 2;
 const LONGUEUR_MAX_RECHERCHE_LIEU_AERIEN = 80;
 export const SOURCE_LIEUX_AMADEUS =
   'https://test.api.amadeus.com/v1/reference-data/locations';
+export const SOURCE_VOLS_AMADEUS =
+  'https://test.api.amadeus.com/v2/shopping/flight-offers';
+export const NOMBRE_MAX_VOYAGEURS_VOL_AMADEUS = 9;
+export const NOMBRE_MAX_RESULTATS_VOLS = 20;
+export const NOMBRE_RESULTATS_VOLS_PAR_DEFAUT = 10;
+export const NOMBRE_MAX_SEGMENTS_VOL = 9;
 
 function contientCaractereControle(texte: string): boolean {
   return [...texte].some((caractere) => {
@@ -229,6 +235,79 @@ export const CorrespondancesTransportSchema = z.enum([
   'acceptees',
 ]);
 
+/**
+ * Recherche interne d'un seul tronçon aérien à partir de deux identités
+ * Amadeus déjà sélectionnées. Elle ne résout jamais une ville libre.
+ */
+export const RechercheVolAerienSchema = z
+  .object({
+    origine: CandidatLieuAerienSchema,
+    destination: CandidatLieuAerienSchema,
+    dateDepart: z.iso.date(),
+    occupation: OccupationTransportDeclareeSchema,
+    correspondances: CorrespondancesTransportSchema,
+    devise: z
+      .string()
+      .regex(
+        /^[A-Z]{3}$/,
+        'la devise doit être un code ISO 4217 sur trois lettres'
+      )
+      .optional(),
+    maximumResultats: z
+      .number()
+      .int()
+      .min(1)
+      .max(NOMBRE_MAX_RESULTATS_VOLS)
+      .default(NOMBRE_RESULTATS_VOLS_PAR_DEFAUT),
+  })
+  .strict()
+  .superRefine((recherche, contexte) => {
+    if (!recherche.origine.codeIata) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['origine', 'codeIata'],
+        message: 'l’origine doit posséder un code IATA',
+      });
+    }
+    if (!recherche.destination.codeIata) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['destination', 'codeIata'],
+        message: 'la destination doit posséder un code IATA',
+      });
+    }
+    if (
+      recherche.origine.identifiantExterne ===
+      recherche.destination.identifiantExterne
+    ) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['destination', 'identifiantExterne'],
+        message: 'l’origine et la destination doivent être distinctes',
+      });
+    }
+    if (
+      recherche.origine.codeIata &&
+      recherche.origine.codeIata === recherche.destination.codeIata
+    ) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['destination', 'codeIata'],
+        message: 'les codes IATA de départ et d’arrivée doivent différer',
+      });
+    }
+    if (
+      recherche.occupation.adultes + recherche.occupation.enfants >
+      NOMBRE_MAX_VOYAGEURS_VOL_AMADEUS
+    ) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['occupation'],
+        message: `Amadeus accepte au maximum ${NOMBRE_MAX_VOYAGEURS_VOL_AMADEUS} voyageurs assis`,
+      });
+    }
+  });
+
 export const PorteeBudgetTransportSchema = z.enum([
   'par_personne',
   'total',
@@ -368,6 +447,198 @@ export const DateHeureTransportObserveeSchema = z
     fuseauIana: FuseauIanaSchema,
   })
   .strict();
+
+function estDateHeureLocaleReelle(valeur: string): boolean {
+  const correspondance =
+    /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})$/.exec(valeur);
+  if (!correspondance) return false;
+  const [, date, heure, minute, seconde] = correspondance;
+  return (
+    z.iso.date().safeParse(date).success &&
+    Number(heure) <= 23 &&
+    Number(minute) <= 59 &&
+    Number(seconde) <= 59
+  );
+}
+
+/**
+ * Date et heure locale Amadeus, sans décalage ni fuseau. Ce contrat est
+ * volontairement incompatible avec DateHeureTransportObserveeSchema.
+ */
+export const DateHeureLocaleVolSchema = z
+  .string()
+  .refine(
+    estDateHeureLocaleReelle,
+    'la date-heure locale doit être réelle et au format AAAA-MM-JJTHH:mm:ss'
+  );
+
+const MOTIF_DUREE_VOL_FOURNISSEUR =
+  /^P(?:(?:\d+D)(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+S)?)?|T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+S)?)$/;
+
+function estDureeVolFournisseurPositive(valeur: string): boolean {
+  const composantes = valeur.match(/\d+/g);
+  return (
+    composantes !== null &&
+    composantes.some((composante) => Number(composante) > 0)
+  );
+}
+
+export const DureeVolFournisseurSchema = z
+  .string()
+  .max(32)
+  .regex(
+    MOTIF_DUREE_VOL_FOURNISSEUR,
+    'la durée fournisseur doit respecter le format ISO 8601'
+  )
+  .refine(
+    estDureeVolFournisseurPositive,
+    'la durée fournisseur doit être strictement positive'
+  );
+
+const CodeIataTransporteurSchema = z.string().regex(/^[A-Z0-9]{2}$/);
+const CodeAppareilIataSchema = z.string().regex(/^[A-Z0-9]{3}$/);
+
+export const PointVolAerienCandidatSchema = z
+  .object({
+    codeIata: CodeIataLieuAerienSchema,
+    terminal: z.string().trim().min(1).max(20).optional(),
+  })
+  .strict();
+
+export const TransporteurVolAerienSchema = z
+  .object({
+    code: CodeIataTransporteurSchema,
+    nom: TexteCourtSchema.optional(),
+  })
+  .strict();
+
+/**
+ * Segment intermédiaire provenant de Flight Offers Search. Ses horaires
+ * locaux ne permettent aucune comparaison d'instants entre fuseaux.
+ */
+export const SegmentVolAerienCandidatSchema = z
+  .object({
+    identifiantExterne: IdentifiantExterneSchema,
+    origine: PointVolAerienCandidatSchema,
+    destination: PointVolAerienCandidatSchema,
+    departLocal: DateHeureLocaleVolSchema,
+    arriveeLocale: DateHeureLocaleVolSchema,
+    transporteurMarketing: TransporteurVolAerienSchema,
+    transporteurOperant: TransporteurVolAerienSchema.optional(),
+    numeroVol: z.string().trim().regex(/^[A-Z0-9]{1,4}$/),
+    appareil: z
+      .object({ code: CodeAppareilIataSchema })
+      .strict()
+      .optional(),
+    dureeFournisseur: DureeVolFournisseurSchema.optional(),
+    nombreEscales: z.number().int().nonnegative().max(9),
+  })
+  .strict()
+  .superRefine((segment, contexte) => {
+    if (segment.origine.codeIata === segment.destination.codeIata) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['destination', 'codeIata'],
+        message: 'un segment aérien doit relier deux codes IATA distincts',
+      });
+    }
+  });
+
+export const ResumeDemandeVolAerienSchema = z
+  .object({
+    origineIata: CodeIataLieuAerienSchema,
+    destinationIata: CodeIataLieuAerienSchema,
+    dateDepart: z.iso.date(),
+  })
+  .strict();
+
+const SegmentsVolAerienCandidatSchema = z
+  .tuple(
+    [SegmentVolAerienCandidatSchema],
+    SegmentVolAerienCandidatSchema
+  )
+  .superRefine((segments, contexte) => {
+    if (segments.length > NOMBRE_MAX_SEGMENTS_VOL) {
+      contexte.addIssue({
+        code: 'too_big',
+        origin: 'array',
+        maximum: NOMBRE_MAX_SEGMENTS_VOL,
+        inclusive: true,
+        path: [],
+        message: `un vol candidat accepte au maximum ${NOMBRE_MAX_SEGMENTS_VOL} segments`,
+      });
+    }
+    const identifiants = new Set<string>();
+    segments.forEach((segment, index) => {
+      if (identifiants.has(segment.identifiantExterne)) {
+        contexte.addIssue({
+          code: 'custom',
+          path: [index, 'identifiantExterne'],
+          message: 'les segments aériens doivent avoir des identifiants distincts',
+        });
+      }
+      identifiants.add(segment.identifiantExterne);
+      if (
+        index > 0 &&
+        segments[index - 1].destination.codeIata !==
+          segment.origine.codeIata
+      ) {
+        contexte.addIssue({
+          code: 'custom',
+          path: [index, 'origine', 'codeIata'],
+          message: 'les segments aériens doivent être continus',
+        });
+      }
+    });
+  });
+
+/**
+ * Observation intermédiaire non commerciale. Ni prix, ni disponibilité,
+ * ni réservation ne peuvent être stockés dans ce candidat.
+ */
+export const CandidatVolAerienSchema = z
+  .object({
+    fournisseur: z.literal('Amadeus'),
+    source: z.literal(SOURCE_VOLS_AMADEUS),
+    identifiantExterne: IdentifiantExterneSchema,
+    recupereLe: DateHeureAvecDecalageSchema,
+    demande: ResumeDemandeVolAerienSchema,
+    segments: SegmentsVolAerienCandidatSchema,
+    dureeFournisseur: DureeVolFournisseurSchema.optional(),
+  })
+  .strict()
+  .superRefine((candidat, contexte) => {
+    const premier = candidat.segments[0];
+    const dernier = candidat.segments.at(-1);
+    if (premier.origine.codeIata !== candidat.demande.origineIata) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['segments', 0, 'origine', 'codeIata'],
+        message: 'le premier segment doit partir de l’origine demandée',
+      });
+    }
+    if (dernier?.destination.codeIata !== candidat.demande.destinationIata) {
+      contexte.addIssue({
+        code: 'custom',
+        path: [
+          'segments',
+          candidat.segments.length - 1,
+          'destination',
+          'codeIata',
+        ],
+        message: 'le dernier segment doit arriver à la destination demandée',
+      });
+    }
+    if (
+      premier.departLocal.slice(0, 10) !== candidat.demande.dateDepart
+    ) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['segments', 0, 'departLocal'],
+        message: 'le premier départ doit correspondre à la date demandée',
+      });
+    }
+  });
 
 export const OperateurTransportSchema = z
   .object({
@@ -524,6 +795,7 @@ export type RechercheLieuAerien = z.infer<
 export type CandidatLieuAerien = z.infer<
   typeof CandidatLieuAerienSchema
 >;
+export type RechercheVolAerien = z.infer<typeof RechercheVolAerienSchema>;
 export type OccupationTransportDeclaree = z.infer<
   typeof OccupationTransportDeclareeSchema
 >;
@@ -550,6 +822,20 @@ export type LieuTransportConfirme = z.infer<
 export type DateHeureTransportObservee = z.infer<
   typeof DateHeureTransportObserveeSchema
 >;
+export type DateHeureLocaleVol = z.infer<typeof DateHeureLocaleVolSchema>;
+export type PointVolAerienCandidat = z.infer<
+  typeof PointVolAerienCandidatSchema
+>;
+export type TransporteurVolAerien = z.infer<
+  typeof TransporteurVolAerienSchema
+>;
+export type SegmentVolAerienCandidat = z.infer<
+  typeof SegmentVolAerienCandidatSchema
+>;
+export type ResumeDemandeVolAerien = z.infer<
+  typeof ResumeDemandeVolAerienSchema
+>;
+export type CandidatVolAerien = z.infer<typeof CandidatVolAerienSchema>;
 export type OperateurTransport = z.infer<typeof OperateurTransportSchema>;
 export type SegmentTransportExterne = z.infer<
   typeof SegmentTransportExterneSchema
