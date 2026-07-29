@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import { callAI, parseJSON, sanitizeInput } from '../services/claude/core.js';
 import { AppError } from '../lib/AppError.js';
-import { DateTimeISOSchema } from '../domaine/parcours/index.js';
+import {
+  DateTimeISOSchema,
+  NombreAdultesHebergementSchema,
+  NombreChambresHebergementSchema,
+  NombreEnfantsHebergementSchema,
+  SejourHebergementSchema,
+  type SejourHebergement,
+} from '../domaine/parcours/index.js';
 import {
   BriefPartielSchema,
   champsManquants,
@@ -9,6 +16,9 @@ import {
   normaliserDatesBrief,
   calculerDates,
   BriefSchema,
+  questionHebergement,
+  type ChampHebergement,
+  type HebergementBrief,
   type BriefPartiel,
 } from './brief.js';
 
@@ -25,7 +35,15 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
   de départ, même approximative : "mi-août", "le 15 août", "dans deux semaines". Sans année précisée, suppose la
   prochaine occurrence future de cette date. Ne devine JAMAIS dateDebut s'il n'a rien dit sur le moment où il part —
   ce champ concerne QUAND il part, jamais D'OÙ il part : une ville reste "lieux", pas "dateDebut"),
-  lieux (string[]), budgetTotal (number, en euros), ambiance (string), contraintes (string[]).
+  lieux (string[]), budgetTotal (number, en euros), ambiance (string), contraintes (string[]),
+  hebergement (UNIQUEMENT si l'utilisateur exprime explicitement qu'un hébergement est nécessaire ou non) :
+    {"necessaire": false}
+    ou {"necessaire": true, "occupation": {"statut": "a_confirmer", "adultes"?: entier, "enfants"?: entier,
+    "chambres"?: entier}, "sejours": [{"ville": string, "arrivee": "AAAA-MM-JJ", "depart": "AAAA-MM-JJ"}]}.
+- N'infère JAMAIS l'occupation depuis avecQui : "solo", "couple", "famille" ou "groupe" ne donnent aucun nombre.
+- N'infère JAMAIS les occupants depuis les participants. N'infère ni enfants=0 ni le nombre de chambres.
+- Ne copie pas automatiquement les dates globales du parcours dans un séjour hôtelier : elles doivent être exprimées
+  pour l'hébergement. Conserve les dates hôtelières sans heure au format AAAA-MM-JJ.
 - "duree" GARDE TOUJOURS l'unité EXACTE que l'utilisateur emploie, ne la convertis JAMAIS toi-même :
   "3 semaines" → {"valeur": 3, "unite": "semaines"}, jamais {"valeur": 3, "unite": "jours"}.
 - "reponse" : UNE question courte et chaleureuse en français sur UN champ requis manquant (intention, avecQui, duree,
@@ -108,6 +126,7 @@ function extraireChampsValides(brut: unknown): BriefPartiel {
   const retenu: Record<string, unknown> = {};
 
   for (const [cle, valeur] of Object.entries(brut as Record<string, unknown>)) {
+    if (cle === 'hebergement') continue; // fusion dédiée, champ par champ, ci-dessous
     const forme = formes[cle as keyof typeof formes];
     if (!forme) continue; // champ inventé par le modèle : ignoré
     const resultat = forme.safeParse(valeur);
@@ -115,6 +134,218 @@ function extraireChampsValides(brut: unknown): BriefPartiel {
   }
 
   return retenu as BriefPartiel;
+}
+
+type HebergementExtrait =
+  | { necessaire: false }
+  | {
+      necessaire: true;
+      occupation?: {
+        adultes?: number;
+        enfants?: number;
+        chambres?: number;
+      };
+      sejours?: SejourHebergement[];
+    };
+
+interface ExtractionHebergement {
+  hebergement?: HebergementExtrait;
+  champInvalide?: ChampHebergement;
+}
+
+function estObjet(valeur: unknown): valeur is Record<string, unknown> {
+  return typeof valeur === 'object' && valeur !== null && !Array.isArray(valeur);
+}
+
+type ChampOccupation = 'adultes' | 'enfants' | 'chambres';
+
+function premierChampOccupationManquant(
+  brief: BriefPartiel
+): ChampOccupation | undefined {
+  if (brief.hebergement?.necessaire !== true) return undefined;
+  const occupation = brief.hebergement.occupation;
+  if (occupation.statut === 'declaree') return undefined;
+  if (occupation.adultes === undefined) return 'adultes';
+  if (occupation.enfants === undefined) return 'enfants';
+  if (occupation.chambres === undefined) return 'chambres';
+  return undefined;
+}
+
+/**
+ * Preuve textuelle minimale : le nombre doit accompagner le mot métier, ou
+ * constituer à lui seul la réponse à la question actuellement attendue.
+ * Ainsi, un nombre ajouté par le modèle à partir de « famille » est ignoré.
+ */
+function extraireNombreOccupationExplicite(
+  message: string,
+  champ: ChampOccupation,
+  briefActuel: BriefPartiel
+): number | undefined {
+  const motifs: Record<ChampOccupation, RegExp> = {
+    adultes: /(?:^|\D)(\d{1,2})\s*adultes?\b/i,
+    enfants: /(?:^|\D)(\d{1,2})\s*enfants?\b/i,
+    chambres: /(?:^|\D)(\d{1,2})\s*chambres?\b/i,
+  };
+  const trouve = message.match(motifs[champ]);
+  if (trouve) return Number(trouve[1]);
+
+  if (
+    new RegExp(`\\b(?:z[ée]ro)\\s*${champ === 'chambres' ? 'chambres?' : `${champ}?`}\\b`, 'i')
+      .test(message)
+  ) {
+    return 0;
+  }
+
+  if (
+    champ === 'enfants' &&
+    /\b(?:aucun(?:e)?|sans|pas\s+d['’]?)\s*enfants?\b/i.test(message)
+  ) {
+    return 0;
+  }
+
+  const reponseSeule = message.trim().match(/^(\d{1,2})$/);
+  if (
+    reponseSeule &&
+    premierChampOccupationManquant(briefActuel) === champ
+  ) {
+    return Number(reponseSeule[1]);
+  }
+  return undefined;
+}
+
+/**
+ * L'occupation est extraite valeur par valeur : un nombre invalide ne fait pas
+ * perdre deux nombres valides donnés dans la même réponse. Le statut final ne
+ * vient jamais du modèle ; il est calculé après fusion avec le brief courant.
+ */
+function extraireHebergement(
+  brut: unknown,
+  messageUtilisateur: string,
+  briefActuel: BriefPartiel
+): ExtractionHebergement {
+  if (!estObjet(brut)) return {};
+
+  const hebergement = estObjet(brut.hebergement) ? brut.hebergement : {};
+  const hebergementFourni = estObjet(brut.hebergement);
+  if (hebergementFourni && hebergement.necessaire === false) {
+    return { hebergement: { necessaire: false } };
+  }
+  if (
+    hebergement.necessaire !== true &&
+    briefActuel.hebergement?.necessaire !== true
+  ) {
+    return {};
+  }
+
+  let champInvalide: ChampHebergement | undefined;
+  const occupation: {
+    adultes?: number;
+    enfants?: number;
+    chambres?: number;
+  } = {};
+  const formes = {
+    adultes: NombreAdultesHebergementSchema,
+    enfants: NombreEnfantsHebergementSchema,
+    chambres: NombreChambresHebergementSchema,
+  } as const;
+
+  for (const champ of Object.keys(formes) as (keyof typeof formes)[]) {
+    const explicite = extraireNombreOccupationExplicite(
+      messageUtilisateur,
+      champ,
+      briefActuel
+    );
+    if (explicite !== undefined) {
+      const resultat = formes[champ].safeParse(explicite);
+      if (resultat.success) {
+        occupation[champ] = resultat.data;
+      } else if (!champInvalide) {
+        champInvalide = champ;
+      }
+      continue;
+    }
+  }
+
+  let sejours: SejourHebergement[] | undefined;
+  if ('sejours' in hebergement) {
+    if (!Array.isArray(hebergement.sejours)) {
+      champInvalide ??= 'sejours';
+    } else if (hebergement.sejours.length === 0) {
+      // Le modèle renvoie parfois le tableau vide du format attendu alors que
+      // le dernier message ne parle pas des dates : ce n'est pas une demande
+      // de supprimer un séjour déjà confirmé.
+      sejours = undefined;
+    } else {
+      const resultat = z.array(SejourHebergementSchema).safeParse(hebergement.sejours);
+      if (!resultat.success) {
+        champInvalide ??= 'sejours';
+      } else {
+        sejours = resultat.data;
+      }
+    }
+  }
+
+  if (
+    !hebergementFourni &&
+    Object.keys(occupation).length === 0 &&
+    sejours === undefined
+  ) {
+    return {};
+  }
+
+  return {
+    hebergement: {
+      necessaire: true,
+      ...(Object.keys(occupation).length > 0 ? { occupation } : {}),
+      ...(sejours ? { sejours } : {}),
+    },
+    champInvalide,
+  };
+}
+
+function valeursOccupation(
+  hebergement: HebergementBrief | undefined
+): { adultes?: number; enfants?: number; chambres?: number } {
+  if (hebergement?.necessaire !== true) return {};
+  return {
+    adultes: hebergement.occupation.adultes,
+    enfants: hebergement.occupation.enfants,
+    chambres: hebergement.occupation.chambres,
+  };
+}
+
+/** Fusionne les réponses successives sans jamais promouvoir un objet partiel. */
+function fusionnerHebergement(
+  actuel: HebergementBrief | undefined,
+  extrait: HebergementExtrait | undefined
+): HebergementBrief | undefined {
+  if (!extrait) return actuel;
+  if (!extrait.necessaire) return { necessaire: false };
+
+  const occupation = {
+    ...valeursOccupation(actuel),
+    ...extrait.occupation,
+  };
+  const { adultes, enfants, chambres } = occupation;
+  const complete =
+    adultes !== undefined &&
+    enfants !== undefined &&
+    chambres !== undefined;
+
+  return {
+    necessaire: true,
+    occupation: complete
+      ? {
+          statut: 'declaree',
+          adultes,
+          enfants,
+          chambres,
+        }
+      : { statut: 'a_confirmer', ...occupation },
+    sejours:
+      extrait.sejours ??
+      (actuel?.necessaire === true ? actuel.sejours : []),
+  };
 }
 
 export interface EtapeDialogue {
@@ -139,7 +370,20 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
   }
 
   const extrait = extraireChampsValides(sortie.data.brief);
-  let brief: BriefPartiel = normaliserDatesBrief({ ...briefActuel, ...extrait });
+  const extractionHebergement = extraireHebergement(
+    sortie.data.brief,
+    messageUtilisateur,
+    briefActuel
+  );
+  const hebergement = fusionnerHebergement(
+    briefActuel.hebergement,
+    extractionHebergement.hebergement
+  );
+  let brief: BriefPartiel = normaliserDatesBrief({
+    ...briefActuel,
+    ...extrait,
+    ...(hebergement ? { hebergement } : {}),
+  });
 
   // Filet déterministe, avant de compter sur le LLM : une plage explicite
   // ("du 15/08 au 10/09") qu'il aurait comprise sans la structurer.
@@ -168,7 +412,10 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
   // « Complet » exige aussi un point de départ (dates) : une durée seule
   // n'ancre le parcours à aucune vraie date, et les connecteurs chercheraient
   // alors sur une date inventée, sans rapport avec le vrai séjour.
-  const dialogueTermine = complet.success && champsManquants(brief).length === 0;
+  const dialogueTermine =
+    complet.success &&
+    champsManquants(brief).length === 0 &&
+    extractionHebergement.champInvalide === undefined;
   if (dialogueTermine) {
     // Le brief était déjà complet et rien de nouveau n'a été retenu de ce
     // message : l'utilisateur essayait de corriger quelque chose, mais rien
@@ -176,7 +423,10 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
     // confirmation mot pour mot donnerait l'impression qu'on l'ignore — on le
     // dit plutôt franchement, sans reformuler le contenu passé sous silence.
     const auMoinsUnChampNouveau =
-      Object.keys(extrait).length > 0 || dateDebutUtilise || plageExpliciteUtilisee;
+      Object.keys(extrait).length > 0 ||
+      extractionHebergement.hebergement !== undefined ||
+      dateDebutUtilise ||
+      plageExpliciteUtilisee;
     const briefActuelDejaTermine =
       BriefSchema.safeParse(briefActuel).success && champsManquants(briefActuel).length === 0;
     if (!auMoinsUnChampNouveau && briefActuelDejaTermine) {
@@ -192,5 +442,11 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
       estComplet: true,
     };
   }
-  return { reponse: sortie.data.reponse, brief, estComplet: false };
+  return {
+    reponse:
+      questionHebergement(brief, extractionHebergement.champInvalide) ??
+      sortie.data.reponse,
+    brief,
+    estComplet: false,
+  };
 }

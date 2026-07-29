@@ -151,6 +151,33 @@ describe('validerParcours — cohérence structurelle', () => {
     expect(validerParcours(parcoursMinimal())).toEqual([]);
   });
 
+  it('signale un séjour hôtelier placé sur un autre type d’élément', () => {
+    const base = parcoursMinimal();
+    const incoherent: Parcours = {
+      ...base,
+      timeline: [
+        {
+          id: 'm1',
+          titre: 'Repas',
+          elements: [
+            element('restaurant', {
+              type: 'restaurant',
+              sejourHebergement: {
+                ville: 'Bordeaux',
+                arrivee: '2026-08-10',
+                depart: '2026-08-12',
+              },
+            }),
+          ],
+        },
+      ],
+    };
+
+    expect(validerParcours(incoherent)).toEqual([
+      'un séjour hôtelier ne peut qualifier qu’un hébergement (« Élément restaurant »)',
+    ]);
+  });
+
   it('signale une boucle de dépendances (directe ou par ricochet)', () => {
     const parcours = parcoursMinimal({
       timeline: [

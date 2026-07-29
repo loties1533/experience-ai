@@ -14,6 +14,35 @@
 // que l'incertitude ne disparaisse pas à la frontière HTTP.
 // =============================================
 
+const proprietesBrief = {
+  intention: { type: 'string', minLength: 1 },
+  avecQui: {
+    type: 'string',
+    enum: ['solo', 'couple', 'famille', 'amis', 'groupe'],
+  },
+  duree: {
+    type: 'object',
+    required: ['valeur', 'unite'],
+    properties: {
+      valeur: { type: 'number', exclusiveMinimum: 0 },
+      unite: { type: 'string', enum: ['heures', 'jours', 'semaines'] },
+    },
+  },
+  dates: {
+    type: 'object',
+    required: ['debut', 'fin'],
+    properties: {
+      debut: { type: 'string', format: 'date-time' },
+      fin: { type: 'string', format: 'date-time' },
+    },
+  },
+  lieux: { type: 'array', items: { type: 'string', minLength: 1 } },
+  budgetTotal: { type: 'number', exclusiveMinimum: 0 },
+  ambiance: { type: 'string' },
+  contraintes: { type: 'array', items: { type: 'string', minLength: 1 } },
+  hebergement: { $ref: '#/components/schemas/HebergementBrief' },
+};
+
 // Schémas réutilisables (composants) ------------------------------------------
 const schemas = {
   Error: {
@@ -69,6 +98,108 @@ const schemas = {
     description:
       'Confiance persistée sur un élément. Un refus de génération est un résultat métier HTTP 422, jamais un quatrième niveau.',
   },
+  OccupationHebergementBrief: {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['statut', 'adultes', 'enfants', 'chambres'],
+        additionalProperties: false,
+        properties: {
+          statut: { type: 'string', enum: ['declaree'] },
+          adultes: { type: 'integer', minimum: 1, maximum: 20 },
+          enfants: { type: 'integer', minimum: 0, maximum: 20 },
+          chambres: { type: 'integer', minimum: 1, maximum: 10 },
+        },
+      },
+      {
+        type: 'object',
+        required: ['statut'],
+        additionalProperties: false,
+        properties: {
+          statut: { type: 'string', enum: ['a_confirmer'] },
+          adultes: { type: 'integer', minimum: 1, maximum: 20 },
+          enfants: { type: 'integer', minimum: 0, maximum: 20 },
+          chambres: { type: 'integer', minimum: 1, maximum: 10 },
+        },
+      },
+    ],
+    discriminator: { propertyName: 'statut' },
+    description:
+      'Occupation explicitement déclarée par l’utilisateur. Les valeurs partielles restent à confirmer et ne sont jamais déduites de avecQui ou des participants.',
+  },
+  OccupationHebergement: {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['statut', 'adultes', 'enfants', 'chambres'],
+        additionalProperties: false,
+        properties: {
+          statut: { type: 'string', enum: ['declaree'] },
+          adultes: { type: 'integer', minimum: 1, maximum: 20 },
+          enfants: { type: 'integer', minimum: 0, maximum: 20 },
+          chambres: { type: 'integer', minimum: 1, maximum: 10 },
+        },
+      },
+      {
+        type: 'object',
+        required: ['statut'],
+        additionalProperties: false,
+        properties: {
+          statut: { type: 'string', enum: ['a_confirmer'] },
+        },
+      },
+    ],
+    discriminator: { propertyName: 'statut' },
+    description:
+      'Occupation persistée. Une saisie partielle du dialogue n’est jamais recopiée dans le parcours.',
+  },
+  SejourHebergement: {
+    type: 'object',
+    required: ['ville', 'arrivee', 'depart'],
+    additionalProperties: false,
+    properties: {
+      ville: { type: 'string', minLength: 1 },
+      arrivee: { type: 'string', format: 'date', example: '2026-08-10' },
+      depart: { type: 'string', format: 'date', example: '2026-08-12' },
+    },
+    description:
+      'Dates civiles propres à un hébergement. Le départ doit être strictement postérieur à l’arrivée. Lorsque le parcours est daté, l’arrivée reste dans ses jours et le départ peut aller au plus jusqu’au lendemain du dernier jour.',
+  },
+  HebergementBrief: {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['necessaire'],
+        additionalProperties: false,
+        properties: { necessaire: { type: 'boolean', enum: [false] } },
+      },
+      {
+        type: 'object',
+        required: ['necessaire'],
+        additionalProperties: false,
+        properties: {
+          necessaire: { type: 'boolean', enum: [true] },
+          occupation: { $ref: '#/components/schemas/OccupationHebergementBrief' },
+          sejours: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/SejourHebergement' },
+          },
+        },
+      },
+    ],
+    discriminator: { propertyName: 'necessaire' },
+  },
+  Brief: {
+    type: 'object',
+    required: ['intention', 'avecQui', 'duree'],
+    additionalProperties: false,
+    properties: proprietesBrief,
+  },
+  BriefPartiel: {
+    type: 'object',
+    additionalProperties: false,
+    properties: proprietesBrief,
+  },
   Reservation: {
     type: 'object',
     required: ['lienExterne', 'fournisseur', 'typeLien'],
@@ -95,6 +226,7 @@ const schemas = {
       justification: { type: 'string' },
       confiance:     { $ref: '#/components/schemas/Confiance' },
       reservation:   { $ref: '#/components/schemas/Reservation' },
+      sejourHebergement: { $ref: '#/components/schemas/SejourHebergement' },
     },
   },
   Moment: {
@@ -107,6 +239,15 @@ const schemas = {
       elements: { type: 'array', items: { $ref: '#/components/schemas/Element' } },
     },
   },
+  ContexteParcours: {
+    type: 'object',
+    additionalProperties: true,
+    properties: {
+      occupationHebergement: {
+        $ref: '#/components/schemas/OccupationHebergement',
+      },
+    },
+  },
   Parcours: {
     type: 'object',
     description: 'Agrégat complet (doc 06) : intention, contexte, éléments, dépendances, historique. Forme faisant foi : ParcoursSchema (Zod).',
@@ -114,6 +255,7 @@ const schemas = {
     properties: {
       id:         { type: 'string', format: 'uuid' },
       intention:  { type: 'object', additionalProperties: true },
+      contexte:   { $ref: '#/components/schemas/ContexteParcours' },
       visibilite: { type: 'string', enum: ['prive', 'partage', 'surprise'] },
       timeline:   { type: 'array', items: { $ref: '#/components/schemas/Moment' } },
     },
@@ -299,7 +441,7 @@ export const openapiSpec = {
                 type: 'object',
                 required: ['message'],
                 properties: {
-                  brief:   { type: 'object', additionalProperties: true, description: 'Brief partiel de l\'échange précédent' },
+                  brief:   { $ref: '#/components/schemas/BriefPartiel', description: 'Brief partiel de l\'échange précédent' },
                   message: { type: 'string', minLength: 1, maxLength: 500, example: 'Un EVG à Lisbonne, six personnes, un week-end de juin' },
                 },
               },
@@ -322,14 +464,14 @@ export const openapiSpec = {
         security: [{ cookieAuth: [] }, { bearerAuth: [] }],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['brief'], properties: { brief: { type: 'object', additionalProperties: true } } } } },
+          content: { 'application/json': { schema: { type: 'object', required: ['brief'], properties: { brief: { $ref: '#/components/schemas/Brief' } } } } },
         },
         responses: {
           201: { description: 'Parcours généré et sauvegardé', content: { 'application/json': { schema: { type: 'object', properties: { parcours: { $ref: '#/components/schemas/Parcours' } } } } } },
           400: badRequest,
           401: unauthorized,
           429: { description: 'Trop de générations (rate-limit)', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
-          422: { description: 'Refus métier : données essentielles insuffisamment fiables', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          422: { description: 'Refus métier : données essentielles insuffisamment fiables ou occupation hôtelière requise non confirmée', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           502: { description: 'Génération inexploitable (sortie refusée à la validation)', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           503: { description: 'Fournisseur IA ou sources de vérification indisponibles', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
         },

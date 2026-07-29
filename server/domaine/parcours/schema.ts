@@ -54,6 +54,104 @@ export const PlageHoraireSchema = z
     message: 'le début doit précéder la fin',
   });
 
+export const NombreAdultesHebergementSchema = z.number().int().min(1).max(20);
+export const NombreEnfantsHebergementSchema = z.number().int().min(0).max(20);
+export const NombreChambresHebergementSchema = z.number().int().min(1).max(10);
+
+/**
+ * Une occupation `declaree` est complète ou n'existe pas : aucun nombre ne
+ * vient de `avecQui`, des participants ou d'un calcul de capacité. La variante
+ * `a_confirmer` ne porte volontairement aucune valeur partielle dans le
+ * parcours persistant ; ces saisies intermédiaires restent dans le brief.
+ */
+export const OccupationHebergementSchema = z.discriminatedUnion('statut', [
+  z
+    .object({
+      statut: z.literal('declaree'),
+      adultes: NombreAdultesHebergementSchema,
+      enfants: NombreEnfantsHebergementSchema,
+      chambres: NombreChambresHebergementSchema,
+    })
+    .strict(),
+  z.object({ statut: z.literal('a_confirmer') }).strict(),
+]);
+
+/**
+ * Les dates d'hôtel sont des dates civiles, sans heure ni conversion UTC.
+ * Leur ordre se compare directement : le format ISO AAAA-MM-JJ est
+ * lexicographiquement ordonné et Zod refuse les dates calendaires invalides.
+ */
+export const SejourHebergementSchema = z
+  .object({
+    ville: z.string().trim().min(1),
+    arrivee: z.iso.date(),
+    depart: z.iso.date(),
+  })
+  .strict()
+  .refine((sejour) => sejour.arrivee < sejour.depart, {
+    message: 'le départ doit être strictement après l’arrivée',
+    path: ['depart'],
+  });
+
+function estAnneeBissextile(annee: number): boolean {
+  return annee % 4 === 0 && (annee % 100 !== 0 || annee % 400 === 0);
+}
+
+function lendemainDateCivile(date: string): string {
+  const [anneeTexte, moisTexte, jourTexte] = date.split('-');
+  let annee = Number(anneeTexte);
+  let mois = Number(moisTexte);
+  let jour = Number(jourTexte);
+  const joursParMois = [
+    31,
+    estAnneeBissextile(annee) ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+
+  jour += 1;
+  if (jour > joursParMois[mois - 1]) {
+    jour = 1;
+    mois += 1;
+  }
+  if (mois > 12) {
+    mois = 1;
+    annee += 1;
+  }
+  return [
+    String(annee).padStart(4, '0'),
+    String(mois).padStart(2, '0'),
+    String(jour).padStart(2, '0'),
+  ].join('-');
+}
+
+/**
+ * Cohérence civile avec le parcours : l'arrivée commence dans ses jours et
+ * le départ peut aller jusqu'au lendemain du dernier jour, comme les autres
+ * éléments qui peuvent se terminer après minuit. Aucune conversion de fuseau
+ * n'est faite : on compare les dates telles qu'elles ont été exprimées.
+ */
+export function estSejourHebergementDansDatesParcours(
+  sejour: { arrivee: string; depart: string },
+  dates: { debut: string; fin: string }
+): boolean {
+  const premierJour = dates.debut.slice(0, 10);
+  const dernierJour = dates.fin.slice(0, 10);
+  return (
+    sejour.arrivee >= premierJour &&
+    sejour.arrivee <= dernierJour &&
+    sejour.depart <= lendemainDateCivile(dernierJour)
+  );
+}
+
 export const ContexteSchema = z.object({
   avecQui: z.enum(['solo', 'couple', 'famille', 'amis', 'groupe']),
   // La durée voulue : l'ordre de grandeur de l'envie, toujours exprimable
@@ -71,6 +169,9 @@ export const ContexteSchema = z.object({
   // dans tout le domaine, et « début avant fin » est déjà garanti.
   dates: PlageHoraireSchema.optional(),
   lieux: z.array(z.string().min(1)).default([]),
+  // L'occupation qualifie la demande, jamais la disponibilité d'un hôtel.
+  // Optionnelle pour préserver sans interprétation les parcours antérieurs.
+  occupationHebergement: OccupationHebergementSchema.optional(),
 });
 
 export const ParticipantSchema = z.object({
@@ -186,6 +287,9 @@ export const ElementSchema = z.object({
   alternatives: z.array(AlternativeSchema).default([]),
   contraintes: z.array(ContrainteSchema).default([]),
   reservation: ReservationSchema.optional(),
+  // Propre à cet hôtel : on ne réutilise jamais une plage globale du parcours
+  // ni le premier lieu d'un brief multi-ville.
+  sejourHebergement: SejourHebergementSchema.optional(),
   reactions: z.array(ReactionSchema).default([]),
 });
 
@@ -247,17 +351,45 @@ function normaliserParcoursLegacy(valeur: unknown): unknown {
   };
 }
 
-export const ParcoursSchema = z.object({
-  id: z.string().min(1),
-  intention: IntentionSchema,
-  contexte: ContexteSchema,
-  participants: z.array(ParticipantSchema).min(1),
-  budget: BudgetSchema,
-  ambiance: z.string().optional(),
-  visibilite: VisibiliteSchema.default('prive'),
-  historique: z.array(ModificationSchema).default([]),
-  timeline: z.array(MomentSchema).default([]),
-});
+export const ParcoursSchema = z
+  .object({
+    id: z.string().min(1),
+    intention: IntentionSchema,
+    contexte: ContexteSchema,
+    participants: z.array(ParticipantSchema).min(1),
+    budget: BudgetSchema,
+    ambiance: z.string().optional(),
+    visibilite: VisibiliteSchema.default('prive'),
+    historique: z.array(ModificationSchema).default([]),
+    timeline: z.array(MomentSchema).default([]),
+  })
+  .superRefine((parcours, contexte) => {
+    parcours.timeline.forEach((moment, indexMoment) => {
+      moment.elements.forEach((element, indexElement) => {
+        if (element.sejourHebergement && element.type !== 'hebergement') {
+          contexte.addIssue({
+            code: 'custom',
+            message: 'un séjour hôtelier ne peut qualifier qu’un hébergement',
+            path: ['timeline', indexMoment, 'elements', indexElement, 'sejourHebergement'],
+          });
+        }
+        if (
+          element.sejourHebergement &&
+          parcours.contexte.dates &&
+          !estSejourHebergementDansDatesParcours(
+            element.sejourHebergement,
+            parcours.contexte.dates
+          )
+        ) {
+          contexte.addIssue({
+            code: 'custom',
+            message: 'le séjour hôtelier doit rester cohérent avec les dates du parcours',
+            path: ['timeline', indexMoment, 'elements', indexElement, 'sejourHebergement'],
+          });
+        }
+      });
+    });
+  });
 
 /**
  * À utiliser uniquement aux frontières de lecture persistée. Les nouvelles
@@ -274,6 +406,8 @@ export type Contexte = z.infer<typeof ContexteSchema>;
 export type Participant = z.infer<typeof ParticipantSchema>;
 export type Budget = z.infer<typeof BudgetSchema>;
 export type PlageHoraire = z.infer<typeof PlageHoraireSchema>;
+export type OccupationHebergement = z.infer<typeof OccupationHebergementSchema>;
+export type SejourHebergement = z.infer<typeof SejourHebergementSchema>;
 export type Contrainte = z.infer<typeof ContrainteSchema>;
 export type Avis = z.infer<typeof AvisSchema>;
 export type Reaction = z.infer<typeof ReactionSchema>;
