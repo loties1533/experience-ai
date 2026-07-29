@@ -1295,7 +1295,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     expect(resoudreLien).not.toHaveBeenCalled();
   });
 
-  it('conserve l’identité Foursquare et qualifie la demande sans inventer disponibilité ni lien', async () => {
+  it('ajoute une recherche Booking à l’hôtel Foursquare sans modifier sa confiance', async () => {
     const hotel = candidatHotel({
       identifiantExterne: 'fsq-burdigala-occupation',
       nom: 'Hôtel Burdigala',
@@ -1370,6 +1370,112 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     });
     expect(element.reservation).toBeUndefined();
     expect(element).not.toHaveProperty('disponibilite');
+    expect(element.lienRechercheHebergement).toMatchObject({
+      type: 'recherche',
+      fournisseur: 'Booking',
+      libelle: 'Rechercher des hébergements sur Booking',
+    });
+    const urlRecherche = new URL(
+      element.lienRechercheHebergement?.url ?? ''
+    );
+    expect(Object.fromEntries(urlRecherche.searchParams)).toEqual({
+      ss: 'Hôtel Burdigala Bordeaux',
+      checkin: '2026-08-10',
+      checkout: '2026-08-12',
+      group_adults: '2',
+      group_children: '0',
+      no_rooms: '1',
+    });
+    expect(resoudreLien).not.toHaveBeenCalled();
+    expect(resoudreLiensReels).not.toHaveBeenCalled();
+  });
+
+  it('ajoute à une suggestion générique une recherche par ville sans reprendre le nom ni l’URL du LLM', async () => {
+    const briefHotelier = BriefSchema.parse({
+      ...brief,
+      hebergement: {
+        necessaire: true,
+        occupation: {
+          statut: 'declaree',
+          adultes: 3,
+          enfants: 1,
+          chambres: 2,
+        },
+        sejours: [
+          {
+            ville: 'Bordeaux',
+            arrivee: '2026-08-10',
+            depart: '2026-08-12',
+          },
+        ],
+      },
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'vide',
+      resultats: [],
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'hôtel',
+          typeMetierRecherche: 'hebergement',
+        })
+      )
+      .mockResolvedValueOnce([
+        {
+          type: 'text',
+          text: JSON.stringify({
+            moments: [
+              {
+                titre: 'Nuit à Bordeaux',
+                ville: 'Bordeaux',
+                elements: [
+                  {
+                    ref: 'hotel-generique',
+                    type: 'hebergement',
+                    nom: 'Hôtel inventé par le modèle',
+                    justification: 'dormir sur place',
+                    reservation: {
+                      lienExterne: 'https://evil.test/reserver',
+                      fournisseur: 'LLM',
+                      typeLien: 'reservation',
+                    },
+                    lienRechercheHebergement: {
+                      type: 'recherche',
+                      fournisseur: 'Booking',
+                      url: 'https://evil.test/recherche',
+                      libelle: 'Réserver cet hôtel',
+                      genereLe: DATE_RECUPERATION,
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      ]);
+
+    const [element] = (await genererParcours(briefHotelier)).timeline[0]
+      .elements;
+    const lien = element.lienRechercheHebergement;
+    const url = new URL(lien?.url ?? '');
+
+    expect(element.nom).toBe('Un hébergement à choisir à Bordeaux');
+    expect(element.confiance).toEqual({ niveau: 'suggestion' });
+    expect(element.reservation).toBeUndefined();
+    expect(lien?.libelle).toBe(
+      'Rechercher des hébergements sur Booking'
+    );
+    expect(url.origin).toBe('https://www.booking.com');
+    expect(url.searchParams.get('ss')).toBe('Bordeaux');
+    expect(url.searchParams.get('ss')).not.toContain('inventé');
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      group_adults: '3',
+      group_children: '1',
+      no_rooms: '2',
+    });
     expect(resoudreLien).not.toHaveBeenCalled();
     expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
@@ -1489,6 +1595,28 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       { ville: 'Bordeaux', arrivee: '2026-08-10', depart: '2026-08-12' },
       { ville: 'Lyon', arrivee: '2026-08-12', depart: '2026-08-15' },
     ]);
+    expect(
+      parcours.timeline.map((moment) => {
+        const lien = moment.elements[0].lienRechercheHebergement;
+        const url = new URL(lien?.url ?? '');
+        return {
+          ss: url.searchParams.get('ss'),
+          arrivee: url.searchParams.get('checkin'),
+          depart: url.searchParams.get('checkout'),
+        };
+      })
+    ).toEqual([
+      {
+        ss: 'Hôtel Bordeaux',
+        arrivee: '2026-08-10',
+        depart: '2026-08-12',
+      },
+      {
+        ss: 'Hôtel Lyon',
+        arrivee: '2026-08-12',
+        depart: '2026-08-15',
+      },
+    ]);
     expect(resoudreLien).not.toHaveBeenCalled();
   });
 
@@ -1578,6 +1706,11 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       'verifie',
       'verifie',
     ]);
+    expect(
+      hotels.every(
+        (hotel) => hotel.lienRechercheHebergement === undefined
+      )
+    ).toBe(true);
     expect(resoudreLien).not.toHaveBeenCalled();
   });
 });

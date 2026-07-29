@@ -122,6 +122,18 @@ describe('sauvegarderParcours — l’écriture dérive les projections', () => 
                 arrivee: '2026-08-10',
                 depart: '2026-08-12',
               },
+              lienRechercheHebergement: {
+                type: 'recherche',
+                fournisseur: 'Booking',
+                url:
+                  'https://www.booking.com/searchresults.html?' +
+                  'ss=H%C3%B4tel+Burdigala+Bordeaux&' +
+                  'checkin=2026-08-10&checkout=2026-08-12&' +
+                  'group_adults=2&group_children=0&no_rooms=1',
+                libelle:
+                  'Rechercher des hébergements sur Booking',
+                genereLe: '2026-07-29T12:00:00.000Z',
+              },
             },
           ],
         },
@@ -135,6 +147,11 @@ describe('sauvegarderParcours — l’écriture dérive les projections', () => 
     expect(appel.create.contenu).toEqual(parcoursHotelier);
     expect(appel.create).not.toHaveProperty('occupationHebergement');
     expect(appel.create).not.toHaveProperty('sejourHebergement');
+    expect(appel.create).not.toHaveProperty('lienRechercheHebergement');
+    expect(
+      appel.create.contenu.timeline[0].elements[0]
+        .lienRechercheHebergement
+    ).toEqual(parcoursHotelier.timeline[0].elements[0].lienRechercheHebergement);
   });
 });
 
@@ -196,6 +213,10 @@ describe('chargerParcours — la lecture revalide le contenu', () => {
       parcours?.timeline.flatMap((moment) => moment.elements)
         .some((element) => element.sejourHebergement !== undefined)
     ).toBe(false);
+    expect(
+      parcours?.timeline.flatMap((moment) => moment.elements)
+        .some((element) => element.lienRechercheHebergement !== undefined)
+    ).toBe(false);
   });
 
   it('relit puis réécrit un ancien parcours sans ajouter de données hôtelières', async () => {
@@ -213,11 +234,27 @@ describe('chargerParcours — la lecture revalide le contenu', () => {
     expect(contenu.contexte).not.toHaveProperty('occupationHebergement');
     expect(
       contenu.timeline.flatMap(
-        (moment: { elements: Array<{ sejourHebergement?: unknown }> }) =>
+        (moment: {
+          elements: Array<{
+            sejourHebergement?: unknown;
+            lienRechercheHebergement?: unknown;
+          }>;
+        }) =>
           moment.elements
       )
     ).not.toContainEqual(
       expect.objectContaining({ sejourHebergement: expect.anything() })
+    );
+    expect(
+      contenu.timeline.flatMap(
+        (moment: {
+          elements: Array<{ lienRechercheHebergement?: unknown }>;
+        }) => moment.elements
+      )
+    ).not.toContainEqual(
+      expect.objectContaining({
+        lienRechercheHebergement: expect.anything(),
+      })
     );
   });
 });

@@ -1,4 +1,5 @@
 import {
+  estLienRechercheHebergementCoherent,
   estSejourHebergementDansDatesParcours,
   type Alternative,
   type Element,
@@ -265,6 +266,36 @@ export function validerParcours(parcours: Parcours): string[] {
     }
     if (element.sejourHebergement && element.type !== 'hebergement') {
       erreurs.push(`un séjour hôtelier ne peut qualifier qu’un hébergement (« ${element.nom} »)`);
+    }
+    if (
+      element.lienRechercheHebergement &&
+      element.type !== 'hebergement'
+    ) {
+      erreurs.push(`un lien de recherche hôtelière ne peut qualifier qu’un hébergement (« ${element.nom} »)`);
+    }
+    if (
+      element.lienRechercheHebergement &&
+      !element.sejourHebergement
+    ) {
+      erreurs.push(`un lien de recherche hôtelière exige un séjour non ambigu (« ${element.nom} »)`);
+    }
+    if (
+      element.lienRechercheHebergement &&
+      parcours.contexte.occupationHebergement?.statut !== 'declaree'
+    ) {
+      erreurs.push(`un lien de recherche hôtelière exige une occupation déclarée (« ${element.nom} »)`);
+    }
+    if (
+      element.lienRechercheHebergement &&
+      element.sejourHebergement &&
+      parcours.contexte.occupationHebergement?.statut === 'declaree' &&
+      !estLienRechercheHebergementCoherent(
+        element.lienRechercheHebergement,
+        element.sejourHebergement,
+        parcours.contexte.occupationHebergement
+      )
+    ) {
+      erreurs.push(`le lien de recherche hôtelière de « ${element.nom} » contredit le séjour ou l’occupation déclarés`);
     }
     if (
       element.sejourHebergement &&
