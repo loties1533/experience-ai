@@ -6,6 +6,7 @@ import {
 import {
   CHEMIN_AUTHENTIFICATION_AMADEUS,
   CHEMIN_LIEUX_AMADEUS,
+  CHEMIN_VOLS_AMADEUS,
   URL_BASE_AMADEUS,
 } from './config.js';
 
@@ -14,7 +15,8 @@ const TAILLE_MAX_REPONSE_AMADEUS = 1_000_000;
 
 export type CheminAmadeus =
   | typeof CHEMIN_AUTHENTIFICATION_AMADEUS
-  | typeof CHEMIN_LIEUX_AMADEUS;
+  | typeof CHEMIN_LIEUX_AMADEUS
+  | typeof CHEMIN_VOLS_AMADEUS;
 
 interface RequeteJsonAmadeus {
   chemin: CheminAmadeus;
