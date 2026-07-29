@@ -64,21 +64,28 @@ const schemas = {
     },
   },
   Confiance: {
+    readOnly: true,
     oneOf: [
       {
         type: 'object',
         required: ['niveau', 'source', 'fournisseur', 'recupereLe'],
+        additionalProperties: false,
         properties: {
           niveau:              { type: 'string', enum: ['verifie'] },
           source:              { type: 'string' },
           fournisseur:         { type: 'string' },
           recupereLe:          { type: 'string', format: 'date-time' },
           identifiantExterne:  { type: 'string' },
+          categorieFournisseur: { type: 'string' },
+          identifiantCategorieFournisseur: { type: 'string' },
+          villeConfirmee: { type: 'string' },
+          adresse: { type: 'string' },
         },
       },
       {
         type: 'object',
         required: ['niveau'],
+        additionalProperties: false,
         properties: {
           niveau:      { type: 'string', enum: ['estime'] },
           source:      { type: 'string' },
@@ -89,6 +96,7 @@ const schemas = {
       {
         type: 'object',
         required: ['niveau'],
+        additionalProperties: false,
         properties: {
           niveau: { type: 'string', enum: ['suggestion'] },
         },
@@ -165,6 +173,15 @@ const schemas = {
     description:
       'Dates civiles propres à un hébergement. Le départ doit être strictement postérieur à l’arrivée. Lorsque le parcours est daté, l’arrivée reste dans ses jours et le départ peut aller au plus jusqu’au lendemain du dernier jour.',
   },
+  PlageHoraire: {
+    type: 'object',
+    required: ['debut', 'fin'],
+    additionalProperties: false,
+    properties: {
+      debut: { type: 'string', format: 'date-time' },
+      fin: { type: 'string', format: 'date-time' },
+    },
+  },
   HebergementBrief: {
     oneOf: [
       {
@@ -203,6 +220,8 @@ const schemas = {
   Reservation: {
     type: 'object',
     required: ['lienExterne', 'fournisseur', 'typeLien'],
+    additionalProperties: false,
+    readOnly: true,
     properties: {
       lienExterne: { type: 'string', format: 'uri' },
       fournisseur: { type: 'string' },
@@ -233,25 +252,212 @@ const schemas = {
     },
     description:
       'Lien de recherche hôtelier local. Booking n’est pas contacté pendant la génération et aucune réservation n’est effectuée.',
+    readOnly: true,
+  },
+  PropositionElementClient: {
+    type: 'object',
+    required: ['type', 'nom', 'justification'],
+    additionalProperties: false,
+    properties: {
+      type: {
+        type: 'string',
+        enum: [
+          'activite',
+          'restaurant',
+          'sortie',
+          'transport',
+          'evenement',
+          'temps_libre',
+        ],
+        description:
+          'Un hébergement ne peut pas être créé ou remplacé par ce contrat générique.',
+      },
+      nom: { type: 'string', minLength: 1, maxLength: 200 },
+      lieu: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 300,
+        description:
+          'Libellé proposé par l’utilisateur, jamais une adresse fournisseur vérifiée.',
+      },
+      plage: { $ref: '#/components/schemas/PlageHoraire' },
+      prix: {
+        type: 'number',
+        minimum: 0,
+        description: 'Budget indicatif ; il reste estimé.',
+      },
+      justification: { type: 'string', minLength: 1, maxLength: 1000 },
+    },
+  },
+  DemandeModificationClient: {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['type', 'elementId', 'remplacement'],
+        additionalProperties: false,
+        properties: {
+          type: { type: 'string', enum: ['remplacer_element'] },
+          elementId: { type: 'string', minLength: 1 },
+          remplacement: {
+            $ref: '#/components/schemas/PropositionElementClient',
+          },
+        },
+      },
+      {
+        type: 'object',
+        required: ['type', 'elementId'],
+        additionalProperties: false,
+        properties: {
+          type: { type: 'string', enum: ['supprimer_element'] },
+          elementId: { type: 'string', minLength: 1 },
+        },
+      },
+      {
+        type: 'object',
+        required: ['type', 'momentId', 'element'],
+        additionalProperties: false,
+        properties: {
+          type: { type: 'string', enum: ['ajouter_element'] },
+          momentId: { type: 'string', minLength: 1 },
+          element: {
+            $ref: '#/components/schemas/PropositionElementClient',
+          },
+        },
+      },
+      {
+        type: 'object',
+        required: ['type', 'elementId', 'justification'],
+        additionalProperties: false,
+        properties: {
+          type: { type: 'string', enum: ['modifier_justification'] },
+          elementId: { type: 'string', minLength: 1 },
+          justification: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 1000,
+          },
+        },
+      },
+      {
+        type: 'object',
+        required: ['type', 'elementId', 'statut'],
+        additionalProperties: false,
+        properties: {
+          type: { type: 'string', enum: ['changer_statut'] },
+          elementId: { type: 'string', minLength: 1 },
+          statut: {
+            type: 'string',
+            enum: ['propose', 'accepte', 'a_remplacer'],
+          },
+        },
+      },
+      {
+        type: 'object',
+        required: ['type', 'elementId', 'alternativeId'],
+        additionalProperties: false,
+        properties: {
+          type: { type: 'string', enum: ['ecarter_alternative'] },
+          elementId: { type: 'string', minLength: 1 },
+          alternativeId: { type: 'string', minLength: 1 },
+        },
+      },
+      {
+        type: 'object',
+        required: ['type', 'elementId', 'sejour'],
+        additionalProperties: false,
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['modifier_sejour_hebergement'],
+          },
+          elementId: { type: 'string', minLength: 1 },
+          sejour: { $ref: '#/components/schemas/SejourHebergement' },
+        },
+      },
+      {
+        type: 'object',
+        required: ['type', 'occupation'],
+        additionalProperties: false,
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['modifier_occupation_hebergement'],
+          },
+          occupation: {
+            type: 'object',
+            required: ['statut', 'adultes', 'enfants', 'chambres'],
+            additionalProperties: false,
+            properties: {
+              statut: { type: 'string', enum: ['declaree'] },
+              adultes: { type: 'integer', minimum: 1, maximum: 20 },
+              enfants: { type: 'integer', minimum: 0, maximum: 20 },
+              chambres: { type: 'integer', minimum: 1, maximum: 10 },
+            },
+          },
+        },
+      },
+      {
+        type: 'object',
+        required: [
+          'type',
+          'elementId',
+          'villeDemandee',
+          'requete',
+        ],
+        additionalProperties: false,
+        properties: {
+          type: { type: 'string', enum: ['remplacer_hotel'] },
+          elementId: { type: 'string', minLength: 1 },
+          villeDemandee: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 120,
+          },
+          requete: { type: 'string', minLength: 1, maxLength: 200 },
+          sejour: { $ref: '#/components/schemas/SejourHebergement' },
+        },
+      },
+    ],
+    discriminator: { propertyName: 'type' },
+    description:
+      'Intention client stricte. Elle ne peut contenir ni confiance, provenance, identifiant externe, adresse fournisseur, réservation, disponibilité ou lien Booking.',
   },
   Element: {
     type: 'object',
     required: ['id', 'type', 'nom', 'justification', 'confiance', 'prixEstime'],
     additionalProperties: true,
     properties: {
-      id:            { type: 'string' },
+      id:            { type: 'string', readOnly: true },
       type:          { type: 'string' },
       nom:           { type: 'string' },
-      lieu:          { type: 'string' },
-      prix:          { type: 'number', minimum: 0 },
-      prixEstime:    { type: 'boolean' },
-      justification: { type: 'string' },
-      confiance:     { $ref: '#/components/schemas/Confiance' },
-      reservation:   { $ref: '#/components/schemas/Reservation' },
-      lienRechercheHebergement: {
-        $ref: '#/components/schemas/LienRechercheHebergement',
+      lieu: {
+        type: 'string',
+        description:
+          'Pour un hébergement vérifié, cette adresse est produite par Foursquare et reste en lecture seule.',
       },
-      sejourHebergement: { $ref: '#/components/schemas/SejourHebergement' },
+      prix:          { type: 'number', minimum: 0 },
+      prixEstime:    { type: 'boolean', readOnly: true },
+      justification: { type: 'string' },
+      confiance: {
+        allOf: [{ $ref: '#/components/schemas/Confiance' }],
+        readOnly: true,
+      },
+      reservation: {
+        allOf: [{ $ref: '#/components/schemas/Reservation' }],
+        readOnly: true,
+        description:
+          'Lien externe sécurisé pour les éléments non hôteliers. Un hébergement ne porte jamais une réservation.',
+      },
+      lienRechercheHebergement: {
+        allOf: [
+          { $ref: '#/components/schemas/LienRechercheHebergement' },
+        ],
+        readOnly: true,
+      },
+      sejourHebergement: {
+        allOf: [{ $ref: '#/components/schemas/SejourHebergement' }],
+        readOnly: true,
+      },
     },
   },
   Moment: {
@@ -269,7 +475,10 @@ const schemas = {
     additionalProperties: true,
     properties: {
       occupationHebergement: {
-        $ref: '#/components/schemas/OccupationHebergement',
+        allOf: [
+          { $ref: '#/components/schemas/OccupationHebergement' },
+        ],
+        readOnly: true,
       },
     },
   },
@@ -335,6 +544,10 @@ const unauthorized = {
 };
 const badRequest = {
   description: 'Requête invalide (échec de validation Zod)',
+  content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+};
+const forbidden = {
+  description: 'Action interdite au rôle courant',
   content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
 };
 const notFound = {
@@ -559,7 +772,9 @@ export const openapiSpec = {
         summary: 'Modifier un élément sans tout régénérer',
         description:
           'Deux entrées possibles : une demande structurée (le front sait déjà quoi changer) ou une phrase que l\'agent Modification traduit. ' +
-          'Dans les deux cas le domaine applique ou refuse, et renvoie `elementsARegenerer` : exactement ce qui dépend du changement.',
+          'Dans les deux cas le domaine applique ou refuse, et renvoie `elementsARegenerer` : exactement ce qui dépend du changement. ' +
+          'Les preuves externes sont produites uniquement par le serveur. Une modification hôtelière peut mettre à jour un séjour ou une occupation déclarée, ou demander un remplacement qui repasse par Foursquare. ' +
+          'Le lien Booking rendu est seulement une recherche : l’API ne fournit ni réservation ni disponibilité.',
         security: [{ cookieAuth: [] }, { bearerAuth: [] }],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
         requestBody: {
@@ -568,8 +783,30 @@ export const openapiSpec = {
             'application/json': {
               schema: {
                 oneOf: [
-                  { type: 'object', required: ['demande'], properties: { demande: { type: 'object', additionalProperties: true } } },
-                  { type: 'object', required: ['phrase'], properties: { phrase: { type: 'string', minLength: 1, maxLength: 500, example: 'Change le resto du jour 3' } } },
+                  {
+                    type: 'object',
+                    required: ['demande'],
+                    additionalProperties: false,
+                    properties: {
+                      demande: {
+                        $ref:
+                          '#/components/schemas/DemandeModificationClient',
+                      },
+                    },
+                  },
+                  {
+                    type: 'object',
+                    required: ['phrase'],
+                    additionalProperties: false,
+                    properties: {
+                      phrase: {
+                        type: 'string',
+                        minLength: 1,
+                        maxLength: 500,
+                        example: 'Change le resto du jour 3',
+                      },
+                    },
+                  },
                 ],
               },
             },
@@ -593,8 +830,18 @@ export const openapiSpec = {
           },
           400: badRequest,
           401: unauthorized,
+          403: forbidden,
           404: notFound,
           422: { description: 'Modification refusée : elle rendrait le parcours incohérent', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          503: {
+            description:
+              'Dépendance externe indispensable momentanément indisponible, par exemple Foursquare lors d’un remplacement hôtelier',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
         },
       },
     },

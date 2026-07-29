@@ -9,7 +9,7 @@ import { BadgeConfiance, LibelleLien, libelleLien } from '../components/Confianc
 import PanneauPartage from '../components/PanneauPartage'
 import {
   chargerParcours, modifierParcours,
-  type Parcours, type Element, type DemandeSurElement,
+  type Parcours, type Element, type DemandeSurElementClient,
 } from '../lib/api'
 
 // La boucle qui fait la valeur (doc 05, étapes 6 ↔ 7) : explorer moment par
@@ -38,7 +38,7 @@ export default function ParcoursDetail() {
   })
 
   const modification = useMutation({
-    mutationFn: (corps: { demande: DemandeSurElement } | { phrase: string }) =>
+    mutationFn: (corps: { demande: DemandeSurElementClient } | { phrase: string }) =>
       modifierParcours(id as string, corps),
     onSuccess: (reponse) => {
       queryClient.setQueryData(['parcours', id], { parcours: reponse.parcours })

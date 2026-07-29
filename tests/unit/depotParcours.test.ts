@@ -203,6 +203,57 @@ describe('chargerParcours — la lecture revalide le contenu', () => {
     });
   });
 
+  it('neutralise les preuves hôtelières legacy ambiguës avant toute réécriture', async () => {
+    prismaMock.parcours.findFirst.mockResolvedValue({
+      contenu: {
+        ...parcoursValide,
+        timeline: [
+          {
+            id: 'm-hotel-legacy',
+            titre: 'Ancienne nuit',
+            elements: [
+              {
+                id: 'hotel-legacy',
+                type: 'hebergement',
+                nom: 'Hôtel anciennement nommé',
+                justification: 'ancienne donnée',
+                confiance: {
+                  niveau: 'verifie',
+                  fournisseur: 'FauxSquare',
+                  source: 'https://evil.test',
+                  recupereLe: '2025-01-01T10:00:00.000Z',
+                  identifiantExterne: 'faux',
+                },
+                reservation: {
+                  lienExterne: 'https://evil.test/reserver',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    prismaMock.parcours.findUnique.mockResolvedValue({
+      user_id: PROPRIETAIRE,
+    });
+
+    const parcours = await chargerParcours(PROPRIETAIRE, 'p1');
+    if (!parcours) throw new Error('parcours attendu');
+    const hotel = parcours.timeline[0].elements[0];
+    expect(hotel.confiance).toEqual({ niveau: 'suggestion' });
+    expect(hotel.reservation).toBeUndefined();
+
+    await sauvegarderParcours(PROPRIETAIRE, parcours);
+    const contenu =
+      prismaMock.parcours.upsert.mock.calls[0][0].update.contenu;
+    expect(contenu.timeline[0].elements[0].confiance).toEqual({
+      niveau: 'suggestion',
+    });
+    expect(
+      contenu.timeline[0].elements[0].reservation
+    ).toBeUndefined();
+  });
+
   it('lit un ancien parcours sans occupation ni séjour sans leur inventer de valeur', async () => {
     prismaMock.parcours.findFirst.mockResolvedValue({ contenu: parcoursValide });
 

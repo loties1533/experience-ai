@@ -14,6 +14,7 @@ import jwt from 'jsonwebtoken';
 import app from '../../server/index.js';
 import { ParcoursSchema, type Parcours } from '../../server/domaine/parcours/index.js';
 import { AppError } from '../../server/lib/AppError.js';
+import { creerLienRechercheHebergement } from '../../server/lib/url.js';
 
 process.env.JWT_SECRET = 'test-secret-for-vitest';
 
@@ -39,6 +40,13 @@ vi.mock('../../server/agents/intake.js', () => ({
 }));
 vi.mock('../../server/agents/modification.js', () => ({
   interpreterDemande: vi.fn().mockResolvedValue({ type: 'supprimer_element', elementId: 'e1' }),
+}));
+
+const { rechercherLieuxFoursquareMock } = vi.hoisted(() => ({
+  rechercherLieuxFoursquareMock: vi.fn(),
+}));
+vi.mock('../../server/services/foursquare.js', () => ({
+  rechercherLieuxFoursquare: rechercherLieuxFoursquareMock,
 }));
 
 const PARCOURS: Parcours = ParcoursSchema.parse({
@@ -318,11 +326,183 @@ describe('POST /api/parcours/:id/modifications — validation de la demande', ()
     expect(res.status).toBe(400);
   });
 
+  it.each([
+    ['confiance vérifiée', { confiance: { niveau: 'verifie' } }],
+    [
+      'provenance Foursquare',
+      {
+        provenance: {
+          fournisseur: 'Foursquare',
+          source: 'https://places-api.foursquare.com/places/search',
+        },
+      },
+    ],
+    ['fournisseur', { fournisseur: 'Foursquare' }],
+    ['source', { source: 'https://evil.test' }],
+    ['identifiant externe', { identifiantExterne: 'fsq-forge' }],
+    ['adresse fournisseur', { adresse: '1 rue inventée' }],
+    [
+      'date de récupération',
+      { recupereLe: '2026-07-29T12:00:00.000Z' },
+    ],
+    [
+      'lien Booking',
+      {
+        lienRechercheHebergement: {
+          type: 'recherche',
+          fournisseur: 'Booking',
+          url: 'https://www.booking.com/searchresults.html',
+          libelle: 'Rechercher des hébergements sur Booking',
+          genereLe: '2026-07-29T12:00:00.000Z',
+        },
+      },
+    ],
+    [
+      'réservation',
+      {
+        reservation: {
+          lienExterne: 'https://evil.test/reserver',
+          fournisseur: 'Faux',
+          typeLien: 'reservation',
+        },
+      },
+    ],
+    ['disponibilité', { disponibilite: true }],
+    ['prix observé', { prixObserve: 99 }],
+  ])(
+    '400 et aucun effet de bord pour une fausse %s',
+    async (_libelle, champInterdit) => {
+      const sauvegardesAvant =
+        prismaMock.parcours.upsert.mock.calls.length;
+      const recherchesAvant =
+        rechercherLieuxFoursquareMock.mock.calls.length;
+      const lecturesAvant =
+        prismaMock.parcours.findFirst.mock.calls.length;
+      const res = await auth(
+        request(app).post(
+          `/api/parcours/${PARCOURS_ID}/modifications`
+        )
+      ).send({
+        demande: {
+          type: 'ajouter_element',
+          momentId: 'm1',
+          element: {
+            type: 'activite',
+            nom: 'Élément forgé',
+            justification: 'tentative de falsification',
+            ...champInterdit,
+          },
+        },
+      });
+
+      expect(res.status).toBe(400);
+      expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(
+        sauvegardesAvant
+      );
+      expect(rechercherLieuxFoursquareMock).toHaveBeenCalledTimes(
+        recherchesAvant
+      );
+      expect(prismaMock.parcours.findFirst).toHaveBeenCalledTimes(
+        lecturesAvant
+      );
+    }
+  );
+
+  it('400 si un hôtel est injecté par le remplacement générique', async () => {
+    const res = await auth(
+      request(app).post(
+        `/api/parcours/${PARCOURS_ID}/modifications`
+      )
+    ).send({
+      demande: {
+        type: 'remplacer_element',
+        elementId: 'e1',
+        remplacement: {
+          type: 'hebergement',
+          nom: 'Hôtel forgé',
+          justification: 'faux hôtel',
+        },
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('400 si l’occupation hôtelière déclarée est partielle', async () => {
+    const res = await auth(
+      request(app).post(
+        `/api/parcours/${PARCOURS_ID}/modifications`
+      )
+    ).send({
+      demande: {
+        type: 'modifier_occupation_hebergement',
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          chambres: 1,
+        },
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('400 pour un champ interdit profondément imbriqué', async () => {
+    const lecturesAvant =
+      prismaMock.parcours.findFirst.mock.calls.length;
+    const res = await auth(
+      request(app).post(
+        `/api/parcours/${PARCOURS_ID}/modifications`
+      )
+    ).send({
+      demande: {
+        type: 'modifier_occupation_hebergement',
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+          provenance: 'Foursquare',
+        },
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(prismaMock.parcours.findFirst).toHaveBeenCalledTimes(
+      lecturesAvant
+    );
+  });
+
   it('200 avec une demande structurée valide', async () => {
     const res = await auth(request(app).post(`/api/parcours/${PARCOURS_ID}/modifications`))
       .send({ demande: { type: 'changer_statut', elementId: 'e1', statut: 'accepte' } });
     expect(res.status).toBe(200);
     expect(res.body.description).toBeDefined();
+  });
+
+  it('attribue côté serveur l’identifiant d’un nouvel élément', async () => {
+    const res = await auth(
+      request(app).post(
+        `/api/parcours/${PARCOURS_ID}/modifications`
+      )
+    ).send({
+      demande: {
+        type: 'ajouter_element',
+        momentId: 'm1',
+        element: {
+          type: 'activite',
+          nom: 'Visite guidée',
+          justification: 'découvrir la ville',
+        },
+      },
+    });
+    expect(res.status).toBe(200);
+    const ajout = res.body.parcours.timeline[0].elements.find(
+      (element: { nom: string }) =>
+        element.nom === 'Visite guidée'
+    );
+    expect(ajout.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+    expect(ajout.id).not.toBe('e1');
+    expect(ajout.confiance).toEqual({ niveau: 'suggestion' });
   });
 
   it('200 avec une phrase (traduite par l\'agent)', async () => {
@@ -331,15 +511,343 @@ describe('POST /api/parcours/:id/modifications — validation de la demande', ()
     expect(res.status).toBe(200);
   });
 
-  it('422 si l\'auteur n\'a la main sur rien (invariant 8)', async () => {
+  it('403 si l\'auteur n\'a la main sur rien (invariant 8)', async () => {
     // Parcours sans organisateur : le propriétaire n'est rattaché à personne,
     // le domaine refuse plutôt que de supposer un droit.
     prismaMock.parcours.findFirst.mockResolvedValueOnce({
       contenu: { ...PARCOURS, participants: [{ id: 'u1', nom: 'Hugo', role: 'heros' }] },
     });
+    const sauvegardesAvant =
+      prismaMock.parcours.upsert.mock.calls.length;
+    const recherchesAvant =
+      rechercherLieuxFoursquareMock.mock.calls.length;
     const res = await auth(request(app).post(`/api/parcours/${PARCOURS_ID}/modifications`))
-      .send({ demande: { type: 'changer_statut', elementId: 'e1', statut: 'accepte' } });
+      .send({
+        demande: {
+          type: 'remplacer_hotel',
+          elementId: 'e1',
+          villeDemandee: 'Bordeaux',
+          requete: 'Hôtel Burdigala',
+          sejour: {
+            ville: 'Bordeaux',
+            arrivee: '2026-08-10',
+            depart: '2026-08-12',
+          },
+        },
+      });
+    expect(res.status).toBe(403);
+    expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(
+      sauvegardesAvant
+    );
+    expect(rechercherLieuxFoursquareMock).toHaveBeenCalledTimes(
+      recherchesAvant
+    );
+  });
+
+  it('404 sans effet de bord si le parcours est absent', async () => {
+    prismaMock.parcours.findFirst.mockResolvedValueOnce(null);
+    const sauvegardesAvant =
+      prismaMock.parcours.upsert.mock.calls.length;
+    const recherchesAvant =
+      rechercherLieuxFoursquareMock.mock.calls.length;
+    const res = await auth(
+      request(app).post(
+        `/api/parcours/${PARCOURS_ID}/modifications`
+      )
+    ).send({
+      demande: {
+        type: 'changer_statut',
+        elementId: 'e1',
+        statut: 'accepte',
+      },
+    });
+    expect(res.status).toBe(404);
+    expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(
+      sauvegardesAvant
+    );
+    expect(rechercherLieuxFoursquareMock).toHaveBeenCalledTimes(
+      recherchesAvant
+    );
+  });
+
+  it('404 avant Foursquare si l’élément hôtelier ciblé est absent', async () => {
+    const sauvegardesAvant =
+      prismaMock.parcours.upsert.mock.calls.length;
+    const recherchesAvant =
+      rechercherLieuxFoursquareMock.mock.calls.length;
+    const res = await auth(
+      request(app).post(
+        `/api/parcours/${PARCOURS_ID}/modifications`
+      )
+    ).send({
+      demande: {
+        type: 'remplacer_hotel',
+        elementId: 'hotel-absent',
+        villeDemandee: 'Bordeaux',
+        requete: 'Hôtel Burdigala',
+        sejour: {
+          ville: 'Bordeaux',
+          arrivee: '2026-08-10',
+          depart: '2026-08-12',
+        },
+      },
+    });
+    expect(res.status).toBe(404);
+    expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(
+      sauvegardesAvant
+    );
+    expect(rechercherLieuxFoursquareMock).toHaveBeenCalledTimes(
+      recherchesAvant
+    );
+  });
+
+  it('applique puis persiste une occupation complète avec un lien reconstruit', async () => {
+    const sejour = {
+      ville: 'Bordeaux',
+      arrivee: '2026-08-10',
+      depart: '2026-08-12',
+    };
+    const occupation = {
+      statut: 'declaree' as const,
+      adultes: 2,
+      enfants: 0,
+      chambres: 1,
+    };
+    const parcoursHotelier = ParcoursSchema.parse({
+      ...PARCOURS,
+      contexte: {
+        ...PARCOURS.contexte,
+        occupationHebergement: occupation,
+      },
+      timeline: [
+        {
+          id: 'nuit',
+          titre: 'Nuit',
+          elements: [
+            {
+              id: 'hotel',
+              type: 'hebergement',
+              nom: 'Un hébergement à choisir à Bordeaux',
+              justification: 'dormir sur place',
+              sejourHebergement: sejour,
+              lienRechercheHebergement:
+                creerLienRechercheHebergement(
+                  { sejour, occupation },
+                  '2026-07-29T12:00:00.000Z'
+                ),
+            },
+          ],
+        },
+      ],
+    });
+    prismaMock.parcours.findFirst.mockResolvedValueOnce({
+      contenu: parcoursHotelier,
+    });
+    const sauvegardesAvant =
+      prismaMock.parcours.upsert.mock.calls.length;
+
+    const res = await auth(
+      request(app).post(
+        `/api/parcours/${PARCOURS_ID}/modifications`
+      )
+    ).send({
+      demande: {
+        type: 'modifier_occupation_hebergement',
+        occupation: {
+          statut: 'declaree',
+          adultes: 3,
+          enfants: 1,
+          chambres: 2,
+        },
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(
+      sauvegardesAvant + 1
+    );
+    const url =
+      res.body.parcours.timeline[0].elements[0]
+        .lienRechercheHebergement.url;
+    const parametres = new URL(url).searchParams;
+    expect(parametres.get('group_adults')).toBe('3');
+    expect(parametres.get('group_children')).toBe('1');
+    expect(parametres.get('no_rooms')).toBe('2');
+  });
+
+  it('modifie sûrement un ancien hôtel après neutralisation de ses fausses preuves', async () => {
+    prismaMock.parcours.findFirst.mockResolvedValueOnce({
+      contenu: {
+        ...PARCOURS,
+        timeline: [
+          {
+            id: 'ancienne-nuit',
+            titre: 'Ancienne nuit',
+            elements: [
+              {
+                id: 'hotel-legacy',
+                type: 'hebergement',
+                nom: 'Ancien hôtel',
+                justification: 'ancienne justification',
+                confiance: {
+                  niveau: 'verifie',
+                  fournisseur: 'FauxSquare',
+                  source: 'https://evil.test',
+                  recupereLe: '2025-01-01T10:00:00.000Z',
+                  identifiantExterne: 'faux',
+                },
+                reservation: {
+                  lienExterne: 'https://evil.test/reserver',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const res = await auth(
+      request(app).post(
+        `/api/parcours/${PARCOURS_ID}/modifications`
+      )
+    ).send({
+      demande: {
+        type: 'modifier_justification',
+        elementId: 'hotel-legacy',
+        justification: 'justification corrigée',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const hotel = res.body.parcours.timeline[0].elements[0];
+    expect(hotel.justification).toBe('justification corrigée');
+    expect(hotel.confiance).toEqual({ niveau: 'suggestion' });
+    expect(hotel.reservation).toBeUndefined();
+  });
+
+  it('503 sans persistance si Foursquare est requis et indisponible', async () => {
+    const parcoursHotelier = ParcoursSchema.parse({
+      ...PARCOURS,
+      contexte: {
+        ...PARCOURS.contexte,
+        dates: {
+          debut: '2026-08-10T08:00:00.000Z',
+          fin: '2026-08-12T20:00:00.000Z',
+        },
+        lieux: ['Bordeaux'],
+      },
+      timeline: [
+        {
+          id: 'nuit',
+          titre: 'Nuit',
+          elements: [
+            {
+              id: 'hotel',
+              type: 'hebergement',
+              nom: 'Un hébergement à choisir à Bordeaux',
+              justification: 'dormir sur place',
+              sejourHebergement: {
+                ville: 'Bordeaux',
+                arrivee: '2026-08-10',
+                depart: '2026-08-12',
+              },
+            },
+          ],
+        },
+      ],
+    });
+    prismaMock.parcours.findFirst.mockResolvedValueOnce({
+      contenu: parcoursHotelier,
+    });
+    rechercherLieuxFoursquareMock.mockResolvedValueOnce({
+      statut: 'indisponible',
+      fournisseur: 'Foursquare',
+      raison: 'timeout',
+    });
+    const sauvegardesAvant =
+      prismaMock.parcours.upsert.mock.calls.length;
+
+    const res = await auth(
+      request(app).post(
+        `/api/parcours/${PARCOURS_ID}/modifications`
+      )
+    ).send({
+      demande: {
+        type: 'remplacer_hotel',
+        elementId: 'hotel',
+        villeDemandee: 'Bordeaux',
+        requete: 'Hôtel Burdigala',
+      },
+    });
+
+    expect(res.status).toBe(503);
+    expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(
+      sauvegardesAvant
+    );
+  });
+
+  it('422 sans appel externe ni persistance pour un séjour hors parcours', async () => {
+    const parcoursHotelier = ParcoursSchema.parse({
+      ...PARCOURS,
+      contexte: {
+        ...PARCOURS.contexte,
+        dates: {
+          debut: '2026-08-10T08:00:00.000Z',
+          fin: '2026-08-12T20:00:00.000Z',
+        },
+        lieux: ['Bordeaux'],
+      },
+      timeline: [
+        {
+          id: 'nuit',
+          titre: 'Nuit',
+          elements: [
+            {
+              id: 'hotel',
+              type: 'hebergement',
+              nom: 'Un hébergement à choisir à Bordeaux',
+              justification: 'dormir sur place',
+              sejourHebergement: {
+                ville: 'Bordeaux',
+                arrivee: '2026-08-10',
+                depart: '2026-08-12',
+              },
+            },
+          ],
+        },
+      ],
+    });
+    prismaMock.parcours.findFirst.mockResolvedValueOnce({
+      contenu: parcoursHotelier,
+    });
+    const sauvegardesAvant =
+      prismaMock.parcours.upsert.mock.calls.length;
+    const recherchesAvant =
+      rechercherLieuxFoursquareMock.mock.calls.length;
+
+    const res = await auth(
+      request(app).post(
+        `/api/parcours/${PARCOURS_ID}/modifications`
+      )
+    ).send({
+      demande: {
+        type: 'modifier_sejour_hebergement',
+        elementId: 'hotel',
+        sejour: {
+          ville: 'Bordeaux',
+          arrivee: '2026-09-01',
+          depart: '2026-09-02',
+        },
+      },
+    });
+
     expect(res.status).toBe(422);
+    expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(
+      sauvegardesAvant
+    );
+    expect(rechercherLieuxFoursquareMock).toHaveBeenCalledTimes(
+      recherchesAvant
+    );
   });
 });
 

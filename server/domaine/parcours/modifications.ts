@@ -2,8 +2,12 @@ import { z } from 'zod';
 import {
   AvisSchema,
   ElementSchema,
+  OccupationHebergementDeclareeSchema,
   ParticipantSchema,
+  PlageHoraireSchema,
+  SejourHebergementSchema,
   StatutElementSchema,
+  TypeElementSchema,
   VisibiliteSchema,
   type Alternative,
   type Element,
@@ -25,6 +29,120 @@ import {
 //
 // Toute demande est signée : le rôle de son auteur doit la couvrir (invariant 8).
 
+/**
+ * Frontière HTTP : une proposition client décrit une intention éditoriale,
+ * jamais un élément persistant complet. Les preuves, identifiants externes,
+ * liens, statuts de confiance et dérivés restent donc impossibles à exprimer.
+ *
+ * L'hébergement est volontairement exclu de ce chemin générique : son identité
+ * doit passer par `remplacer_hotel`, donc par Foursquare côté serveur.
+ */
+export const PropositionElementClientSchema = z
+  .object({
+    type: TypeElementSchema.exclude(['hebergement']),
+    nom: z.string().trim().min(1).max(200),
+    lieu: z.string().trim().min(1).max(300).optional(),
+    plage: PlageHoraireSchema.strict().optional(),
+    prix: z.number().nonnegative().optional(),
+    justification: z.string().trim().min(1).max(1000),
+  })
+  .strict();
+
+export const DemandeModificationHotelClientSchema = z.discriminatedUnion(
+  'type',
+  [
+    z
+      .object({
+        type: z.literal('modifier_sejour_hebergement'),
+        elementId: z.string().min(1),
+        sejour: SejourHebergementSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal('modifier_occupation_hebergement'),
+        occupation: OccupationHebergementDeclareeSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal('remplacer_hotel'),
+        elementId: z.string().min(1),
+        villeDemandee: z.string().trim().min(1).max(120),
+        requete: z.string().trim().min(1).max(200),
+        sejour: SejourHebergementSchema.optional(),
+      })
+      .strict()
+      .superRefine((demande, contexte) => {
+        if (
+          demande.sejour &&
+          demande.sejour.ville.localeCompare(
+            demande.villeDemandee,
+            'fr',
+            { sensitivity: 'base' }
+          ) !== 0
+        ) {
+          contexte.addIssue({
+            code: 'custom',
+            path: ['sejour', 'ville'],
+            message:
+              'la ville du séjour doit correspondre à la ville demandée',
+          });
+        }
+      }),
+  ]
+);
+
+const DemandeSurElementClientPureSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal('remplacer_element'),
+      elementId: z.string().min(1),
+      remplacement: PropositionElementClientSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('supprimer_element'),
+      elementId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('ajouter_element'),
+      momentId: z.string().min(1),
+      element: PropositionElementClientSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('modifier_justification'),
+      elementId: z.string().min(1),
+      justification: z.string().trim().min(1).max(1000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('changer_statut'),
+      elementId: z.string().min(1),
+      statut: StatutElementSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('ecarter_alternative'),
+      elementId: z.string().min(1),
+      alternativeId: z.string().min(1),
+    })
+    .strict(),
+]);
+
+/** Contrat public strict de la route de modification. */
+export const DemandeSurElementClientSchema = z.discriminatedUnion('type', [
+  ...DemandeSurElementClientPureSchema.options,
+  ...DemandeModificationHotelClientSchema.options,
+]);
+
 // Un remplacement ne porte pas d'id : il hérite de celui de l'élément remplacé.
 const RemplacementSchema = ElementSchema.omit({ id: true });
 
@@ -43,6 +161,11 @@ export const DemandeSurElementSchema = z.discriminatedUnion('type', [
     type: z.literal('ajouter_element'),
     momentId: z.string().min(1),
     element: ElementSchema,
+  }),
+  z.object({
+    type: z.literal('modifier_justification'),
+    elementId: z.string().min(1),
+    justification: z.string().trim().min(1).max(1000),
   }),
   z.object({
     type: z.literal('changer_statut'),
@@ -90,8 +213,62 @@ export const DemandeModificationSchema = z.discriminatedUnion('type', [
 ]);
 
 export type DemandeSurElement = z.infer<typeof DemandeSurElementSchema>;
+export type DemandeSurElementClient = z.infer<
+  typeof DemandeSurElementClientSchema
+>;
+export type DemandeModificationHotelClient = z.infer<
+  typeof DemandeModificationHotelClientSchema
+>;
 export type DemandeDePartage = z.infer<typeof DemandeDePartageSchema>;
 export type DemandeModification = z.infer<typeof DemandeModificationSchema>;
+
+export function estDemandeModificationHotelClient(
+  demande: DemandeSurElementClient
+): demande is DemandeModificationHotelClient {
+  return (
+    demande.type === 'modifier_sejour_hebergement' ||
+    demande.type === 'modifier_occupation_hebergement' ||
+    demande.type === 'remplacer_hotel'
+  );
+}
+
+/**
+ * Transforme l'intention client déjà validée en commande interne. C'est ici,
+ * côté serveur, que l'id d'un ajout et les valeurs de confiance minimales sont
+ * attribués. Aucun champ de preuve ne provient de la charge HTTP.
+ */
+export function preparerDemandeSurElementClient(
+  demande: Exclude<
+    DemandeSurElementClient,
+    DemandeModificationHotelClient
+  >,
+  creerId: () => string
+): DemandeSurElement {
+  switch (demande.type) {
+    case 'ajouter_element':
+      return {
+        ...demande,
+        element: ElementSchema.parse({
+          id: creerId(),
+          ...demande.element,
+          confiance: { niveau: 'suggestion' },
+          prixEstime: demande.element.prix !== undefined,
+        }),
+      };
+    case 'remplacer_element': {
+      const element = ElementSchema.parse({
+        id: 'remplacement-interne',
+        ...demande.remplacement,
+        confiance: { niveau: 'suggestion' },
+        prixEstime: demande.remplacement.prix !== undefined,
+      });
+      const { id: _id, ...remplacement } = element;
+      return { ...demande, remplacement };
+    }
+    default:
+      return demande;
+  }
+}
 
 /**
  * Invariant 8 : chaque demande relève d'une responsabilité métier (doc 06).
@@ -101,6 +278,7 @@ export type DemandeModification = z.infer<typeof DemandeModificationSchema>;
 const ACTION_PAR_DEMANDE: Record<DemandeModification['type'], ActionParcours> = {
   ajouter_element: 'proposer',
   remplacer_element: 'ajuster',
+  modifier_justification: 'ajuster',
   changer_statut: 'ajuster',
   supprimer_element: 'supprimer',
   ecarter_alternative: 'arbitrer',
@@ -125,7 +303,7 @@ export type ResultatModification =
       /** Phrase affichable telle quelle (toast front + historique). */
       description: string;
     }
-  | { ok: false; erreur: string };
+  | { ok: false; erreur: string; statutHttp?: 403 | 404 | 422 };
 
 function trouverElement(parcours: Parcours, elementId: string): Element | undefined {
   return parcours.timeline.flatMap((m) => m.elements).find((e) => e.id === elementId);
@@ -136,6 +314,16 @@ function avecHistorique(parcours: Parcours, description: string, horodatage: str
     ...parcours,
     historique: [...parcours.historique, { date: horodatage, description, elementId }],
   };
+}
+
+function retirerOccupationSansHebergement(parcours: Parcours): Parcours {
+  const contientHebergement = parcours.timeline.some((moment) =>
+    moment.elements.some((element) => element.type === 'hebergement')
+  );
+  if (contientHebergement) return parcours;
+  const { occupationHebergement: _occupation, ...contexte } =
+    parcours.contexte;
+  return { ...parcours, contexte };
 }
 
 /**
@@ -163,12 +351,18 @@ export function appliquerModification(
 ): ResultatModification {
   const { auteurId, horodatage } = contexte;
   const refus = verifierResponsabilite(parcours, auteurId, ACTION_PAR_DEMANDE[demande.type]);
-  if (refus) return { ok: false, erreur: refus };
+  if (refus) return { ok: false, erreur: refus, statutHttp: 403 };
 
   switch (demande.type) {
     case 'remplacer_element': {
       const cible = trouverElement(parcours, demande.elementId);
-      if (!cible) return { ok: false, erreur: `Aucun élément « ${demande.elementId} » dans ce parcours` };
+      if (!cible) {
+        return {
+          ok: false,
+          erreur: `Aucun élément « ${demande.elementId} » dans ce parcours`,
+          statutHttp: 404,
+        };
+      }
 
       // Le remplaçant hérite du prix de l'élément remplacé quand il n'en porte
       // pas : sinon le budget du parcours devient silencieusement faux dès
@@ -180,13 +374,13 @@ export function appliquerModification(
         prix: demande.remplacement.prix ?? cible.prix,
         alternatives: reporterArbitrages(cible, demande.remplacement.alternatives),
       };
-      const nouveau: Parcours = {
+      const nouveau = retirerOccupationSansHebergement({
         ...parcours,
         timeline: parcours.timeline.map((moment) => ({
           ...moment,
           elements: moment.elements.map((e) => (e.id === cible.id ? remplacant : e)),
         })),
-      };
+      });
       return valider(nouveau, {
         description: `« ${cible.nom} » remplacé par « ${remplacant.nom} »`,
         elementsARegenerer: elementsDependants(nouveau, cible.id),
@@ -197,11 +391,17 @@ export function appliquerModification(
 
     case 'supprimer_element': {
       const cible = trouverElement(parcours, demande.elementId);
-      if (!cible) return { ok: false, erreur: `Aucun élément « ${demande.elementId} » dans ce parcours` };
+      if (!cible) {
+        return {
+          ok: false,
+          erreur: `Aucun élément « ${demande.elementId} » dans ce parcours`,
+          statutHttp: 404,
+        };
+      }
 
       // Les dépendants perdent leur dépendance et passent en régénération.
       const aRegenerer = elementsDependants(parcours, cible.id);
-      const nouveau: Parcours = {
+      const nouveau = retirerOccupationSansHebergement({
         ...parcours,
         timeline: parcours.timeline.map((moment) => ({
           ...moment,
@@ -209,7 +409,7 @@ export function appliquerModification(
             .filter((e) => e.id !== cible.id)
             .map((e) => ({ ...e, dependDe: e.dependDe.filter((id) => id !== cible.id) })),
         })),
-      };
+      });
       return valider(nouveau, {
         description: `« ${cible.nom} » supprimé du parcours`,
         elementsARegenerer: aRegenerer,
@@ -220,7 +420,13 @@ export function appliquerModification(
 
     case 'ajouter_element': {
       const moment = parcours.timeline.find((m) => m.id === demande.momentId);
-      if (!moment) return { ok: false, erreur: `Aucun moment « ${demande.momentId} » dans ce parcours` };
+      if (!moment) {
+        return {
+          ok: false,
+          erreur: `Aucun moment « ${demande.momentId} » dans ce parcours`,
+          statutHttp: 404,
+        };
+      }
       if (trouverElement(parcours, demande.element.id)) {
         return { ok: false, erreur: `L'id « ${demande.element.id} » existe déjà dans ce parcours` };
       }
@@ -239,9 +445,43 @@ export function appliquerModification(
       });
     }
 
+    case 'modifier_justification': {
+      const cible = trouverElement(parcours, demande.elementId);
+      if (!cible) {
+        return {
+          ok: false,
+          erreur: `Aucun élément « ${demande.elementId} » dans ce parcours`,
+          statutHttp: 404,
+        };
+      }
+      const nouveau: Parcours = {
+        ...parcours,
+        timeline: parcours.timeline.map((moment) => ({
+          ...moment,
+          elements: moment.elements.map((element) =>
+            element.id === cible.id
+              ? { ...element, justification: demande.justification }
+              : element
+          ),
+        })),
+      };
+      return valider(nouveau, {
+        description: `Justification de « ${cible.nom} » mise à jour`,
+        elementsARegenerer: [],
+        horodatage,
+        elementId: cible.id,
+      });
+    }
+
     case 'changer_statut': {
       const cible = trouverElement(parcours, demande.elementId);
-      if (!cible) return { ok: false, erreur: `Aucun élément « ${demande.elementId} » dans ce parcours` };
+      if (!cible) {
+        return {
+          ok: false,
+          erreur: `Aucun élément « ${demande.elementId} » dans ce parcours`,
+          statutHttp: 404,
+        };
+      }
 
       const libelles = { propose: 'proposé', accepte: 'accepté', a_remplacer: 'à remplacer' } as const;
       const nouveau: Parcours = {
@@ -263,11 +503,21 @@ export function appliquerModification(
 
     case 'ecarter_alternative': {
       const cible = trouverElement(parcours, demande.elementId);
-      if (!cible) return { ok: false, erreur: `Aucun élément « ${demande.elementId} » dans ce parcours` };
+      if (!cible) {
+        return {
+          ok: false,
+          erreur: `Aucun élément « ${demande.elementId} » dans ce parcours`,
+          statutHttp: 404,
+        };
+      }
 
       const option = cible.alternatives.find((a) => a.id === demande.alternativeId);
       if (!option) {
-        return { ok: false, erreur: `Aucune option « ${demande.alternativeId} » pour « ${cible.nom} »` };
+        return {
+          ok: false,
+          erreur: `Aucune option « ${demande.alternativeId} » pour « ${cible.nom} »`,
+          statutHttp: 404,
+        };
       }
       // Un arbitrage est définitif : le refaire n'a pas de sens, on le dit.
       if (option.ecartee) {
@@ -358,7 +608,13 @@ export function appliquerModification(
 
     case 'reagir_element': {
       const cible = trouverElement(parcours, demande.elementId);
-      if (!cible) return { ok: false, erreur: `Aucun élément « ${demande.elementId} » dans ce parcours` };
+      if (!cible) {
+        return {
+          ok: false,
+          erreur: `Aucun élément « ${demande.elementId} » dans ce parcours`,
+          statutHttp: 404,
+        };
+      }
 
       // Changer d'avis remplace le précédent : on veut l'état du groupe, pas
       // l'historique de ses hésitations.

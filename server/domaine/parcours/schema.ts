@@ -24,6 +24,76 @@ export const TypeElementSchema = z.enum([
   'temps_libre',
 ]);
 
+const IDENTIFIANTS_CATEGORIES_FOURSQUARE_HEBERGEMENT = new Set([
+  '19010',
+  '19011',
+  '19012',
+  '19013',
+  '19014',
+  '19015',
+  '19016',
+  '19017',
+  '19018',
+  '19019',
+  '4bf58dd8d48988d1fa931735',
+  '4bf58dd8d48988d1ee931735',
+  '4bf58dd8d48988d1fb931735',
+  '4bf58dd8d48988d12f951735',
+  '4bf58dd8d48988d1f8931735',
+]);
+
+const LIBELLES_CATEGORIES_FOURSQUARE_HEBERGEMENT = [
+  'hotel',
+  'hôtel',
+  'hostel',
+  'auberge',
+  'auberge de jeunesse',
+  'aparthotel',
+  'appart hotel',
+  'appart hôtel',
+  'motel',
+  'resort',
+  'bed and breakfast',
+  'boarding house',
+  'cabin',
+  'guest house',
+  'maison d hotes',
+  'maison d hôtes',
+  'inn',
+  'lodge',
+  'vacation rental',
+];
+
+function normaliserCategorieFoursquare(valeur: string): string {
+  return valeur
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/**
+ * Taxonomie hôtelière partagée par le connecteur et le domaine persistant.
+ * Un identifiant fournisseur présent fait foi : un identifiant inconnu ne
+ * peut jamais être compensé par un libellé séduisant.
+ */
+export function estCategorieFoursquareHebergementCompatible(categorie: {
+  identifiant?: string;
+  nom: string;
+}): boolean {
+  if (categorie.identifiant !== undefined) {
+    return IDENTIFIANTS_CATEGORIES_FOURSQUARE_HEBERGEMENT.has(
+      categorie.identifiant
+    );
+  }
+  const nom = normaliserCategorieFoursquare(categorie.nom);
+  return LIBELLES_CATEGORIES_FOURSQUARE_HEBERGEMENT.some(
+    (libelle) =>
+      normaliserCategorieFoursquare(libelle) === nom
+  );
+}
+
 export const StatutElementSchema = z.enum(['propose', 'accepte', 'a_remplacer']);
 
 export const IntentionSchema = z.object({
@@ -245,6 +315,13 @@ export const ConfianceSchema = z.discriminatedUnion('niveau', [
     fournisseur: z.string().min(1),
     recupereLe: DateTimeISOSchema,
     identifiantExterne: z.string().min(1).optional(),
+    // Métadonnées fournisseur facultatives, remplies uniquement par le chemin
+    // serveur qui a observé le candidat externe. Elles ne font partie d'aucun
+    // contrat d'entrée client.
+    categorieFournisseur: z.string().min(1).optional(),
+    identifiantCategorieFournisseur: z.string().min(1).optional(),
+    villeConfirmee: z.string().min(1).optional(),
+    adresse: z.string().min(1).optional(),
   }),
   z.object({
     niveau: z.literal('estime'),
@@ -427,6 +504,41 @@ function estObjet(valeur: unknown): valeur is Record<string, unknown> {
   return typeof valeur === 'object' && valeur !== null && !Array.isArray(valeur);
 }
 
+const SOURCE_IDENTITE_HOTEL_FOURSQUARE =
+  'https://places-api.foursquare.com/places/search';
+
+/**
+ * Une identité hôtelière vérifiée est plus stricte que la confiance générique :
+ * elle porte l'identifiant et la catégorie réellement observés par le
+ * connecteur Foursquare. Les champs facultatifs (ville et adresse) ne sont
+ * exigés que lorsque le fournisseur les a effectivement rendus.
+ */
+export function estConfianceFoursquareHotelValide(
+  confiance: unknown
+): boolean {
+  return (
+    estObjet(confiance) &&
+    confiance.niveau === 'verifie' &&
+    confiance.fournisseur === 'Foursquare' &&
+    confiance.source === SOURCE_IDENTITE_HOTEL_FOURSQUARE &&
+    typeof confiance.identifiantExterne === 'string' &&
+    confiance.identifiantExterne.trim().length > 0 &&
+    typeof confiance.categorieFournisseur === 'string' &&
+    confiance.categorieFournisseur.trim().length > 0 &&
+    DateTimeISOSchema.safeParse(confiance.recupereLe).success &&
+    estCategorieFoursquareHebergementCompatible({
+      nom: confiance.categorieFournisseur,
+      ...(typeof confiance.identifiantCategorieFournisseur ===
+      'string'
+        ? {
+            identifiant:
+              confiance.identifiantCategorieFournisseur,
+          }
+        : {}),
+    })
+  );
+}
+
 /**
  * Compatibilité de lecture avec les agrégats créés avant F1.
  *
@@ -446,7 +558,27 @@ function normaliserParcoursLegacy(valeur: unknown): unknown {
       return {
         ...moment,
         elements: moment.elements.map((element) => {
-          if (!estObjet(element) || !estObjet(element.reservation)) return element;
+          if (!estObjet(element)) return element;
+
+          if (element.type === 'hebergement') {
+            const {
+              reservation: _reservationAmbigue,
+              confiance: confianceLegacy,
+              ...hotelSansReservation
+            } = element;
+            const confiance =
+              estObjet(confianceLegacy) &&
+              confianceLegacy.niveau === 'verifie' &&
+              !estConfianceFoursquareHotelValide(confianceLegacy)
+                ? { niveau: 'suggestion' }
+                : confianceLegacy;
+            return {
+              ...hotelSansReservation,
+              ...(confiance === undefined ? {} : { confiance }),
+            };
+          }
+
+          if (!estObjet(element.reservation)) return element;
           const reservation = element.reservation;
           return {
             ...element,
@@ -483,6 +615,39 @@ export const ParcoursSchema = z
   .superRefine((parcours, contexte) => {
     parcours.timeline.forEach((moment, indexMoment) => {
       moment.elements.forEach((element, indexElement) => {
+        if (element.type === 'hebergement' && element.reservation) {
+          contexte.addIssue({
+            code: 'custom',
+            message:
+              'un hébergement porte un lien de recherche, jamais une réservation',
+            path: [
+              'timeline',
+              indexMoment,
+              'elements',
+              indexElement,
+              'reservation',
+            ],
+          });
+        }
+        if (
+          element.type === 'hebergement' &&
+          element.confiance.niveau === 'verifie' &&
+          !estConfianceFoursquareHotelValide(element.confiance)
+        ) {
+          contexte.addIssue({
+            code: 'custom',
+            message:
+              'un hébergement vérifié exige une provenance Foursquare complète',
+            path: [
+              'timeline',
+              indexMoment,
+              'elements',
+              indexElement,
+              'confiance',
+              'fournisseur',
+            ],
+          });
+        }
         if (element.sejourHebergement && element.type !== 'hebergement') {
           contexte.addIssue({
             code: 'custom',

@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   ParcoursSchema,
   ElementSchema,
+  DemandeSurElementClientSchema,
   DemandeModificationSchema,
   appliquerModification,
   alternativesProposables,
+  preparerDemandeSurElementClient,
   type Parcours,
 } from '../../server/domaine/parcours/index.js';
 
@@ -44,6 +46,209 @@ function parcoursDeTest(): Parcours {
     ],
   });
 }
+
+describe('contrat client — les preuves restent côté serveur', () => {
+  const proposition = {
+    type: 'restaurant',
+    nom: 'Chez Rose',
+    lieu: 'Bordeaux',
+    prix: 45,
+    justification: 'une table adaptée au parcours',
+  };
+
+  it.each([
+    ['confiance', { confiance: { niveau: 'verifie' } }],
+    [
+      'provenance',
+      {
+        provenance: {
+          fournisseur: 'Foursquare',
+          source: 'forgée',
+        },
+      },
+    ],
+    ['identifiant externe', { identifiantExterne: 'fsq-forge' }],
+    ['adresse fournisseur', { adresse: '1 rue inventée' }],
+    ['date de récupération', { recupereLe: '2026-07-29T12:00:00Z' }],
+    [
+      'lien Booking',
+      {
+        lienRechercheHebergement: {
+          type: 'recherche',
+          fournisseur: 'Booking',
+          url: 'https://www.booking.com/searchresults.html',
+          libelle: 'Rechercher des hébergements sur Booking',
+          genereLe: '2026-07-29T12:00:00Z',
+        },
+      },
+    ],
+    [
+      'réservation',
+      {
+        reservation: {
+          lienExterne: 'https://evil.test',
+          fournisseur: 'Faux',
+          typeLien: 'reservation',
+        },
+      },
+    ],
+    ['disponibilité', { disponibilite: true }],
+    ['prix observé', { prixObserve: 12 }],
+  ])('refuse une proposition portant une fausse %s', (_nom, ajout) => {
+    expect(
+      DemandeSurElementClientSchema.safeParse({
+        type: 'ajouter_element',
+        momentId: 'm1',
+        element: { ...proposition, ...ajout },
+      }).success
+    ).toBe(false);
+  });
+
+  it('refuse de créer ou remplacer un hôtel par le chemin générique', () => {
+    expect(
+      DemandeSurElementClientSchema.safeParse({
+        type: 'ajouter_element',
+        momentId: 'm1',
+        element: {
+          ...proposition,
+          type: 'hebergement',
+          nom: 'Hôtel forgé',
+        },
+      }).success
+    ).toBe(false);
+  });
+
+  it('refuse une preuve injectée dans une intention remplacer_hotel', () => {
+    expect(
+      DemandeSurElementClientSchema.safeParse({
+        type: 'remplacer_hotel',
+        elementId: 'hotel',
+        villeDemandee: 'Bordeaux',
+        requete: 'Hôtel Burdigala',
+        confiance: {
+          niveau: 'verifie',
+          fournisseur: 'Foursquare',
+        },
+        identifiantExterne: 'fsq-forge',
+      }).success
+    ).toBe(false);
+  });
+
+  it('refuse les champs inconnus dans les sous-objets client', () => {
+    expect(
+      DemandeSurElementClientSchema.safeParse({
+        type: 'modifier_occupation_hebergement',
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+          provenance: 'Foursquare',
+        },
+      }).success
+    ).toBe(false);
+    expect(
+      DemandeSurElementClientSchema.safeParse({
+        type: 'ajouter_element',
+        momentId: 'm1',
+        element: {
+          type: 'activite',
+          nom: 'Visite',
+          justification: 'découvrir la ville',
+          plage: {
+            debut: '2026-08-10T10:00:00.000Z',
+            fin: '2026-08-10T12:00:00.000Z',
+            confiance: 'verifie',
+          },
+        },
+      }).success
+    ).toBe(false);
+  });
+
+  it('refuse un identifiant dans un ajout ou un remplacement client', () => {
+    expect(
+      DemandeSurElementClientSchema.safeParse({
+        type: 'ajouter_element',
+        momentId: 'm1',
+        element: {
+          id: 'resto',
+          type: 'activite',
+          nom: 'Visite',
+          justification: 'découvrir la ville',
+        },
+      }).success
+    ).toBe(false);
+    expect(
+      DemandeSurElementClientSchema.safeParse({
+        type: 'remplacer_element',
+        elementId: 'resto',
+        remplacement: {
+          id: 'hotel',
+          type: 'restaurant',
+          nom: 'Chez Rose',
+          justification: 'changer de table',
+        },
+      }).success
+    ).toBe(false);
+  });
+
+  it('attribue l’id et la confiance minimale côté serveur', () => {
+    const demande = DemandeSurElementClientSchema.parse({
+      type: 'ajouter_element',
+      momentId: 'm1',
+      element: proposition,
+    });
+    if (
+      demande.type === 'modifier_sejour_hebergement' ||
+      demande.type === 'modifier_occupation_hebergement' ||
+      demande.type === 'remplacer_hotel'
+    ) {
+      throw new Error('demande pure attendue');
+    }
+    const interne = preparerDemandeSurElementClient(
+      demande,
+      () => 'id-serveur'
+    );
+    if (interne.type !== 'ajouter_element') {
+      throw new Error('ajout attendu');
+    }
+    expect(interne.element).toMatchObject({
+      id: 'id-serveur',
+      confiance: { niveau: 'suggestion' },
+      prixEstime: true,
+    });
+  });
+
+  it('n’écrase jamais un élément si le générateur d’id produit une collision', () => {
+    const demande = DemandeSurElementClientSchema.parse({
+      type: 'ajouter_element',
+      momentId: 'm1',
+      element: proposition,
+    });
+    if (
+      demande.type === 'modifier_sejour_hebergement' ||
+      demande.type === 'modifier_occupation_hebergement' ||
+      demande.type === 'remplacer_hotel'
+    ) {
+      throw new Error('demande pure attendue');
+    }
+    const interne = preparerDemandeSurElementClient(
+      demande,
+      () => 'resto'
+    );
+    const resultat = appliquerModification(
+      parcoursDeTest(),
+      interne,
+      PAR_ORGANISATEUR
+    );
+    expect(resultat).toMatchObject({ ok: false });
+    expect(
+      parcoursDeTest().timeline[0].elements.find(
+        (courant) => courant.id === 'resto'
+      )?.nom
+    ).toBe('Élément resto');
+  });
+});
 
 describe('remplacer_element — invariant 3, le recalcul reste ciblé', () => {
   const demande = DemandeModificationSchema.parse({
@@ -109,6 +314,85 @@ describe('supprimer_element', () => {
     expect(ids).toEqual(['resto', 'bar']);
     expect(resultat.parcours.timeline[0].elements[0].dependDe).toEqual([]);
     expect(resultat.elementsARegenerer.sort()).toEqual(['bar', 'resto']);
+  });
+
+  it('retire l’occupation quand le dernier hébergement disparaît', () => {
+    const parcours = ParcoursSchema.parse({
+      ...parcoursDeTest(),
+      contexte: {
+        ...parcoursDeTest().contexte,
+        occupationHebergement: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+        },
+      },
+    });
+    const resultat = appliquerModification(
+      parcours,
+      { type: 'supprimer_element', elementId: 'hotel' },
+      PAR_ORGANISATEUR
+    );
+    if (!resultat.ok) throw new Error(resultat.erreur);
+    expect(
+      resultat.parcours.contexte.occupationHebergement
+    ).toBeUndefined();
+    expect(
+      resultat.parcours.timeline
+        .flatMap((moment) => moment.elements)
+        .some((courant) => courant.type === 'hebergement')
+    ).toBe(false);
+  });
+
+  it('conserve l’occupation et les autres hôtels lorsqu’un seul est supprimé', () => {
+    const deuxHotels = ParcoursSchema.parse({
+      ...parcoursDeTest(),
+      contexte: {
+        ...parcoursDeTest().contexte,
+        occupationHebergement: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+        },
+      },
+      timeline: [
+        {
+          ...parcoursDeTest().timeline[0],
+          elements: [
+            ...parcoursDeTest().timeline[0].elements,
+            element('hotel-lyon', {
+              type: 'hebergement',
+              nom: 'Hôtel Lyon',
+            }),
+          ],
+        },
+      ],
+    });
+    const hotelRestantAvant =
+      deuxHotels.timeline[0].elements.find(
+        (courant) => courant.id === 'hotel-lyon'
+      );
+    const resultat = appliquerModification(
+      deuxHotels,
+      { type: 'supprimer_element', elementId: 'hotel' },
+      PAR_ORGANISATEUR
+    );
+    if (!resultat.ok) throw new Error(resultat.erreur);
+    expect(
+      resultat.parcours.contexte.occupationHebergement
+    ).toEqual({
+      statut: 'declaree',
+      adultes: 2,
+      enfants: 0,
+      chambres: 1,
+    });
+    expect(
+      resultat.parcours.timeline[0].elements.find(
+        (courant) => courant.id === 'hotel-lyon'
+      )
+    ).toEqual(hotelRestantAvant);
   });
 });
 

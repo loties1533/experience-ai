@@ -706,17 +706,35 @@ describe('agent Modification (IA n°2) — son seul vocabulaire : une demande ci
     });
   });
 
-  it('réattribue l’id d’un élément ajouté (jamais celui du modèle)', async () => {
+  it('ne demande jamais au modèle d’attribuer l’id d’un élément ajouté', async () => {
     vi.mocked(callAI).mockResolvedValue(
       JSON.stringify({
         type: 'ajouter_element',
         momentId: 'm1',
-        element: { id: 'id-du-llm', type: 'activite', nom: 'Playground', justification: 'mythique' },
+        element: { type: 'activite', nom: 'Playground', justification: 'mythique' },
       })
     );
     const demande = await interpreterDemande(parcours, 'ajoute un playground');
     if (demande.type !== 'ajouter_element') throw new Error('mauvais type');
-    expect(demande.element.id).not.toBe('id-du-llm');
+    expect(demande.element).not.toHaveProperty('id');
+  });
+
+  it('refuse un id d’élément forgé par le modèle', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        type: 'ajouter_element',
+        momentId: 'm1',
+        element: {
+          id: 'id-du-llm',
+          type: 'activite',
+          nom: 'Playground',
+          justification: 'mythique',
+        },
+      })
+    );
+    await expect(
+      interpreterDemande(parcours, 'ajoute un playground')
+    ).rejects.toThrow();
   });
 
   it('refuse une sortie hors vocabulaire', async () => {

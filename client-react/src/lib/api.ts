@@ -7,7 +7,7 @@
 import type {
   Parcours,
   Element,
-  DemandeSurElement,
+  DemandeSurElementClient,
   Participant,
   Role,
   Visibilite,
@@ -19,7 +19,7 @@ import type { ResumeParcours } from '../../../server/depots/depotParcours'
 import type { PreferencesParcours } from '../../../server/domaine/preferences'
 
 export type {
-  Parcours, Element, DemandeSurElement, Participant, Role, Visibilite, Avis,
+  Parcours, Element, DemandeSurElementClient, Participant, Role, Visibilite, Avis,
   Brief, BriefPartiel, EtapeDialogue, ResumeParcours, PreferencesParcours,
 }
 
@@ -77,7 +77,7 @@ export interface ReponseModification {
   elementsARegenerer: string[]
   description: string
 }
-export const modifierParcours = (id: string, corps: { demande: DemandeSurElement } | { phrase: string }) =>
+export const modifierParcours = (id: string, corps: { demande: DemandeSurElementClient } | { phrase: string }) =>
   request<ReponseModification>(`/parcours/${id}/modifications`, { method: 'POST', body: JSON.stringify(corps) })
 
 // ---- Partage au groupe (côté organisateur — compte requis) ----

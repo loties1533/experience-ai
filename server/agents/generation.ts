@@ -330,6 +330,10 @@ function confianceVerifiee(args: {
   fournisseur: string;
   recupereLe: string;
   identifiantExterne: string;
+  categorieFournisseur?: string;
+  identifiantCategorieFournisseur?: string;
+  villeConfirmee?: string;
+  adresse?: string;
 }): Confiance {
   return {
     niveau: 'verifie',
@@ -337,6 +341,11 @@ function confianceVerifiee(args: {
     fournisseur: args.fournisseur,
     recupereLe: args.recupereLe,
     identifiantExterne: args.identifiantExterne,
+    categorieFournisseur: args.categorieFournisseur,
+    identifiantCategorieFournisseur:
+      args.identifiantCategorieFournisseur,
+    villeConfirmee: args.villeConfirmee,
+    adresse: args.adresse,
   };
 }
 
@@ -408,6 +417,16 @@ function tracerLieuReel(
       fournisseur: candidat.fournisseur,
       recupereLe: candidat.recupereLe,
       identifiantExterne: candidat.identifiantExterne,
+      categorieFournisseur: candidat.categorieFournisseur,
+      identifiantCategorieFournisseur:
+        'identifiantCategorieFournisseur' in candidat
+          ? candidat.identifiantCategorieFournisseur
+          : undefined,
+      villeConfirmee: candidat.villeConfirmee,
+      adresse:
+        candidat.typeMetierRecherche === 'evenement'
+          ? undefined
+          : candidat.adresse,
     });
     if (resolutionLien?.statut === 'resolu') {
       return {
