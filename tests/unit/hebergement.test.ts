@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LienRechercheHebergementSchema,
   OccupationHebergementSchema,
   ParcoursLectureSchema,
   ParcoursSchema,
@@ -146,6 +147,202 @@ describe('intégration domaine et compatibilité legacy', () => {
     ],
     budget: { mode: 'individuel' as const },
   };
+  const lienRechercheHebergement = {
+    type: 'recherche' as const,
+    fournisseur: 'Booking' as const,
+    url:
+      'https://www.booking.com/searchresults.html?' +
+      'ss=Bordeaux&checkin=2026-08-10&checkout=2026-08-12&' +
+      'group_adults=2&group_children=0&no_rooms=1',
+    libelle: 'Rechercher des hébergements sur Booking' as const,
+    genereLe: '2026-07-29T12:00:00.000Z',
+  };
+
+  it('accepte un lien de recherche séparé sur une suggestion hôtelière complète', () => {
+    const parcours = ParcoursSchema.parse({
+      ...base,
+      contexte: {
+        ...base.contexte,
+        occupationHebergement: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+        },
+      },
+      timeline: [
+        {
+          id: 'bordeaux',
+          titre: 'Bordeaux',
+          elements: [
+            {
+              id: 'hotel-bordeaux',
+              type: 'hebergement',
+              nom: 'Un hébergement à choisir à Bordeaux',
+              justification: 'dormir sur place',
+              confiance: { niveau: 'suggestion' },
+              sejourHebergement: {
+                ville: 'Bordeaux',
+                arrivee: '2026-08-10',
+                depart: '2026-08-12',
+              },
+              lienRechercheHebergement,
+            },
+          ],
+        },
+      ],
+    });
+
+    const hotel = parcours.timeline[0].elements[0];
+    expect(hotel.lienRechercheHebergement).toEqual(
+      lienRechercheHebergement
+    );
+    expect(hotel.reservation).toBeUndefined();
+    expect(hotel.confiance).toEqual({ niveau: 'suggestion' });
+    expect(validerParcours(parcours)).toEqual([]);
+
+    if (!hotel.lienRechercheHebergement) {
+      throw new Error('lien de recherche attendu');
+    }
+    hotel.lienRechercheHebergement.url =
+      hotel.lienRechercheHebergement.url.replace(
+        'group_adults=2',
+        'group_adults=3'
+      );
+    expect(
+      validerParcours(parcours).some((erreur) =>
+        erreur.includes('contredit le séjour ou l’occupation')
+      )
+    ).toBe(true);
+  });
+
+  it('refuse un lien hôtelier hors de Booking HTTPS', () => {
+    expect(
+      LienRechercheHebergementSchema.safeParse({
+        ...lienRechercheHebergement,
+        url: 'http://www.booking.com/searchresults.html?ss=Bordeaux',
+      }).success
+    ).toBe(false);
+    expect(
+      LienRechercheHebergementSchema.safeParse({
+        ...lienRechercheHebergement,
+        url: 'https://evil.test/searchresults.html?ss=Bordeaux',
+      }).success
+    ).toBe(false);
+    expect(
+      LienRechercheHebergementSchema.safeParse({
+        ...lienRechercheHebergement,
+        url: `${lienRechercheHebergement.url}&no_rooms=2`,
+      }).success
+    ).toBe(false);
+    expect(
+      LienRechercheHebergementSchema.safeParse({
+        ...lienRechercheHebergement,
+        url: `${lienRechercheHebergement.url}#reservation`,
+      }).success
+    ).toBe(false);
+    expect(
+      LienRechercheHebergementSchema.safeParse({
+        ...lienRechercheHebergement,
+        url: lienRechercheHebergement.url.replace(
+          'https://',
+          'https://utilisateur:secret@'
+        ),
+      }).success
+    ).toBe(false);
+  });
+
+  it.each([
+    ['un restaurant', 'restaurant', true, 'declaree'],
+    ['un hôtel sans séjour', 'hebergement', false, 'declaree'],
+    ['une occupation à confirmer', 'hebergement', true, 'a_confirmer'],
+  ] as const)(
+    'refuse un lien de recherche attaché à %s',
+    (_cas, type, avecSejour, statutOccupation) => {
+      expect(
+        ParcoursSchema.safeParse({
+          ...base,
+          contexte: {
+            ...base.contexte,
+            occupationHebergement:
+              statutOccupation === 'declaree'
+                ? {
+                    statut: 'declaree',
+                    adultes: 2,
+                    enfants: 0,
+                    chambres: 1,
+                  }
+                : { statut: 'a_confirmer' },
+          },
+          timeline: [
+            {
+              id: 'moment',
+              titre: 'Nuit',
+              elements: [
+                {
+                  id: 'element',
+                  type,
+                  nom: 'Élément',
+                  justification: 'étape du parcours',
+                  sejourHebergement: avecSejour
+                    ? {
+                        ville: 'Bordeaux',
+                        arrivee: '2026-08-10',
+                        depart: '2026-08-12',
+                      }
+                    : undefined,
+                  lienRechercheHebergement,
+                },
+              ],
+            },
+          ],
+        }).success
+      ).toBe(false);
+    }
+  );
+
+  it('refuse un lien dont les paramètres contredisent le séjour ou l’occupation', () => {
+    expect(
+      ParcoursSchema.safeParse({
+        ...base,
+        contexte: {
+          ...base.contexte,
+          occupationHebergement: {
+            statut: 'declaree',
+            adultes: 2,
+            enfants: 0,
+            chambres: 1,
+          },
+        },
+        timeline: [
+          {
+            id: 'moment',
+            titre: 'Nuit',
+            elements: [
+              {
+                id: 'hotel',
+                type: 'hebergement',
+                nom: 'Hôtel',
+                justification: 'dormir sur place',
+                sejourHebergement: {
+                  ville: 'Bordeaux',
+                  arrivee: '2026-08-10',
+                  depart: '2026-08-12',
+                },
+                lienRechercheHebergement: {
+                  ...lienRechercheHebergement,
+                  url: lienRechercheHebergement.url.replace(
+                    'group_adults=2',
+                    'group_adults=3'
+                  ),
+                },
+              },
+            ],
+          },
+        ],
+      }).success
+    ).toBe(false);
+  });
 
   it('porte une occupation générale et deux séjours multi-ville distincts', () => {
     const parcours = ParcoursSchema.parse({

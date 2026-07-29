@@ -212,6 +212,28 @@ const schemas = {
       },
     },
   },
+  LienRechercheHebergement: {
+    type: 'object',
+    required: ['type', 'fournisseur', 'url', 'libelle', 'genereLe'],
+    additionalProperties: false,
+    properties: {
+      type: { type: 'string', enum: ['recherche'] },
+      fournisseur: { type: 'string', enum: ['Booking'] },
+      url: {
+        type: 'string',
+        format: 'uri',
+        description:
+          'Recherche Booking préremplie. Ne prouve ni disponibilité, ni réservation, ni prix.',
+      },
+      libelle: {
+        type: 'string',
+        enum: ['Rechercher des hébergements sur Booking'],
+      },
+      genereLe: { type: 'string', format: 'date-time' },
+    },
+    description:
+      'Lien de recherche hôtelier local. Booking n’est pas contacté pendant la génération et aucune réservation n’est effectuée.',
+  },
   Element: {
     type: 'object',
     required: ['id', 'type', 'nom', 'justification', 'confiance', 'prixEstime'],
@@ -226,6 +248,9 @@ const schemas = {
       justification: { type: 'string' },
       confiance:     { $ref: '#/components/schemas/Confiance' },
       reservation:   { $ref: '#/components/schemas/Reservation' },
+      lienRechercheHebergement: {
+        $ref: '#/components/schemas/LienRechercheHebergement',
+      },
       sejourHebergement: { $ref: '#/components/schemas/SejourHebergement' },
     },
   },

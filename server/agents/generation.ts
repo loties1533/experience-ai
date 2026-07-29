@@ -24,6 +24,7 @@ import {
   type SejourHebergement,
   type TypeElement,
 } from '../domaine/parcours/index.js';
+import { creerLienRechercheHebergement } from '../lib/url.js';
 import { normaliserDatesBrief, type Brief } from './brief.js';
 import type { PreferencesParcours } from '../domaine/preferences.js';
 import type { TypeMetierRecherche } from '../services/rechercheExterne.js';
@@ -190,8 +191,8 @@ function construireDemandeResolutionLien(
     return undefined;
   }
 
-  // F3-B s'arrête à l'identité hôtelière. Un hôtel Foursquare vérifié ne doit
-  // pas déclencher Tavily ni produire une réservation avant F3-C.
+  // Le chemin hôtelier F3-C2 reste local. Un hôtel Foursquare vérifié ne doit
+  // jamais déclencher Tavily ni produire une réservation.
   if (candidat.typeMetierRecherche === 'hebergement') {
     return undefined;
   }
@@ -519,6 +520,61 @@ function sejourHotelierDuMoment(
   return sejours.length === 1 ? sejours[0] : undefined;
 }
 
+/**
+ * F3-C2 : ajoute un raccourci de recherche Booking uniquement à partir d'un
+ * séjour déjà rattaché sans ambiguïté et d'une occupation explicitement
+ * déclarée. La première validation du parcours a donc déjà eu lieu.
+ *
+ * Le nom n'est repris que lorsqu'il constitue une identité Foursquare
+ * vérifiée. Une suggestion générique recherche seulement la ville. Une erreur
+ * locale reste facultative : elle omet le lien sans dégrader le parcours et
+ * sans être transformée en panne fournisseur.
+ */
+function ajouterLiensRechercheHebergement(parcours: Parcours): Parcours {
+  const occupation = parcours.contexte.occupationHebergement;
+  if (occupation?.statut !== 'declaree') return parcours;
+
+  const genereLe = new Date().toISOString();
+  return {
+    ...parcours,
+    timeline: parcours.timeline.map((moment) => ({
+      ...moment,
+      elements: moment.elements.map((element) => {
+        if (
+          element.type !== 'hebergement' ||
+          !element.sejourHebergement
+        ) {
+          return element;
+        }
+
+        const nomHotel =
+          element.confiance.niveau === 'verifie' &&
+          element.confiance.fournisseur === 'Foursquare'
+            ? element.nom
+            : undefined;
+        try {
+          return {
+            ...element,
+            lienRechercheHebergement: creerLienRechercheHebergement(
+              {
+                sejour: element.sejourHebergement,
+                occupation,
+                nomHotel,
+              },
+              genereLe
+            ),
+          };
+        } catch {
+          console.warn(
+            'Lien de recherche hôtelière omis après une erreur locale.'
+          );
+          return element;
+        }
+      }),
+    })),
+  };
+}
+
 export async function genererParcours(
   briefRecu: Brief,
   preferences: PreferencesParcours | null = null
@@ -614,7 +670,7 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
     preparation.moments
   );
 
-  const parcours = ParcoursSchema.parse({
+  const parcoursSansLiensHotel = ParcoursSchema.parse({
     id: randomUUID(),
     intention: { texte: brief.intention },
     contexte: {
@@ -667,6 +723,11 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
     }),
   });
 
+  // Le lien local est ajouté après une première validation complète, puis le
+  // domaine revalide l'agrégat enrichi avant toute persistance.
+  const parcours = ParcoursSchema.parse(
+    ajouterLiensRechercheHebergement(parcoursSansLiensHotel)
+  );
   const erreurs = validerParcours(parcours);
   if (erreurs.length > 0) {
     throw new AppError('La génération a produit un parcours incohérent, réessaie', 502);

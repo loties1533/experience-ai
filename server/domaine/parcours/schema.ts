@@ -64,15 +64,17 @@ export const NombreChambresHebergementSchema = z.number().int().min(1).max(10);
  * `a_confirmer` ne porte volontairement aucune valeur partielle dans le
  * parcours persistant ; ces saisies intermédiaires restent dans le brief.
  */
+export const OccupationHebergementDeclareeSchema = z
+  .object({
+    statut: z.literal('declaree'),
+    adultes: NombreAdultesHebergementSchema,
+    enfants: NombreEnfantsHebergementSchema,
+    chambres: NombreChambresHebergementSchema,
+  })
+  .strict();
+
 export const OccupationHebergementSchema = z.discriminatedUnion('statut', [
-  z
-    .object({
-      statut: z.literal('declaree'),
-      adultes: NombreAdultesHebergementSchema,
-      enfants: NombreEnfantsHebergementSchema,
-      chambres: NombreChambresHebergementSchema,
-    })
-    .strict(),
+  OccupationHebergementDeclareeSchema,
   z.object({ statut: z.literal('a_confirmer') }).strict(),
 ]);
 
@@ -269,6 +271,118 @@ export const ReservationSchema = z.object({
   typeLien: TypeLienExterneSchema,
 });
 
+const URL_RECHERCHE_BOOKING = 'https://www.booking.com/searchresults.html';
+const PARAMETRES_RECHERCHE_BOOKING = [
+  'ss',
+  'checkin',
+  'checkout',
+  'group_adults',
+  'group_children',
+  'no_rooms',
+] as const;
+export const LibelleRechercheHebergementSchema = z.literal(
+  'Rechercher des hébergements sur Booking'
+);
+
+function estUrlRechercheBookingValide(valeur: string): boolean {
+  try {
+    const url = new URL(valeur);
+    if (
+      url.protocol !== 'https:' ||
+      `${url.origin}${url.pathname}` !== URL_RECHERCHE_BOOKING ||
+      url.username !== '' ||
+      url.password !== '' ||
+      url.hash !== ''
+    ) {
+      return false;
+    }
+
+    const cles = [...url.searchParams.keys()];
+    if (
+      cles.length !== PARAMETRES_RECHERCHE_BOOKING.length ||
+      PARAMETRES_RECHERCHE_BOOKING.some(
+        (cle) => url.searchParams.getAll(cle).length !== 1
+      ) ||
+      cles.some(
+        (cle) =>
+          !PARAMETRES_RECHERCHE_BOOKING.includes(
+            cle as (typeof PARAMETRES_RECHERCHE_BOOKING)[number]
+          )
+      )
+    ) {
+      return false;
+    }
+
+    const terme = url.searchParams.get('ss') ?? '';
+    const arrivee = url.searchParams.get('checkin') ?? '';
+    const depart = url.searchParams.get('checkout') ?? '';
+    const adultes = url.searchParams.get('group_adults') ?? '';
+    const enfants = url.searchParams.get('group_children') ?? '';
+    const chambres = url.searchParams.get('no_rooms') ?? '';
+    if (
+      !/^\d+$/.test(adultes) ||
+      !/^\d+$/.test(enfants) ||
+      !/^\d+$/.test(chambres)
+    ) {
+      return false;
+    }
+
+    return (
+      SejourHebergementSchema.safeParse({
+        ville: terme,
+        arrivee,
+        depart,
+      }).success &&
+      OccupationHebergementDeclareeSchema.safeParse({
+        statut: 'declaree',
+        adultes: Number(adultes),
+        enfants: Number(enfants),
+        chambres: Number(chambres),
+      }).success
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Un raccourci vers une recherche préremplie, jamais une réservation ni une
+ * preuve de disponibilité. Le domaine et le chemin sont figés : toutes les
+ * données utilisateur restent exclusivement dans les paramètres encodés.
+ */
+export const LienRechercheHebergementSchema = z
+  .object({
+    type: z.literal('recherche'),
+    fournisseur: z.literal('Booking'),
+    url: z
+      .url()
+      .refine(
+        estUrlRechercheBookingValide,
+        'le lien doit cibler une recherche HTTPS Booking complète'
+      ),
+    libelle: LibelleRechercheHebergementSchema,
+    genereLe: DateTimeISOSchema,
+  })
+  .strict();
+
+export function estLienRechercheHebergementCoherent(
+  lien: z.infer<typeof LienRechercheHebergementSchema>,
+  sejour: z.infer<typeof SejourHebergementSchema>,
+  occupation: z.infer<typeof OccupationHebergementDeclareeSchema>
+): boolean {
+  const resultatLien = LienRechercheHebergementSchema.safeParse(lien);
+  if (!resultatLien.success) return false;
+
+  const parametres = new URL(resultatLien.data.url).searchParams;
+  return (
+    parametres.get('checkin') === sejour.arrivee &&
+    parametres.get('checkout') === sejour.depart &&
+    parametres.get('group_adults') === String(occupation.adultes) &&
+    parametres.get('group_children') === String(occupation.enfants) &&
+    parametres.get('no_rooms') === String(occupation.chambres)
+  );
+}
+
 export const ElementSchema = z.object({
   id: z.string().min(1),
   type: TypeElementSchema,
@@ -287,6 +401,9 @@ export const ElementSchema = z.object({
   alternatives: z.array(AlternativeSchema).default([]),
   contraintes: z.array(ContrainteSchema).default([]),
   reservation: ReservationSchema.optional(),
+  // Recherche locale préremplie : distincte d'une réservation et sans preuve
+  // de disponibilité. F3-C2 ne la produit que pour un séjour hôtelier validé.
+  lienRechercheHebergement: LienRechercheHebergementSchema.optional(),
   // Propre à cet hôtel : on ne réutilise jamais une plage globale du parcours
   // ni le premier lieu d'un brief multi-ville.
   sejourHebergement: SejourHebergementSchema.optional(),
@@ -387,6 +504,55 @@ export const ParcoursSchema = z
             path: ['timeline', indexMoment, 'elements', indexElement, 'sejourHebergement'],
           });
         }
+        if (
+          element.lienRechercheHebergement &&
+          element.type !== 'hebergement'
+        ) {
+          contexte.addIssue({
+            code: 'custom',
+            message: 'un lien de recherche hôtelière ne peut qualifier qu’un hébergement',
+            path: ['timeline', indexMoment, 'elements', indexElement, 'lienRechercheHebergement'],
+          });
+        }
+        if (
+          element.lienRechercheHebergement &&
+          !element.sejourHebergement
+        ) {
+          contexte.addIssue({
+            code: 'custom',
+            message: 'un lien de recherche hôtelière exige un séjour non ambigu',
+            path: ['timeline', indexMoment, 'elements', indexElement, 'lienRechercheHebergement'],
+          });
+        }
+        if (
+          element.lienRechercheHebergement &&
+          parcours.contexte.occupationHebergement?.statut !== 'declaree'
+        ) {
+          contexte.addIssue({
+            code: 'custom',
+            message: 'un lien de recherche hôtelière exige une occupation déclarée',
+            path: ['timeline', indexMoment, 'elements', indexElement, 'lienRechercheHebergement'],
+          });
+        }
+        if (
+          element.lienRechercheHebergement &&
+          element.sejourHebergement &&
+          parcours.contexte.occupationHebergement?.statut === 'declaree'
+        ) {
+          if (
+            !estLienRechercheHebergementCoherent(
+              element.lienRechercheHebergement,
+              element.sejourHebergement,
+              parcours.contexte.occupationHebergement
+            )
+          ) {
+            contexte.addIssue({
+              code: 'custom',
+              message: 'le lien de recherche hôtelière doit reprendre le séjour et l’occupation déclarés',
+              path: ['timeline', indexMoment, 'elements', indexElement, 'lienRechercheHebergement'],
+            });
+          }
+        }
       });
     });
   });
@@ -407,6 +573,9 @@ export type Participant = z.infer<typeof ParticipantSchema>;
 export type Budget = z.infer<typeof BudgetSchema>;
 export type PlageHoraire = z.infer<typeof PlageHoraireSchema>;
 export type OccupationHebergement = z.infer<typeof OccupationHebergementSchema>;
+export type OccupationHebergementDeclaree = z.infer<
+  typeof OccupationHebergementDeclareeSchema
+>;
 export type SejourHebergement = z.infer<typeof SejourHebergementSchema>;
 export type Contrainte = z.infer<typeof ContrainteSchema>;
 export type Avis = z.infer<typeof AvisSchema>;
@@ -416,6 +585,9 @@ export type NiveauConfiance = z.infer<typeof NiveauConfianceSchema>;
 export type Confiance = z.infer<typeof ConfianceSchema>;
 export type TypeLienExterne = z.infer<typeof TypeLienExterneSchema>;
 export type Reservation = z.infer<typeof ReservationSchema>;
+export type LienRechercheHebergement = z.infer<
+  typeof LienRechercheHebergementSchema
+>;
 export type Element = z.infer<typeof ElementSchema>;
 export type Moment = z.infer<typeof MomentSchema>;
 export type Modification = z.infer<typeof ModificationSchema>;
