@@ -221,6 +221,85 @@ describe('POST /api/parcours — validation du brief', () => {
     expect(res.status).toBe(400);
   });
 
+  it.each([
+    ['fournisseur', { fournisseur: 'Amadeus' }],
+    [
+      'horaire observé',
+      { horaireObserve: '2026-09-10T09:42:00Z' },
+    ],
+    ['lien commercial', { lien: 'https://example.test/billet' }],
+  ])(
+    '400 sans appeler le générateur si le transport injecte un %s',
+    async (_libelle, injection) => {
+      const appelsAvant = vi.mocked(genererParcours).mock.calls.length;
+      const res = await auth(
+        request(app).post('/api/parcours')
+      ).send({
+        brief: {
+          ...BRIEF_VALIDE,
+          lieux: ['Lisbonne', 'Porto'],
+          transport: {
+            necessaire: true,
+            troncons: [
+              {
+                origine: { ville: 'Lisbonne' },
+                destination: { ville: 'Porto' },
+                depart: { date: '2026-09-10' },
+                ...injection,
+              },
+            ],
+            occupation: {
+              statut: 'declaree',
+              adultes: 2,
+              enfants: 0,
+            },
+          },
+        },
+      });
+
+      expect(res.status).toBe(400);
+      expect(vi.mocked(genererParcours).mock.calls).toHaveLength(
+        appelsAvant
+      );
+    }
+  );
+
+  it('400 sans appeler le générateur pour des injections transport profondément imbriquées', async () => {
+    const appelsAvant = vi.mocked(genererParcours).mock.calls.length;
+    const res = await auth(
+      request(app).post('/api/parcours')
+    ).send({
+      brief: {
+        ...BRIEF_VALIDE,
+        lieux: ['Bordeaux', 'Paris'],
+        transport: {
+          necessaire: true,
+          troncons: [
+            {
+              origine: {
+                ville: 'Bordeaux',
+                identifiantExterne: 'fake',
+              },
+              destination: { ville: 'Paris' },
+              depart: { date: '2026-08-10' },
+            },
+          ],
+          occupation: {
+            statut: 'declaree',
+            adultes: 2,
+            enfants: 0,
+            provenance: 'fake',
+          },
+        },
+      },
+    });
+
+    expect(res.status).toBe(400);
+    expect(vi.mocked(genererParcours).mock.calls).toHaveLength(
+      appelsAvant
+    );
+  });
+
   it('201 avec un brief valide', async () => {
     const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF_VALIDE });
     expect(res.status).toBe(201);
@@ -262,6 +341,40 @@ describe('POST /api/parcours — validation du brief', () => {
     });
     expect(res.status).toBe(422);
     expect(res.body.message).toContain('occupation');
+  });
+
+  it('422 sans persistance quand le transport essentiel reste incomplet', async () => {
+    vi.mocked(genererParcours).mockRejectedValueOnce(
+      new AppError(
+        'Chaque tronçon et l’occupation du transport doivent être confirmés avant la génération.',
+        422
+      )
+    );
+    const sauvegardesAvant =
+      prismaMock.parcours.upsert.mock.calls.length;
+    const res = await auth(
+      request(app).post('/api/parcours')
+    ).send({
+      brief: {
+        ...BRIEF_VALIDE,
+        lieux: ['Lisbonne', 'Porto'],
+        transport: {
+          necessaire: true,
+          troncons: [
+            {
+              origine: { ville: 'Lisbonne' },
+            },
+          ],
+          occupation: { statut: 'a_confirmer' },
+        },
+      },
+    });
+
+    expect(res.status).toBe(422);
+    expect(res.body.message).toContain('transport');
+    expect(prismaMock.parcours.upsert.mock.calls).toHaveLength(
+      sauvegardesAvant
+    );
   });
 
   it('503 quand les sources de vérification sont techniquement indisponibles', async () => {

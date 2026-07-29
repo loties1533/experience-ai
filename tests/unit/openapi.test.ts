@@ -200,3 +200,141 @@ describe('OpenAPI F3-D — lecture et modification sont séparées', () => {
     );
   });
 });
+
+describe('OpenAPI F4-B2 — demande transport sans preuve fournisseur', () => {
+  it('documente le transport dans le brief et la demande persistée en lecture seule', () => {
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'Brief',
+        'properties',
+        'transport',
+        '$ref'
+      )
+    ).toBe('#/components/schemas/TransportBrief');
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'ContexteParcours',
+        'properties',
+        'demandeTransport',
+        'readOnly'
+      )
+    ).toBe(true);
+  });
+
+  it('distingue exactement le brouillon strict de la demande finale', () => {
+    const variantes = chemin(
+      'components',
+      'schemas',
+      'TransportBrief',
+      'oneOf'
+    ) as Array<Record<string, unknown>>;
+    expect(variantes[0]).toMatchObject({
+      required: ['necessaire'],
+      additionalProperties: false,
+    });
+    expect(variantes[1]).toMatchObject({
+      required: ['necessaire', 'troncons', 'occupation'],
+      additionalProperties: false,
+    });
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'TronconTransportBrief'
+      )
+    ).not.toHaveProperty('required');
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'TronconTransportDemande',
+        'required'
+      )
+    ).toEqual(['origine', 'destination', 'depart']);
+  });
+
+  it('documente les tronçons, dates civiles, créneaux et occupation déclarée', () => {
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'DateTransportDemandee',
+        'properties',
+        'date',
+        'format'
+      )
+    ).toBe('date');
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'DateTransportDemandee',
+        'properties',
+        'creneau',
+        'enum'
+      )
+    ).toEqual(['matin', 'apres_midi', 'soir', 'nuit']);
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'DemandeTransport',
+        'properties',
+        'occupation',
+        '$ref'
+      )
+    ).toBe(
+      '#/components/schemas/OccupationTransportDeclaree'
+    );
+  });
+
+  it('documente 400 et 422 avant génération', () => {
+    const reponses = chemin(
+      'paths',
+      '/api/parcours',
+      'post',
+      'responses'
+    );
+    expect(propriete(reponses, '400')).toBeDefined();
+    expect(propriete(reponses, '422')).toBeDefined();
+    expect(
+      propriete(propriete(reponses, '422'), 'description')
+    ).toContain('transport');
+  });
+
+  it('ne publie aucun contrat fournisseur transport futur', () => {
+    const composants = chemin('components', 'schemas');
+    for (const nom of [
+      'LieuTransportConfirme',
+      'SegmentTransportExterne',
+      'CandidatTrajetExterne',
+      'PreuveTrajet',
+      'LienTransport',
+      'PrixTransportObserve',
+    ]) {
+      expect(
+        typeof composants === 'object' &&
+          composants !== null &&
+          nom in composants
+      ).toBe(false);
+    }
+  });
+
+  it('décrit explicitement l’absence d’horaire vérifié et d’offre commerciale', () => {
+    const description = chemin(
+      'paths',
+      '/api/parcours',
+      'post',
+      'description'
+    );
+    expect(description).toEqual(expect.any(String));
+    expect(description).toContain('aucun horaire vérifié');
+    expect(description).toContain(
+      'lien, réservation ou disponibilité'
+    );
+  });
+});

@@ -332,6 +332,67 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
     expect(resoudreLien).toHaveBeenCalledOnce();
   });
 
+  it('ne contacte aucun fournisseur pour un transport F4-B2', async () => {
+    const briefTransport = BriefSchema.parse({
+      intention: 'relier Bordeaux et Paris',
+      avecQui: 'amis',
+      duree: { valeur: 3, unite: 'jours' },
+      lieux: ['Bordeaux', 'Paris'],
+      transport: {
+        necessaire: true,
+        troncons: [
+          {
+            origine: { ville: 'Bordeaux' },
+            destination: { ville: 'Paris' },
+            depart: { date: '2026-09-10', creneau: 'matin' },
+            modeSouhaite: 'train',
+          },
+        ],
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+        },
+      },
+    });
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce([
+      {
+        type: 'text',
+        text: JSON.stringify({
+          moments: [
+            {
+              titre: 'TGV 8421 à 09:42',
+              elements: [
+                {
+                  ref: 'train',
+                  type: 'transport',
+                  nom: 'TGV 8421',
+                  lieu: 'Gare Montparnasse',
+                  plage: {
+                    debut: '2026-09-10T09:42:00Z',
+                    fin: '2026-09-10T11:18:00Z',
+                  },
+                  justification: 'Train disponible',
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    ]);
+
+    const parcours = await genererParcours(briefTransport);
+
+    expect(parcours.timeline[0].elements[0].nom).toBe(
+      'Transport à organiser de Bordeaux vers Paris'
+    );
+    expect(rechercherLieuxFoursquare).not.toHaveBeenCalled();
+    expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
+    expect(getRealWeather).not.toHaveBeenCalled();
+    expect(resoudreLien).not.toHaveBeenCalled();
+    expect(resoudreLiensReels).not.toHaveBeenCalled();
+  });
+
   it('intègre un lien accepté avec son type sans remplacer la provenance métier', async () => {
     vi.mocked(resoudreLien).mockResolvedValueOnce(lienResolu());
     vi.mocked(callClaudeOutils)
@@ -1486,6 +1547,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       avecQui: 'couple',
       duree: { valeur: 4, unite: 'jours' },
       lieux: ['Bordeaux', 'Lyon'],
+      transport: { necessaire: false },
       hebergement: {
         necessaire: true,
         occupation: {
@@ -2305,6 +2367,7 @@ describe('la génération — ville et catégorie du candidat', () => {
       avecQui: 'groupe',
       duree: { valeur: 3, unite: 'jours' },
       lieux: ['Bordeaux', 'Lyon'],
+      transport: { necessaire: false },
     });
     vi.mocked(rechercherLieuxFoursquare).mockImplementation(
       async (villeDemandee, _requete, typeMetierRecherche) => {

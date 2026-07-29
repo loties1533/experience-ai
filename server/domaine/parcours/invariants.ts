@@ -9,6 +9,12 @@ import {
   type PlageHoraire,
   type Role,
 } from './schema.js';
+import {
+  JUSTIFICATION_TRANSPORT_GENERIQUE,
+  LIBELLE_TRANSPORT_GENERIQUE,
+  justificationTransportDemande,
+  libelleTransportDemande,
+} from '../transport/index.js';
 
 // Invariants 3 à 8 de docs/06-modele-conceptuel.md : logique pure, testable,
 // indépendante du stockage. Retourne des erreurs lisibles, ne lève jamais.
@@ -229,6 +235,18 @@ export function detecterConflits(parcours: Parcours): ConflitHoraire[] {
 export function validerParcours(parcours: Parcours): string[] {
   const erreurs: string[] = [];
   const elements = tousLesElements(parcours);
+  const nomsTransportAutorises = new Set([
+    LIBELLE_TRANSPORT_GENERIQUE,
+    ...(parcours.contexte.demandeTransport?.troncons.map(
+      libelleTransportDemande
+    ) ?? []),
+  ]);
+  const justificationsTransportAutorisees = new Set([
+    JUSTIFICATION_TRANSPORT_GENERIQUE,
+    ...(parcours.contexte.demandeTransport?.troncons.map(
+      justificationTransportDemande
+    ) ?? []),
+  ]);
   const ids = new Set(elements.map((e) => e.id));
   const idsParticipants = new Set(parcours.participants.map((p) => p.id));
 
@@ -269,6 +287,56 @@ export function validerParcours(parcours: Parcours): string[] {
       erreurs.push(
         `un hébergement porte un lien de recherche, jamais une réservation (« ${element.nom} »)`
       );
+    }
+    if (element.type === 'transport') {
+      if (!nomsTransportAutorises.has(element.nom)) {
+        erreurs.push(
+          `un transport sans preuve externe porte un libellé générique (« ${element.nom} »)`
+        );
+      }
+      if (
+        !justificationsTransportAutorisees.has(
+          element.justification
+        )
+      ) {
+        erreurs.push(
+          `un transport sans preuve externe porte une justification serveur générique (« ${element.nom} »)`
+        );
+      }
+      if (element.confiance.niveau !== 'suggestion') {
+        erreurs.push(
+          `un transport sans preuve externe reste une suggestion (« ${element.nom} »)`
+        );
+      }
+      if (
+        element.reservation ||
+        element.plage ||
+        element.lieu ||
+        element.lienRechercheHebergement ||
+        element.sejourHebergement
+      ) {
+        erreurs.push(
+          `un transport sans preuve externe ne porte ni lieu, horaire précis, lien ni réservation (« ${element.nom} »)`
+        );
+      }
+      if (element.estAncre) {
+        erreurs.push(
+          `un transport sans preuve externe ne peut pas être une ancre (« ${element.nom} »)`
+        );
+      }
+      if (
+        element.alternatives.length > 0 ||
+        element.contraintes.length > 0
+      ) {
+        erreurs.push(
+          `un transport sans preuve externe ne porte ni alternative ni contrainte observée (« ${element.nom} »)`
+        );
+      }
+      if (element.prix !== undefined && !element.prixEstime) {
+        erreurs.push(
+          `le prix d’un transport sans fournisseur doit être estimé (« ${element.nom} »)`
+        );
+      }
     }
     if (
       element.type === 'hebergement' &&
@@ -364,6 +432,37 @@ export function validerParcours(parcours: Parcours): string[] {
           erreurs.push(`« ${element.nom} » commence hors des dates du parcours`);
         }
       }
+    }
+  }
+
+  for (const moment of parcours.timeline) {
+    if (
+      moment.plage &&
+      moment.elements.some((element) => element.type === 'transport')
+    ) {
+      erreurs.push(
+        `un moment transport sans preuve externe ne porte pas d’horaire précis (« ${moment.titre} »)`
+      );
+    }
+    const elementsTransport = moment.elements.filter(
+      (element) => element.type === 'transport'
+    );
+    if (
+      elementsTransport.length > 0 &&
+      elementsTransport.length !== moment.elements.length
+    ) {
+      erreurs.push(
+        `un transport sans preuve externe occupe un moment dédié (« ${moment.titre} »)`
+      );
+    }
+    if (
+      elementsTransport.length > 0 &&
+      moment.titre !== 'Transports à organiser' &&
+      !nomsTransportAutorises.has(moment.titre)
+    ) {
+      erreurs.push(
+        `un moment exclusivement transport porte un titre générique (« ${moment.titre} »)`
+      );
     }
   }
 

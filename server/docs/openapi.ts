@@ -41,6 +41,7 @@ const proprietesBrief = {
   ambiance: { type: 'string' },
   contraintes: { type: 'array', items: { type: 'string', minLength: 1 } },
   hebergement: { $ref: '#/components/schemas/HebergementBrief' },
+  transport: { $ref: '#/components/schemas/TransportBrief' },
 };
 
 // Schémas réutilisables (composants) ------------------------------------------
@@ -205,6 +206,208 @@ const schemas = {
       },
     ],
     discriminator: { propertyName: 'necessaire' },
+  },
+  LieuTransportDemande: {
+    type: 'object',
+    required: ['ville'],
+    additionalProperties: false,
+    properties: {
+      ville: { type: 'string', minLength: 1, maxLength: 120 },
+      codePays: {
+        type: 'string',
+        pattern: '^[A-Z]{2}$',
+        description:
+          'Code pays déclaré pour lever une ambiguïté, jamais une résolution géographique.',
+      },
+    },
+  },
+  DateTransportDemandee: {
+    type: 'object',
+    required: ['date'],
+    additionalProperties: false,
+    properties: {
+      date: { type: 'string', format: 'date' },
+      creneau: {
+        type: 'string',
+        enum: ['matin', 'apres_midi', 'soir', 'nuit'],
+      },
+    },
+    description:
+      'Date civile et créneau symbolique demandés. Aucun horaire observé ou exact.',
+  },
+  OccupationTransportBrief: {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['statut', 'adultes', 'enfants'],
+        additionalProperties: false,
+        properties: {
+          statut: { type: 'string', enum: ['declaree'] },
+          adultes: { type: 'integer', minimum: 1, maximum: 20 },
+          enfants: { type: 'integer', minimum: 0, maximum: 20 },
+        },
+      },
+      {
+        type: 'object',
+        required: ['statut'],
+        additionalProperties: false,
+        properties: {
+          statut: { type: 'string', enum: ['a_confirmer'] },
+          adultes: { type: 'integer', minimum: 1, maximum: 20 },
+          enfants: { type: 'integer', minimum: 0, maximum: 20 },
+        },
+      },
+    ],
+    discriminator: { propertyName: 'statut' },
+    description:
+      'Brouillon d’occupation indépendant de avecQui, des participants et de l’hébergement.',
+  },
+  OccupationTransportDeclaree: {
+    type: 'object',
+    required: ['statut', 'adultes', 'enfants'],
+    additionalProperties: false,
+    properties: {
+      statut: { type: 'string', enum: ['declaree'] },
+      adultes: { type: 'integer', minimum: 1, maximum: 20 },
+      enfants: { type: 'integer', minimum: 0, maximum: 20 },
+    },
+  },
+  PreferencesTransport: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      correspondances: {
+        type: 'string',
+        enum: ['direct_uniquement', 'acceptees'],
+      },
+      dureeMaxMinutes: {
+        type: 'integer',
+        minimum: 1,
+        maximum: 43200,
+      },
+      mobiliteReduite: { type: 'boolean' },
+      budgetMax: {
+        type: 'object',
+        required: ['montant', 'devise', 'portee'],
+        additionalProperties: false,
+        properties: {
+          montant: { type: 'number', exclusiveMinimum: 0 },
+          devise: { type: 'string', pattern: '^[A-Z]{3}$' },
+          portee: {
+            type: 'string',
+            enum: ['par_personne', 'total'],
+          },
+        },
+      },
+    },
+    description:
+      'Préférences déclarées, sans prix observé, disponibilité ni offre commerciale.',
+  },
+  TronconTransportBrief: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      origine: { $ref: '#/components/schemas/LieuTransportDemande' },
+      destination: {
+        $ref: '#/components/schemas/LieuTransportDemande',
+      },
+      depart: { $ref: '#/components/schemas/DateTransportDemandee' },
+      modeSouhaite: {
+        type: 'string',
+        enum: [
+          'avion',
+          'train',
+          'bus',
+          'ferry',
+          'voiture',
+          'transport_local',
+          'autre',
+        ],
+      },
+    },
+  },
+  TronconTransportDemande: {
+    type: 'object',
+    required: ['origine', 'destination', 'depart'],
+    additionalProperties: false,
+    properties: {
+      origine: { $ref: '#/components/schemas/LieuTransportDemande' },
+      destination: {
+        $ref: '#/components/schemas/LieuTransportDemande',
+      },
+      depart: { $ref: '#/components/schemas/DateTransportDemandee' },
+      modeSouhaite: {
+        type: 'string',
+        enum: [
+          'avion',
+          'train',
+          'bus',
+          'ferry',
+          'voiture',
+          'transport_local',
+          'autre',
+        ],
+      },
+    },
+  },
+  TransportBrief: {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['necessaire'],
+        additionalProperties: false,
+        properties: { necessaire: { type: 'boolean', enum: [false] } },
+      },
+      {
+        type: 'object',
+        required: ['necessaire', 'troncons', 'occupation'],
+        additionalProperties: false,
+        properties: {
+          necessaire: { type: 'boolean', enum: [true] },
+          troncons: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 8,
+            items: {
+              $ref: '#/components/schemas/TronconTransportBrief',
+            },
+          },
+          occupation: {
+            $ref: '#/components/schemas/OccupationTransportBrief',
+          },
+          preferences: {
+            $ref: '#/components/schemas/PreferencesTransport',
+          },
+        },
+      },
+    ],
+    discriminator: { propertyName: 'necessaire' },
+    description:
+      'Demande utilisateur en cours. Aucun fournisseur, lieu confirmé, segment, horaire observé, lien, réservation, disponibilité ou prix observé.',
+  },
+  DemandeTransport: {
+    type: 'object',
+    required: ['troncons', 'occupation'],
+    additionalProperties: false,
+    readOnly: true,
+    properties: {
+      troncons: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 8,
+        items: {
+          $ref: '#/components/schemas/TronconTransportDemande',
+        },
+      },
+      occupation: {
+        $ref: '#/components/schemas/OccupationTransportDeclaree',
+      },
+      preferences: {
+        $ref: '#/components/schemas/PreferencesTransport',
+      },
+    },
+    description:
+      'Demande transport validée et persistée dans le JSON du parcours. Elle décrit uniquement l’intention utilisateur, sans preuve fournisseur ni détail observé.',
   },
   Brief: {
     type: 'object',
@@ -480,6 +683,10 @@ const schemas = {
         ],
         readOnly: true,
       },
+      demandeTransport: {
+        allOf: [{ $ref: '#/components/schemas/DemandeTransport' }],
+        readOnly: true,
+      },
     },
   },
   Parcours: {
@@ -698,7 +905,9 @@ export const openapiSpec = {
       post: {
         tags: ['Parcours'],
         summary: 'Générer un parcours depuis un brief confirmé',
-        description: 'Étape 4 du doc 05. L\'orchestrateur produit un parcours complet (chaque élément justifié), le domaine le valide, le dépôt le sauvegarde.',
+        description:
+          'Étape 4 du doc 05. Le brief et les données essentielles sont validés avant l’appel au modèle. ' +
+          'Sans fournisseur transport, seuls la demande utilisateur et des transports génériques estimés peuvent être persistés : aucun horaire vérifié, lien, réservation ou disponibilité.',
         security: [{ cookieAuth: [] }, { bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -709,7 +918,7 @@ export const openapiSpec = {
           400: badRequest,
           401: unauthorized,
           429: { description: 'Trop de générations (rate-limit)', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
-          422: { description: 'Refus métier : données essentielles insuffisamment fiables ou occupation hôtelière requise non confirmée', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          422: { description: 'Refus métier : données essentielles insuffisamment fiables, séjour hôtelier incomplet, ou besoin/tronçon/occupation transport non confirmé', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           502: { description: 'Génération inexploitable (sortie refusée à la validation)', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           503: { description: 'Fournisseur IA ou sources de vérification indisponibles', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
         },

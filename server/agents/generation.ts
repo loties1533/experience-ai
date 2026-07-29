@@ -24,8 +24,20 @@ import {
   type SejourHebergement,
   type TypeElement,
 } from '../domaine/parcours/index.js';
+import {
+  estVilleTransportDemandeePrudente,
+  justificationTransportDemande,
+  libelleTransportDemande,
+  type DemandeTransport,
+} from '../domaine/transport/index.js';
 import { creerLienRechercheHebergement } from '../lib/url.js';
-import { normaliserDatesBrief, type Brief } from './brief.js';
+import {
+  BriefSchema,
+  demandeTransportComplete,
+  estParcoursMultiVille,
+  normaliserDatesBrief,
+  type Brief,
+} from './brief.js';
 import type { PreferencesParcours } from '../domaine/preferences.js';
 import type { TypeMetierRecherche } from '../services/rechercheExterne.js';
 import type {
@@ -62,6 +74,9 @@ AVANT D'ÉCRIRE, CHERCHE. Tu disposes d'outils qui rendent de vrais lieux, de vr
 - N'invente JAMAIS un nom d'établissement, une date de match ni un événement. Si une recherche ne rend rien (lieu, événement OU date), reste générique et honnête ("un bar à cocktails du centre", "un match de la saison à voir sur place") — sans faire passer une invention pour un fait.
 - Pour un hébergement nommé, appelle chercher_lieux avec typeMetierRecherche "hebergement". Sans candidat Foursquare hôtelier, écris une suggestion générique et ne conserve aucun nom propre.
 - Si le brief porte un besoin d'hébergement, respecte chaque séjour (ville, arrivée, départ) sans le remplacer par les dates globales. L'occupation décrit la demande seulement : n'affirme jamais une disponibilité.
+- Pour tout élément de type transport, ne fournis aucun nom commercial, opérateur, numéro, gare, aéroport, code, terminal, quai, porte, horaire exact, durée exacte, lien, billet, disponibilité ni réservation.
+- Un transport reste une suggestion générique à organiser. Un éventuel coût est seulement approximatif : ne le présente jamais comme un tarif réel, observé, disponible ou garanti.
+- Utilise uniquement les tronçons, dates civiles, créneaux symboliques, modes souhaités et occupants explicitement déclarés dans le brief transport. Ne transforme jamais un créneau en heure exacte.
 - N'écris jamais d'URL : les liens sont ajoutés après toi.
 
 Puis réponds UNIQUEMENT avec l'une de ces deux formes JSON :
@@ -129,6 +144,9 @@ const RefusGenerationSchema = z.object({
 });
 
 type ElementGenere = z.infer<typeof ElementGenereSchema>;
+type MomentGenere = z.infer<
+  typeof SortieGenerationSchema
+>['moments'][number];
 
 interface ElementPrepare {
   element: ElementGenere;
@@ -140,6 +158,94 @@ interface MomentPrepare {
   moment: z.infer<typeof SortieGenerationSchema>['moments'][number];
   ville?: string;
   elements: ElementPrepare[];
+}
+
+/**
+ * Le prompt réduit les hallucinations ; cette frontière les rend inoffensives.
+ *
+ * Sans demande validée, un transport ajouté spontanément par le modèle
+ * disparaît. Avec une demande validée, seuls le prix numérique (toujours
+ * marqué estimé plus bas), les dépendances techniques et la référence locale
+ * survivent. Toute phrase, identité, localisation ou heure vient du serveur et
+ * de la demande utilisateur, jamais du modèle.
+ *
+ * Un moment mixte est séparé : les horaires légitimes de ses autres éléments
+ * restent intacts, tandis que le transport rejoint un wrapper sans plage.
+ */
+export function nettoyerMomentsTransport(
+  moments: MomentGenere[],
+  demandeTransport: DemandeTransport | undefined
+): MomentGenere[] {
+  let indexTroncon = 0;
+  const nettoyes: MomentGenere[] = [];
+  const refsTransport = new Set(
+    moments.flatMap((moment) =>
+      moment.elements
+        .filter((element) => element.type === 'transport')
+        .map((element) => element.ref)
+    )
+  );
+
+  for (const moment of moments) {
+    const autresElements = moment.elements
+      .filter((element) => element.type !== 'transport')
+      .map((element) => ({
+        ...element,
+        dependDe: element.dependDe.filter(
+          (ref) => !refsTransport.has(ref)
+        ),
+      }));
+    const transports: ElementGenere[] = [];
+
+    for (const element of moment.elements) {
+      if (element.type !== 'transport') continue;
+      const troncon = demandeTransport?.troncons[indexTroncon];
+      indexTroncon += 1;
+      if (!troncon) continue;
+
+      transports.push({
+        ref: element.ref,
+        type: 'transport',
+        nom: libelleTransportDemande(troncon),
+        ...(element.prix === undefined ? {} : { prix: element.prix }),
+        justification: justificationTransportDemande(troncon),
+        // Sans preuve F4, aucune relation fonctionnelle proposée par le LLM
+        // ne qualifie un transport ou un autre élément.
+        dependDe: [],
+        estAncre: false,
+      });
+    }
+
+    if (autresElements.length > 0) {
+      nettoyes.push({
+        ...moment,
+        // Dès qu'un wrapper contenait un transport, son titre libre peut
+        // contenir un vol, une gare ou une heure. On le reconstruit depuis
+        // les éléments non transport au lieu d'essayer de filtrer sa prose.
+        titre:
+          refsTransport.size > 0 &&
+          moment.elements.some(
+            (element) => element.type === 'transport'
+          )
+            ? autresElements.length === 1
+              ? autresElements[0].nom
+              : 'Moment du parcours'
+            : moment.titre,
+        elements: autresElements,
+      });
+    }
+    if (transports.length > 0) {
+      nettoyes.push({
+        titre:
+          transports.length === 1
+            ? transports[0].nom
+            : 'Transports à organiser',
+        elements: transports,
+      });
+    }
+  }
+
+  return nettoyes;
 }
 
 function cleTexte(texte: string): string {
@@ -389,6 +495,13 @@ function tracerLieuReel(
   confiance: Confiance;
   reservation?: Reservation;
 } {
+  if (element.type === 'transport') {
+    return {
+      nom: element.nom,
+      confiance: { niveau: 'suggestion' },
+    };
+  }
+
   const lieuReel = candidat
     ? candidat.typeMetierRecherche === 'evenement'
       ? candidat.salle
@@ -495,6 +608,44 @@ function validerDonneesHotelieresEssentielles(brief: Brief): void {
   }
 }
 
+function validerDonneesTransportEssentielles(
+  brief: Brief
+): DemandeTransport | undefined {
+  if (!brief.transport) {
+    if (estParcoursMultiVille(brief)) {
+      throw new AppError(
+        'Le besoin de transport entre les villes doit être confirmé avant la génération.',
+        422
+      );
+    }
+    return undefined;
+  }
+  if (!brief.transport.necessaire) return undefined;
+
+  const demande = demandeTransportComplete(brief);
+  if (!demande) {
+    throw new AppError(
+      'Chaque tronçon et l’occupation du transport doivent être confirmés avant la génération.',
+      422
+    );
+  }
+  if (
+    demande.troncons.some(
+      (troncon) =>
+        !estVilleTransportDemandeePrudente(troncon.origine.ville) ||
+        !estVilleTransportDemandeePrudente(
+          troncon.destination.ville
+        )
+    )
+  ) {
+    throw new AppError(
+      'Les tronçons doivent désigner des villes, sans gare, aéroport, terminal ni code fournisseur.',
+      422
+    );
+  }
+  return demande;
+}
+
 function compterHebergementsParVille(
   moments: MomentPrepare[]
 ): Map<string, number> {
@@ -598,14 +749,19 @@ export async function genererParcours(
   briefRecu: Brief,
   preferences: PreferencesParcours | null = null
 ): Promise<Parcours> {
+  const resultatBrief = BriefSchema.safeParse(briefRecu);
+  if (!resultatBrief.success) {
+    throw new AppError('Le brief fourni est invalide.', 400);
+  }
   // Une fin de journée posée à minuit exclurait tout le dernier jour : on la
   // ramène au sens courant (« du 4 au 6 » comprend le 6 en entier). Fait ici
   // aussi, et pas seulement à l'intake, car un brief peut arriver directement
   // par l'API sans être passé par le dialogue.
-  const brief = normaliserDatesBrief(briefRecu);
+  const brief = normaliserDatesBrief(resultatBrief.data);
   // Un refus métier local précède tout appel à l'IA ou à un fournisseur :
   // une occupation manquante n'est jamais une panne technique (503).
   validerDonneesHotelieresEssentielles(brief);
+  const demandeTransport = validerDonneesTransportEssentielles(brief);
 
   // Mémoire simple (sprint R5) : les préférences orientent, le brief prime.
   const blocPreferences = preferences
@@ -665,10 +821,14 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
   if (!sortie.success) {
     throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
   }
+  const momentsNettoyes = nettoyerMomentsTransport(
+    sortie.data.moments,
+    demandeTransport
+  );
 
   // Attribution des ids côté serveur : les refs du LLM ne sortent pas d'ici.
   const idParRef = new Map<string, string>();
-  for (const moment of sortie.data.moments) {
+  for (const moment of momentsNettoyes) {
     for (const element of moment.elements) {
       if (!idParRef.has(element.ref)) idParRef.set(element.ref, randomUUID());
     }
@@ -678,7 +838,7 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
   // résolues. Les demandes identiques sont dédupliquées, puis exécutées avec
   // une concurrence bornée ; aucune recherche par nom brut n'est autorisée.
   const preparation = preparerMomentsPourResolution(
-    sortie.data.moments,
+    momentsNettoyes,
     boite,
     brief.lieux,
   );
@@ -701,6 +861,7 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
         brief.hebergement?.necessaire === true
           ? brief.hebergement.occupation
           : undefined,
+      demandeTransport,
     },
     participants: [{ id: randomUUID(), nom: 'Organisateur', role: 'organisateur' }],
     budget: { mode: 'individuel', montantTotal: brief.budgetTotal },
@@ -709,26 +870,31 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
       return {
         id: randomUUID(),
         titre: moment.titre,
-        plage: moment.plage,
+        ...(moment.plage ? { plage: moment.plage } : {}),
         elements: elements.map(({ element, candidat, cleDemandeLien }) => {
           const resolutionLien = cleDemandeLien
             ? resolutionsLien.get(cleDemandeLien)
             : undefined;
+          const sejourHebergement = sejourHotelierDuMoment(
+            element.type,
+            ville,
+            brief,
+            nombresHebergementsParVille
+          );
           return {
             id: idParRef.get(element.ref) as string,
             type: element.type,
             ...tracerLieuReel(element, candidat, resolutionLien, {
               ville,
             }),
-            plage: element.plage,
-            prix: element.prix,
+            ...(element.plage ? { plage: element.plage } : {}),
+            ...(element.prix === undefined
+              ? {}
+              : { prix: element.prix }),
             prixEstime: element.prix !== undefined,
-            sejourHebergement: sejourHotelierDuMoment(
-              element.type,
-              ville,
-              brief,
-              nombresHebergementsParVille
-            ),
+            ...(sejourHebergement
+              ? { sejourHebergement }
+              : {}),
             justification: element.justification,
             // Une suggestion ne peut jamais devenir une ancre datée.
             estAncre: element.estAncre && candidat !== undefined,

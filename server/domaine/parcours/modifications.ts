@@ -19,6 +19,10 @@ import {
   verifierResponsabilite,
   type ActionParcours,
 } from './invariants.js';
+import {
+  JUSTIFICATION_TRANSPORT_GENERIQUE,
+  LIBELLE_TRANSPORT_GENERIQUE,
+} from '../transport/index.js';
 
 // Le cœur du produit (invariant 3 + ADR-0004) : modifier un élément sans tout
 // refaire. Logique pure et immuable — le parcours d'origine n'est jamais touché.
@@ -47,6 +51,24 @@ export const PropositionElementClientSchema = z
     justification: z.string().trim().min(1).max(1000),
   })
   .strict();
+
+type PropositionElementClient = z.infer<
+  typeof PropositionElementClientSchema
+>;
+
+function neutraliserPropositionTransport(
+  proposition: PropositionElementClient
+): PropositionElementClient {
+  if (proposition.type !== 'transport') return proposition;
+  return {
+    type: 'transport',
+    nom: LIBELLE_TRANSPORT_GENERIQUE,
+    justification: JUSTIFICATION_TRANSPORT_GENERIQUE,
+    ...(proposition.prix === undefined
+      ? {}
+      : { prix: proposition.prix }),
+  };
+}
 
 export const DemandeModificationHotelClientSchema = z.discriminatedUnion(
   'type',
@@ -245,22 +267,29 @@ export function preparerDemandeSurElementClient(
   creerId: () => string
 ): DemandeSurElement {
   switch (demande.type) {
-    case 'ajouter_element':
+    case 'ajouter_element': {
+      const proposition = neutraliserPropositionTransport(
+        demande.element
+      );
       return {
         ...demande,
         element: ElementSchema.parse({
           id: creerId(),
-          ...demande.element,
+          ...proposition,
           confiance: { niveau: 'suggestion' },
-          prixEstime: demande.element.prix !== undefined,
+          prixEstime: proposition.prix !== undefined,
         }),
       };
+    }
     case 'remplacer_element': {
+      const proposition = neutraliserPropositionTransport(
+        demande.remplacement
+      );
       const element = ElementSchema.parse({
         id: 'remplacement-interne',
-        ...demande.remplacement,
+        ...proposition,
         confiance: { niveau: 'suggestion' },
-        prixEstime: demande.remplacement.prix !== undefined,
+        prixEstime: proposition.prix !== undefined,
       });
       const { id: _id, ...remplacement } = element;
       return { ...demande, remplacement };
@@ -372,6 +401,10 @@ export function appliquerModification(
         ...demande.remplacement,
         id: cible.id,
         prix: demande.remplacement.prix ?? cible.prix,
+        prixEstime:
+          demande.remplacement.type === 'transport'
+            ? (demande.remplacement.prix ?? cible.prix) !== undefined
+            : demande.remplacement.prixEstime,
         alternatives: reporterArbitrages(cible, demande.remplacement.alternatives),
       };
       const nouveau = retirerOccupationSansHebergement({
