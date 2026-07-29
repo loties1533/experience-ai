@@ -74,6 +74,101 @@ export const LieuTransportDemandeSchema = z
   })
   .strict();
 
+const LONGUEUR_MIN_RECHERCHE_LIEU_AERIEN = 2;
+const LONGUEUR_MAX_RECHERCHE_LIEU_AERIEN = 80;
+export const SOURCE_LIEUX_AMADEUS =
+  'https://test.api.amadeus.com/v1/reference-data/locations';
+
+function contientCaractereControle(texte: string): boolean {
+  return [...texte].some((caractere) => {
+    const code = caractere.codePointAt(0);
+    return code !== undefined && (code <= 31 || code === 127);
+  });
+}
+
+const MotCleLieuAerienSchema = z
+  .string()
+  .trim()
+  .min(LONGUEUR_MIN_RECHERCHE_LIEU_AERIEN)
+  .max(LONGUEUR_MAX_RECHERCHE_LIEU_AERIEN)
+  .refine(
+    (ville) => !contientCaractereControle(ville),
+    'la recherche contient un caractère de contrôle'
+  )
+  .refine(
+    (ville) => /^[\p{L}\p{M}\p{N} ./,:;'()"-]+$/u.test(ville),
+    'la recherche contient un caractère interdit'
+  )
+  .refine(
+    (ville) =>
+      !/\b(?:[a-z][a-z0-9+.-]*:\/\/|(?:javascript|data|mailto):|www\.)/iu.test(
+        ville
+      ),
+    'une URL ne peut pas servir de recherche de lieu aérien'
+  )
+  .refine(
+    (ville) =>
+      !/\b(?:identifiantExterne|fournisseur|source|fuseauIana)\b/iu.test(
+        ville
+      ),
+    'la recherche contient un champ fournisseur interdit'
+  );
+
+export const PreferenceLieuAerienSchema = z.enum(['aeroport', 'ville']);
+
+/**
+ * Demande interne limitée aux paramètres autorisés par Airport & City Search.
+ * Aucun identifiant, fournisseur, code IATA ou fuseau ne peut venir du client.
+ */
+export const RechercheLieuAerienSchema = z
+  .object({
+    ville: MotCleLieuAerienSchema,
+    codePays: CodePaysSchema.optional(),
+    preference: PreferenceLieuAerienSchema.optional(),
+  })
+  .strict();
+
+const CodeIataLieuAerienSchema = z
+  .string()
+  .regex(/^[A-Z]{3}$/, 'le code IATA doit contenir trois lettres majuscules');
+
+const CoordonneesLieuAerienSchema = z
+  .object({
+    latitude: z.number().finite().min(-90).max(90),
+    longitude: z.number().finite().min(-180).max(180),
+  })
+  .strict();
+
+const DecalageHoraireAmadeusSchema = z
+  .string()
+  .regex(
+    /^[+-](?:(?:0\d|1[0-3]):[0-5]\d|14:00)$/,
+    'le décalage horaire doit être compris entre -14:00 et +14:00'
+  );
+
+/**
+ * Identité intermédiaire rendue par Amadeus Airport & City Search.
+ *
+ * `decalageHoraire` reste un simple offset fournisseur. Il ne constitue
+ * jamais un fuseau IANA et ne permet donc pas de créer un
+ * `LieuTransportConfirme`.
+ */
+export const CandidatLieuAerienSchema = z
+  .object({
+    type: z.enum(['aeroport', 'ville']),
+    identifiantExterne: IdentifiantExterneSchema,
+    nom: TexteCourtSchema,
+    ville: VilleSchema,
+    codePays: CodePaysSchema,
+    codeIata: CodeIataLieuAerienSchema.optional(),
+    coordonnees: CoordonneesLieuAerienSchema.optional(),
+    decalageHoraire: DecalageHoraireAmadeusSchema.optional(),
+    fournisseur: z.literal('Amadeus'),
+    source: z.literal(SOURCE_LIEUX_AMADEUS),
+    recupereLe: DateHeureAvecDecalageSchema,
+  })
+  .strict();
+
 export const NombreAdultesTransportSchema = z.number().int().min(1).max(20);
 export const NombreEnfantsTransportSchema = z.number().int().min(0).max(20);
 
@@ -419,6 +514,15 @@ export type PreferenceLieuTransport = z.infer<
 >;
 export type LieuTransportDemande = z.infer<
   typeof LieuTransportDemandeSchema
+>;
+export type PreferenceLieuAerien = z.infer<
+  typeof PreferenceLieuAerienSchema
+>;
+export type RechercheLieuAerien = z.infer<
+  typeof RechercheLieuAerienSchema
+>;
+export type CandidatLieuAerien = z.infer<
+  typeof CandidatLieuAerienSchema
 >;
 export type OccupationTransportDeclaree = z.infer<
   typeof OccupationTransportDeclareeSchema
