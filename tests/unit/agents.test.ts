@@ -636,6 +636,365 @@ describe('intake hôtelier F3-C1 — questions explicites sans déduction', () =
   });
 });
 
+describe('intake transport F4-B2 — demande explicite et questions déterministes', () => {
+  const baseTransport = {
+    intention: 'découvrir Bordeaux et Paris',
+    avecQui: 'famille' as const,
+    duree: { valeur: 4, unite: 'jours' as const },
+    dates: {
+      debut: '2026-09-10T00:00:00.000Z',
+      fin: '2026-09-14T23:59:59.999Z',
+    },
+    lieux: ['Bordeaux', 'Paris'],
+  };
+
+  function reponseIntake(brief: unknown = {}): string {
+    return JSON.stringify({
+      reponse: 'Question du modèle',
+      brief,
+    });
+  }
+
+  it('demande confirmation en multi-ville sans fabriquer de tronçon', async () => {
+    vi.mocked(callAI).mockResolvedValue(reponseIntake());
+
+    const etape = await avancerDialogue(
+      baseTransport,
+      'Nous voulons visiter ces deux villes'
+    );
+
+    expect(etape.reponse).toContain(
+      'Faut-il organiser un transport'
+    );
+    expect(etape.brief.transport).toBeUndefined();
+  });
+
+  it('une confirmation crée seulement un brouillon puis collecte dans l’ordre', async () => {
+    vi.mocked(callAI).mockResolvedValue(reponseIntake());
+    const besoin = await avancerDialogue(baseTransport, 'oui');
+    expect(besoin.brief.transport).toEqual({
+      necessaire: true,
+      troncons: [{}],
+      occupation: { statut: 'a_confirmer' },
+    });
+    expect(besoin.reponse).toContain('ville d’origine');
+
+    const origine = await avancerDialogue(besoin.brief, 'Bordeaux');
+    expect(origine.reponse).toContain('ville de destination');
+    expect(
+      origine.brief.transport?.necessaire === true
+        ? origine.brief.transport.troncons[0].origine
+        : undefined
+    ).toEqual({ ville: 'Bordeaux' });
+
+    const destination = await avancerDialogue(
+      origine.brief,
+      'Paris'
+    );
+    expect(destination.reponse).toContain('date de départ');
+
+    const date = await avancerDialogue(
+      destination.brief,
+      '2026-09-10'
+    );
+    expect(date.reponse).toContain('Combien d’adultes');
+
+    const adultes = await avancerDialogue(date.brief, '2');
+    expect(adultes.reponse).toContain('Combien d’enfants');
+
+    const enfants = await avancerDialogue(adultes.brief, '0');
+    expect(enfants.estComplet).toBe(true);
+    expect(
+      enfants.brief.transport?.necessaire === true
+        ? enfants.brief.transport.occupation
+        : undefined
+    ).toEqual({ statut: 'declaree', adultes: 2, enfants: 0 });
+    expect(enfants.reponse).not.toMatch(
+      /ville d’origine|ville de destination|date de départ|Combien d’adultes|Combien d’enfants/
+    );
+  });
+
+  it('n’invente pas une ambiguïté géographique sans résolveur', async () => {
+    vi.mocked(callAI).mockResolvedValue(reponseIntake());
+    const etape = await avancerDialogue(
+      {
+        ...baseTransport,
+        transport: {
+          necessaire: true as const,
+          troncons: [{}],
+          occupation: { statut: 'a_confirmer' as const },
+        },
+      },
+      'Springfield'
+    );
+
+    expect(etape.reponse).toContain('ville de destination');
+    expect(etape.reponse).not.toContain('Dans quel pays');
+    expect(
+      etape.brief.transport?.necessaire === true
+        ? etape.brief.transport.troncons[0].origine
+        : undefined
+    ).toEqual({ ville: 'Springfield' });
+  });
+
+  it.each([
+    ['prévoir un taxi', 'Peux-tu prévoir un taxi ?', 'transport_local'],
+    ['venir en voiture', 'Je viens en voiture', 'voiture'],
+  ])(
+    'reconnaît une demande explicite mono-ville : %s',
+    async (_libelle, message, mode) => {
+      vi.mocked(callAI).mockResolvedValue(
+        reponseIntake({
+          transport: {
+            necessaire: true,
+            troncons: [{ modeSouhaite: mode }],
+            occupation: { statut: 'a_confirmer' },
+          },
+        })
+      );
+      const etape = await avancerDialogue(
+        { ...baseTransport, lieux: ['Bordeaux'] },
+        message
+      );
+
+      expect(etape.brief.transport).toMatchObject({
+        necessaire: true,
+        troncons: [{ modeSouhaite: mode }],
+        occupation: { statut: 'a_confirmer' },
+      });
+      expect(etape.reponse).toContain('ville d’origine');
+    }
+  );
+
+  it('ne force pas un transport simplement reporté à plus tard', async () => {
+    vi.mocked(callAI).mockResolvedValue(reponseIntake());
+    const etape = await avancerDialogue(
+      { ...baseTransport, lieux: ['Bordeaux'] },
+      'On verra le transport plus tard'
+    );
+
+    expect(etape.brief.transport).toBeUndefined();
+  });
+
+  it('respecte un refus explicite même sur un parcours multi-ville', async () => {
+    vi.mocked(callAI).mockResolvedValue(reponseIntake());
+    const etape = await avancerDialogue(
+      baseTransport,
+      'Je ne veux pas de transport'
+    );
+
+    expect(etape.brief.transport).toEqual({ necessaire: false });
+  });
+
+  it('accepte l’ordre explicitement écrit mais refuse de laisser le LLM l’inverser', async () => {
+    vi.mocked(callAI)
+      .mockResolvedValueOnce(
+        reponseIntake({
+          transport: {
+            necessaire: true,
+            troncons: [
+              {
+                origine: { ville: 'Bordeaux' },
+                destination: { ville: 'Paris' },
+                modeSouhaite: 'train',
+              },
+            ],
+            occupation: { statut: 'a_confirmer' },
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        reponseIntake({
+          transport: {
+            necessaire: true,
+            troncons: [
+              {
+                origine: { ville: 'Paris' },
+                destination: { ville: 'Bordeaux' },
+                modeSouhaite: 'train',
+              },
+            ],
+            occupation: { statut: 'a_confirmer' },
+          },
+        })
+      );
+
+    const dansOrdre = await avancerDialogue(
+      baseTransport,
+      'Prévois le train Bordeaux Paris'
+    );
+    expect(
+      dansOrdre.brief.transport?.necessaire === true
+        ? dansOrdre.brief.transport.troncons[0]
+        : undefined
+    ).toMatchObject({
+      origine: { ville: 'Bordeaux' },
+      destination: { ville: 'Paris' },
+      modeSouhaite: 'train',
+    });
+
+    const inverseParModele = await avancerDialogue(
+      baseTransport,
+      'Prévois le train Bordeaux Paris'
+    );
+    expect(
+      inverseParModele.brief.transport?.necessaire === true
+        ? inverseParModele.brief.transport.troncons[0]
+        : undefined
+    ).toEqual({ modeSouhaite: 'train' });
+    expect(inverseParModele.reponse).toContain('ville d’origine');
+  });
+
+  it('ne conserve jamais une gare ou un aéroport proposé seulement par le modèle', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      reponseIntake({
+        transport: {
+          necessaire: true,
+          troncons: [
+            {
+              origine: {
+                ville: 'Bordeaux',
+                preference: {
+                  type: 'aeroport',
+                  libelle: 'Bordeaux-Mérignac',
+                },
+              },
+            },
+          ],
+          occupation: { statut: 'a_confirmer' },
+        },
+      })
+    );
+    const etape = await avancerDialogue(
+      {
+        ...baseTransport,
+        transport: {
+          necessaire: true,
+          troncons: [{}],
+          occupation: { statut: 'a_confirmer' },
+        },
+      },
+      'Bordeaux'
+    );
+
+    expect(
+      etape.brief.transport?.necessaire === true
+        ? etape.brief.transport.troncons[0].origine
+        : undefined
+    ).toEqual({ ville: 'Bordeaux' });
+  });
+
+  it('un aller-retour reste deux tronçons explicites et incomplets', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      reponseIntake({
+        transport: {
+          necessaire: true,
+          troncons: [
+            {
+              origine: { ville: 'Bordeaux' },
+              destination: { ville: 'Paris' },
+              depart: { date: '2026-09-10' },
+            },
+          ],
+          occupation: { statut: 'a_confirmer' },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(
+      baseTransport,
+      'Je veux un aller-retour Bordeaux Paris, départ le 2026-09-10'
+    );
+
+    expect(
+      etape.brief.transport?.necessaire === true
+        ? etape.brief.transport.troncons
+        : []
+    ).toHaveLength(2);
+    expect(etape.reponse).toContain('tronçon 2');
+    expect(etape.reponse).toContain('ville d’origine');
+  });
+
+  it('ne déduit rien de avecQui ni de l’occupation hôtelière', async () => {
+    const transportPartiel = {
+      necessaire: true as const,
+      troncons: [
+        {
+          origine: { ville: 'Bordeaux' },
+          destination: { ville: 'Paris' },
+          depart: { date: '2026-09-10' },
+        },
+      ],
+      occupation: { statut: 'a_confirmer' as const },
+    };
+    vi.mocked(callAI).mockResolvedValue(
+      reponseIntake({
+        transport: {
+          ...transportPartiel,
+          occupation: {
+            statut: 'declaree',
+            adultes: 2,
+            enfants: 0,
+          },
+        },
+      })
+    );
+
+    const depuisFamille = await avancerDialogue(
+      { ...baseTransport, transport: transportPartiel },
+      'Nous partons en famille'
+    );
+    expect(
+      depuisFamille.brief.transport?.necessaire === true
+        ? depuisFamille.brief.transport.occupation
+        : undefined
+    ).toEqual({ statut: 'a_confirmer' });
+
+    const depuisHotel = await avancerDialogue(
+      {
+        ...baseTransport,
+        transport: transportPartiel,
+        hebergement: {
+          necessaire: true as const,
+          occupation: {
+            statut: 'declaree' as const,
+            adultes: 2,
+            enfants: 0,
+            chambres: 1,
+          },
+          sejours: [
+            {
+              ville: 'Paris',
+              arrivee: '2026-09-10',
+              depart: '2026-09-14',
+            },
+          ],
+        },
+      },
+      '2 adultes et aucun enfant pour l’hôtel'
+    );
+    expect(
+      depuisHotel.brief.transport?.necessaire === true
+        ? depuisHotel.brief.transport.occupation
+        : undefined
+    ).toEqual({ statut: 'a_confirmer' });
+    expect(depuisHotel.reponse).toContain('Combien d’adultes');
+  });
+
+  it('interdit au modèle les faits transport non prouvés', async () => {
+    vi.mocked(callAI).mockResolvedValue(reponseIntake());
+    await avancerDialogue({}, 'Je veux prendre le train');
+
+    const systeme = vi.mocked(callAI).mock.calls[0][1];
+    expect(systeme).toContain(
+      "N'infère JAMAIS l'occupation transport"
+    );
+    expect(systeme).toContain(
+      "N'invente jamais gare, aéroport, code IATA/UIC, compagnie, numéro, horaire exact, lien, prix ou disponibilité"
+    );
+  });
+});
+
 describe('génération (IA orchestrateur) — les ids naissent côté serveur', () => {
   const sortieLLM = {
     ambiance: 'sportive et urbaine',
@@ -675,6 +1034,222 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
   it('rejette une sortie inexploitable avec une erreur actionnable', async () => {
     vi.mocked(callAIAvecOutils).mockResolvedValue('{"moments": []}');
     await expect(genererParcours(briefComplet)).rejects.toThrow('inexploitable');
+  });
+
+  it('rejette une forme invalide avant tout appel au modèle', async () => {
+    await expect(
+      genererParcours({
+        ...briefComplet,
+        transport: {
+          necessaire: true,
+          troncons: [
+            {
+              origine: { ville: 'Bordeaux' },
+              fournisseur: 'Amadeus',
+            },
+          ],
+          occupation: { statut: 'a_confirmer' },
+        },
+      } as never)
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(callAIAvecOutils).not.toHaveBeenCalled();
+  });
+
+  it('rejette un besoin transport incomplet en 422 avant tout appel au modèle', async () => {
+    const briefIncomplet = BriefSchema.parse({
+      ...briefComplet,
+      lieux: ['Bordeaux', 'Paris'],
+      transport: {
+        necessaire: true,
+        troncons: [{ origine: { ville: 'Bordeaux' } }],
+        occupation: { statut: 'a_confirmer' },
+      },
+    });
+
+    await expect(genererParcours(briefIncomplet)).rejects.toMatchObject({
+      statusCode: 422,
+    });
+    expect(callAIAvecOutils).not.toHaveBeenCalled();
+  });
+
+  it.each(['CDG', 'Paris<script>', 'Bordeaux\nRéservation confirmée'])(
+    'rejette une ville transport non prudente avant tout appel au modèle : %s',
+    async (ville) => {
+      const brief = BriefSchema.parse({
+        ...briefComplet,
+        lieux: ['Bordeaux', 'Paris'],
+        transport: {
+          necessaire: true,
+          troncons: [
+            {
+              origine: { ville },
+              destination: { ville: 'Paris' },
+              depart: { date: '2026-09-10' },
+            },
+          ],
+          occupation: {
+            statut: 'declaree',
+            adultes: 2,
+            enfants: 0,
+          },
+        },
+      });
+
+      await expect(genererParcours(brief)).rejects.toMatchObject({
+        statusCode: 422,
+      });
+      expect(callAIAvecOutils).not.toHaveBeenCalled();
+    }
+  );
+
+  it('exige une confirmation en multi-ville mais pas en mono-ville', async () => {
+    const multiVille = BriefSchema.parse({
+      ...briefComplet,
+      lieux: ['Bordeaux', 'Paris'],
+    });
+    await expect(genererParcours(multiVille)).rejects.toMatchObject({
+      statusCode: 422,
+    });
+    expect(callAIAvecOutils).not.toHaveBeenCalled();
+
+    vi.mocked(callAIAvecOutils).mockResolvedValue(
+      JSON.stringify({
+        moments: [
+          {
+            titre: 'Trajet inventé',
+            elements: [
+              {
+                ref: 'transport-invente',
+                type: 'transport',
+                nom: 'Vol AF123',
+                lieu: 'CDG terminal 2',
+                plage: {
+                  debut: '2026-09-10T09:42:00Z',
+                  fin: '2026-09-10T11:18:00Z',
+                },
+                justification: 'Billet disponible',
+              },
+            ],
+          },
+        ],
+      })
+    );
+    const monoVille = await genererParcours(briefComplet);
+    expect(monoVille.timeline).toEqual([]);
+  });
+
+  it('neutralise toute observation transport et persiste seulement la demande', async () => {
+    const briefTransport = BriefSchema.parse({
+      intention: 'relier Bordeaux et Paris',
+      avecQui: 'famille',
+      duree: { valeur: 4, unite: 'jours' },
+      lieux: ['Bordeaux', 'Paris'],
+      transport: {
+        necessaire: true,
+        troncons: [
+          {
+            origine: { ville: 'Bordeaux' },
+            destination: { ville: 'Paris' },
+            depart: { date: '2026-09-10', creneau: 'matin' },
+            modeSouhaite: 'train',
+          },
+        ],
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 1,
+        },
+      },
+    });
+    vi.mocked(callAIAvecOutils).mockResolvedValue(
+      JSON.stringify({
+        moments: [
+          {
+            titre: 'Air France AF123 depuis CDG terminal 2',
+            ville: 'Bordeaux',
+            plage: {
+              debut: '2026-09-10T09:42:00Z',
+              fin: '2026-09-10T11:18:00Z',
+            },
+            elements: [
+              {
+                ref: 'trajet-1',
+                type: 'transport',
+                identifiantExterne: 'AF123',
+                nom: 'Air France AF123',
+                lieu: 'CDG terminal 2, porte A7',
+                plage: {
+                  debut: '2026-09-10T09:42:00Z',
+                  fin: '2026-09-10T11:18:00Z',
+                },
+                prix: 145,
+                justification:
+                  'Billet observé disponible à 145 €, réserver sur https://evil.test',
+                estAncre: true,
+                reservation: {
+                  lienExterne: 'https://evil.test',
+                },
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    const parcours = await genererParcours(briefTransport);
+    const [element] = parcours.timeline[0].elements;
+    expect(parcours.contexte.demandeTransport).toEqual({
+      troncons: [
+        {
+          origine: { ville: 'Bordeaux' },
+          destination: { ville: 'Paris' },
+          depart: { date: '2026-09-10', creneau: 'matin' },
+          modeSouhaite: 'train',
+        },
+      ],
+      occupation: {
+        statut: 'declaree',
+        adultes: 2,
+        enfants: 1,
+      },
+    });
+    expect(parcours.timeline[0]).not.toHaveProperty('plage');
+    expect(element).toMatchObject({
+      type: 'transport',
+      nom: 'Transport à organiser de Bordeaux vers Paris',
+      justification:
+        'Prévoir un transport entre Bordeaux et Paris selon les dates et préférences déclarées.',
+      confiance: { niveau: 'suggestion' },
+      prix: 145,
+      prixEstime: true,
+      estAncre: false,
+    });
+    expect(element).not.toHaveProperty('lieu');
+    expect(element).not.toHaveProperty('plage');
+    expect(element).not.toHaveProperty('reservation');
+    const serialise = JSON.stringify(parcours);
+    for (const invention of [
+      'Air France',
+      'AF123',
+      'CDG',
+      '09:42',
+      '11:18',
+      'Billet observé',
+      'evil.test',
+    ]) {
+      expect(serialise).not.toContain(invention);
+    }
+
+    const systeme = vi.mocked(callAIAvecOutils).mock.calls[0][1];
+    expect(systeme).toContain(
+      'aucun nom commercial, opérateur, numéro, gare, aéroport'
+    );
+    expect(systeme).toContain(
+      'suggestion générique à organiser'
+    );
+    expect(systeme).toContain(
+      'ne le présente jamais comme un tarif réel'
+    );
   });
 });
 

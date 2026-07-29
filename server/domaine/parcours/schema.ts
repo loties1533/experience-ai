@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  DemandeTransportSchema,
+  JUSTIFICATION_TRANSPORT_GENERIQUE,
+  LIBELLE_TRANSPORT_GENERIQUE,
+  estVilleTransportDemandeePrudente,
+  justificationTransportDemande,
+  libelleTransportDemande,
+} from '../transport/index.js';
 
 // Traduction directe de docs/06-modele-conceptuel.md — aucune dépendance technique.
 // Les invariants 1 (intention + contexte obligatoires) et 2 (justification par
@@ -165,6 +173,27 @@ export const SejourHebergementSchema = z
     path: ['depart'],
   });
 
+export const DemandeTransportParcoursSchema = DemandeTransportSchema.refine(
+  (demande) => demande.occupation.statut === 'declaree',
+  {
+    message:
+      'l’occupation transport doit être déclarée avant la persistance',
+    path: ['occupation', 'statut'],
+  }
+).refine(
+  (demande) =>
+    demande.troncons.every(
+      (troncon) =>
+        estVilleTransportDemandeePrudente(troncon.origine.ville) &&
+        estVilleTransportDemandeePrudente(troncon.destination.ville)
+    ),
+  {
+    message:
+      'un tronçon persistant désigne des villes, jamais une gare, un aéroport, un terminal ou un code fournisseur',
+    path: ['troncons'],
+  }
+);
+
 function estAnneeBissextile(annee: number): boolean {
   return annee % 4 === 0 && (annee % 100 !== 0 || annee % 400 === 0);
 }
@@ -244,6 +273,9 @@ export const ContexteSchema = z.object({
   // L'occupation qualifie la demande, jamais la disponibilité d'un hôtel.
   // Optionnelle pour préserver sans interprétation les parcours antérieurs.
   occupationHebergement: OccupationHebergementSchema.optional(),
+  // Demande utilisateur F4-B2 uniquement : aucun lieu confirmé, segment
+  // observé, fournisseur, lien ou prix commercial n'est actif à ce stade.
+  demandeTransport: DemandeTransportParcoursSchema.optional(),
 });
 
 export const ParticipantSchema = z.object({
@@ -551,51 +583,125 @@ export function estConfianceFoursquareHotelValide(
 function normaliserParcoursLegacy(valeur: unknown): unknown {
   if (!estObjet(valeur) || !Array.isArray(valeur.timeline)) return valeur;
 
+  const idsMomentsUtilises = new Set(
+    valeur.timeline.flatMap((moment) =>
+      estObjet(moment) && typeof moment.id === 'string'
+        ? [moment.id]
+        : []
+    )
+  );
+  const creerIdMomentTransport = (idMoment: unknown): string => {
+    const base =
+      typeof idMoment === 'string' && idMoment.length > 0
+        ? `${idMoment}-transport`
+        : 'moment-transport';
+    let candidat = base;
+    let suffixe = 2;
+    while (idsMomentsUtilises.has(candidat)) {
+      candidat = `${base}-${suffixe}`;
+      suffixe += 1;
+    }
+    idsMomentsUtilises.add(candidat);
+    return candidat;
+  };
+
   return {
     ...valeur,
-    timeline: valeur.timeline.map((moment) => {
+    timeline: valeur.timeline.flatMap((moment) => {
       if (!estObjet(moment) || !Array.isArray(moment.elements)) return moment;
-      return {
-        ...moment,
-        elements: moment.elements.map((element) => {
-          if (!estObjet(element)) return element;
+      const elements = moment.elements.map((element) => {
+        if (!estObjet(element)) return element;
 
-          if (element.type === 'hebergement') {
-            const {
-              reservation: _reservationAmbigue,
-              confiance: confianceLegacy,
-              ...hotelSansReservation
-            } = element;
-            const confiance =
-              estObjet(confianceLegacy) &&
-              confianceLegacy.niveau === 'verifie' &&
-              !estConfianceFoursquareHotelValide(confianceLegacy)
-                ? { niveau: 'suggestion' }
-                : confianceLegacy;
-            return {
-              ...hotelSansReservation,
-              ...(confiance === undefined ? {} : { confiance }),
-            };
-          }
-
-          if (!estObjet(element.reservation)) return element;
-          const reservation = element.reservation;
+        if (element.type === 'hebergement') {
+          const {
+            reservation: _reservationAmbigue,
+            confiance: confianceLegacy,
+            ...hotelSansReservation
+          } = element;
+          const confiance =
+            estObjet(confianceLegacy) &&
+            confianceLegacy.niveau === 'verifie' &&
+            !estConfianceFoursquareHotelValide(confianceLegacy)
+              ? { niveau: 'suggestion' }
+              : confianceLegacy;
           return {
-            ...element,
-            reservation: {
-              ...reservation,
-              fournisseur:
-                reservation.fournisseur === undefined
-                  ? 'Inconnu (legacy)'
-                  : reservation.fournisseur,
-              typeLien:
-                reservation.typeLien === undefined
-                  ? 'recherche'
-                  : reservation.typeLien,
-            },
+            ...hotelSansReservation,
+            ...(confiance === undefined ? {} : { confiance }),
           };
-        }),
+        }
+
+        if (element.type === 'transport') {
+          const {
+            reservation: _reservationTransport,
+            lienRechercheHebergement: _lienHotelier,
+            sejourHebergement: _sejourHotelier,
+            confiance: _confianceTransport,
+            plage: _plageObservee,
+            lieu: _lieuObserve,
+            nom: _nomObserve,
+            justification: _justificationObservee,
+            estAncre: _ancreObservee,
+            alternatives: _alternativesObservees,
+            contraintes: _contraintesObservees,
+            ...transportSansObservation
+          } = element;
+          return {
+            ...transportSansObservation,
+            nom: LIBELLE_TRANSPORT_GENERIQUE,
+            justification: JUSTIFICATION_TRANSPORT_GENERIQUE,
+            confiance: { niveau: 'suggestion' },
+            prixEstime: true,
+            estAncre: false,
+            alternatives: [],
+            contraintes: [],
+          };
+        }
+
+        if (!estObjet(element.reservation)) return element;
+        const reservation = element.reservation;
+        return {
+          ...element,
+          reservation: {
+            ...reservation,
+            fournisseur:
+              reservation.fournisseur === undefined
+                ? 'Inconnu (legacy)'
+                : reservation.fournisseur,
+            typeLien:
+              reservation.typeLien === undefined
+                ? 'recherche'
+                : reservation.typeLien,
+          },
+        };
+      });
+
+      const transports = elements.filter(
+        (element) => estObjet(element) && element.type === 'transport'
+      );
+      if (transports.length === 0) {
+        return [{ ...moment, elements }];
+      }
+      const autres = elements.filter(
+        (element) => !estObjet(element) || element.type !== 'transport'
+      );
+      const {
+        plage: _plageTransport,
+        titre: _titreTransport,
+        id: idMoment,
+        ...momentSansObservationTransport
+      } = moment;
+      const momentTransport = {
+        ...momentSansObservationTransport,
+        id:
+          autres.length > 0
+            ? creerIdMomentTransport(idMoment)
+            : idMoment,
+        titre: LIBELLE_TRANSPORT_GENERIQUE,
+        elements: transports,
       };
+      return autres.length > 0
+        ? [{ ...moment, elements: autres }, momentTransport]
+        : [momentTransport];
     }),
   };
 }
@@ -613,6 +719,18 @@ export const ParcoursSchema = z
     timeline: z.array(MomentSchema).default([]),
   })
   .superRefine((parcours, contexte) => {
+    const nomsTransportAutorises = new Set([
+      LIBELLE_TRANSPORT_GENERIQUE,
+      ...(parcours.contexte.demandeTransport?.troncons.map(
+        libelleTransportDemande
+      ) ?? []),
+    ]);
+    const justificationsTransportAutorisees = new Set([
+      JUSTIFICATION_TRANSPORT_GENERIQUE,
+      ...(parcours.contexte.demandeTransport?.troncons.map(
+        justificationTransportDemande
+      ) ?? []),
+    ]);
     parcours.timeline.forEach((moment, indexMoment) => {
       moment.elements.forEach((element, indexElement) => {
         if (element.type === 'hebergement' && element.reservation) {
@@ -718,7 +836,161 @@ export const ParcoursSchema = z
             });
           }
         }
+        if (element.type === 'transport') {
+          if (!nomsTransportAutorises.has(element.nom)) {
+            contexte.addIssue({
+              code: 'custom',
+              message:
+                'un transport sans preuve externe porte un libellé générique',
+              path: [
+                'timeline',
+                indexMoment,
+                'elements',
+                indexElement,
+                'nom',
+              ],
+            });
+          }
+          if (
+            !justificationsTransportAutorisees.has(
+              element.justification
+            )
+          ) {
+            contexte.addIssue({
+              code: 'custom',
+              message:
+                'un transport sans preuve externe porte une justification serveur générique',
+              path: [
+                'timeline',
+                indexMoment,
+                'elements',
+                indexElement,
+                'justification',
+              ],
+            });
+          }
+          if (element.confiance.niveau !== 'suggestion') {
+            contexte.addIssue({
+              code: 'custom',
+              message:
+                'un transport sans preuve externe reste une suggestion',
+              path: [
+                'timeline',
+                indexMoment,
+                'elements',
+                indexElement,
+                'confiance',
+              ],
+            });
+          }
+          for (const champ of [
+            'reservation',
+            'plage',
+            'lieu',
+            'lienRechercheHebergement',
+            'sejourHebergement',
+          ] as const) {
+            if (element[champ] !== undefined) {
+              contexte.addIssue({
+                code: 'custom',
+                message:
+                  'un transport sans preuve externe ne porte ni lieu, horaire précis, lien ni réservation',
+                path: [
+                  'timeline',
+                  indexMoment,
+                  'elements',
+                  indexElement,
+                  champ,
+                ],
+              });
+            }
+          }
+          if (element.estAncre) {
+            contexte.addIssue({
+              code: 'custom',
+              message:
+                'un transport sans preuve externe ne peut pas être une ancre',
+              path: [
+                'timeline',
+                indexMoment,
+                'elements',
+                indexElement,
+                'estAncre',
+              ],
+            });
+          }
+          if (
+            element.alternatives.length > 0 ||
+            element.contraintes.length > 0
+          ) {
+            contexte.addIssue({
+              code: 'custom',
+              message:
+                'un transport sans preuve externe ne porte ni alternative ni contrainte observée',
+              path: [
+                'timeline',
+                indexMoment,
+                'elements',
+                indexElement,
+                element.alternatives.length > 0
+                  ? 'alternatives'
+                  : 'contraintes',
+              ],
+            });
+          }
+          if (element.prix !== undefined && !element.prixEstime) {
+            contexte.addIssue({
+              code: 'custom',
+              message:
+                'le prix d’un transport sans fournisseur doit être estimé',
+              path: [
+                'timeline',
+                indexMoment,
+                'elements',
+                indexElement,
+                'prixEstime',
+              ],
+            });
+          }
+        }
       });
+      if (
+        moment.plage &&
+        moment.elements.some((element) => element.type === 'transport')
+      ) {
+        contexte.addIssue({
+          code: 'custom',
+          message:
+            'un moment transport sans preuve externe ne porte pas d’horaire précis',
+          path: ['timeline', indexMoment, 'plage'],
+        });
+      }
+      const elementsTransport = moment.elements.filter(
+        (element) => element.type === 'transport'
+      );
+      if (
+        elementsTransport.length > 0 &&
+        elementsTransport.length !== moment.elements.length
+      ) {
+        contexte.addIssue({
+          code: 'custom',
+          message:
+            'un transport sans preuve externe occupe un moment dédié',
+          path: ['timeline', indexMoment, 'elements'],
+        });
+      }
+      if (
+        elementsTransport.length > 0 &&
+        (moment.titre !== 'Transports à organiser' &&
+          !nomsTransportAutorises.has(moment.titre))
+      ) {
+        contexte.addIssue({
+          code: 'custom',
+          message:
+            'un moment exclusivement transport porte un titre générique',
+          path: ['timeline', indexMoment, 'titre'],
+        });
+      }
     });
   });
 
@@ -742,6 +1014,9 @@ export type OccupationHebergementDeclaree = z.infer<
   typeof OccupationHebergementDeclareeSchema
 >;
 export type SejourHebergement = z.infer<typeof SejourHebergementSchema>;
+export type DemandeTransportParcours = z.infer<
+  typeof DemandeTransportParcoursSchema
+>;
 export type Contrainte = z.infer<typeof ContrainteSchema>;
 export type Avis = z.infer<typeof AvisSchema>;
 export type Reaction = z.infer<typeof ReactionSchema>;

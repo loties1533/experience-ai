@@ -153,6 +153,55 @@ describe('sauvegarderParcours — l’écriture dérive les projections', () => 
         .lienRechercheHebergement
     ).toEqual(parcoursHotelier.timeline[0].elements[0].lienRechercheHebergement);
   });
+
+  it('persiste la demande transport utilisateur dans le JSON existant', async () => {
+    const demandeTransport = {
+      troncons: [
+        {
+          origine: { ville: 'Bordeaux' },
+          destination: { ville: 'Paris' },
+          depart: { date: '2026-09-10', creneau: 'matin' },
+          modeSouhaite: 'train',
+        },
+      ],
+      occupation: {
+        statut: 'declaree',
+        adultes: 2,
+        enfants: 0,
+      },
+    };
+    const parcoursTransport = ParcoursSchema.parse({
+      ...parcoursValide,
+      contexte: {
+        ...parcoursValide.contexte,
+        demandeTransport,
+      },
+      timeline: [
+        {
+          id: 'm-transport',
+          titre: 'Transport à organiser de Bordeaux vers Paris',
+          elements: [
+            {
+              id: 'e-transport',
+              type: 'transport',
+              nom: 'Transport à organiser de Bordeaux vers Paris',
+              justification:
+                'Prévoir un transport entre Bordeaux et Paris selon les dates et préférences déclarées.',
+            },
+          ],
+        },
+      ],
+    });
+    prismaMock.parcours.findUnique.mockResolvedValue(null);
+
+    await sauvegarderParcours(PROPRIETAIRE, parcoursTransport);
+
+    const appel = prismaMock.parcours.upsert.mock.calls[0][0];
+    expect(appel.create.contenu.contexte.demandeTransport).toEqual(
+      demandeTransport
+    );
+    expect(appel.create).not.toHaveProperty('demandeTransport');
+  });
 });
 
 describe('chargerParcours — la lecture revalide le contenu', () => {
@@ -201,6 +250,66 @@ describe('chargerParcours — la lecture revalide le contenu', () => {
       fournisseur: 'Inconnu (legacy)',
       typeLien: 'recherche',
     });
+  });
+
+  it('neutralise un transport legacy avant de le rendre', async () => {
+    prismaMock.parcours.findFirst.mockResolvedValue({
+      contenu: {
+        ...parcoursValide,
+        timeline: [
+          {
+            id: 'm-transport-legacy',
+            titre: 'TGV 8421 à 09:42',
+            plage: {
+              debut: '2026-09-10T09:42:00Z',
+              fin: '2026-09-10T11:18:00Z',
+            },
+            elements: [
+              {
+                id: 'e-transport-legacy',
+                type: 'transport',
+                nom: 'TGV 8421',
+                lieu: 'Gare Montparnasse',
+                plage: {
+                  debut: '2026-09-10T09:42:00Z',
+                  fin: '2026-09-10T11:18:00Z',
+                },
+                prix: 80,
+                prixEstime: false,
+                justification: 'Train confirmé quai 4',
+                confiance: {
+                  niveau: 'verifie',
+                  source: 'https://example.test',
+                  fournisseur: 'Faux',
+                  recupereLe: '2026-09-01T10:00:00Z',
+                },
+                reservation: {
+                  lienExterne: 'https://example.test/billet',
+                  fournisseur: 'Faux',
+                  typeLien: 'reservation',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const parcours = await chargerParcours(PROPRIETAIRE, 'p1');
+    const moment = parcours?.timeline[0];
+    const transport = moment?.elements[0];
+    expect(moment).not.toHaveProperty('plage');
+    expect(moment?.titre).toBe('Transport à organiser');
+    expect(transport).toMatchObject({
+      nom: 'Transport à organiser',
+      confiance: { niveau: 'suggestion' },
+      prix: 80,
+      prixEstime: true,
+      estAncre: false,
+    });
+    expect(transport).not.toHaveProperty('lieu');
+    expect(transport).not.toHaveProperty('plage');
+    expect(transport).not.toHaveProperty('reservation');
   });
 
   it('neutralise les preuves hôtelières legacy ambiguës avant toute réécriture', async () => {

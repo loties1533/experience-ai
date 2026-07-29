@@ -1,7 +1,24 @@
 import type {
   PreuveTrajet,
   SegmentTransportExterne,
+  TronconTransportDemande,
 } from './schema.js';
+
+export const LIBELLE_TRANSPORT_GENERIQUE = 'Transport à organiser';
+export const JUSTIFICATION_TRANSPORT_GENERIQUE =
+  'Prévoir un transport selon les informations déclarées.';
+
+export function libelleTransportDemande(
+  troncon: TronconTransportDemande
+): string {
+  return `${LIBELLE_TRANSPORT_GENERIQUE} de ${troncon.origine.ville} vers ${troncon.destination.ville}`;
+}
+
+export function justificationTransportDemande(
+  troncon: TronconTransportDemande
+): string {
+  return `Prévoir un transport entre ${troncon.origine.ville} et ${troncon.destination.ville} selon les dates et préférences déclarées.`;
+}
 
 /**
  * Normalisation réservée aux comparaisons métier. La valeur exprimée par
@@ -17,6 +34,35 @@ export function normaliserVillePourComparaison(ville: string): string {
     .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ')
     .trim()
     .normalize('NFC');
+}
+
+/**
+ * F4-B2 ne résout encore aucun lieu de transport. Une valeur qui ressemble à
+ * une gare, un aéroport, un terminal ou un code fournisseur n'est donc pas une
+ * ville persistable. Le refus est volontairement conservateur.
+ */
+export function estVilleTransportDemandeePrudente(
+  ville: string
+): boolean {
+  const valeur = ville.trim();
+  const contientCaractereControle = [...valeur].some((caractere) => {
+    const code = caractere.codePointAt(0);
+    return code !== undefined && (code <= 31 || code === 127);
+  });
+  return (
+    valeur.length > 0 &&
+    valeur.length <= 120 &&
+    !contientCaractereControle &&
+    !/[<>]/u.test(valeur) &&
+    !/\b(?:https?:\/\/|r[ée]servation|billet|disponibilit[ée]|confirm[ée]e?)\b/i.test(
+      valeur
+    ) &&
+    !/\b\d{1,2}:\d{2}\b/.test(valeur) &&
+    !/\b(?:a[ée]roport|gare|station|terminal|quai|porte)\b/i.test(
+      valeur
+    ) &&
+    !/(?:^|\s)[A-Z0-9]{3,4}(?=$|\s)/.test(valeur)
+  );
 }
 
 /**
