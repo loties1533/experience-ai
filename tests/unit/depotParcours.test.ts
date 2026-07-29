@@ -53,6 +53,47 @@ describe('sauvegarderParcours — l’écriture dérive les projections', () => 
     await expect(sauvegarderParcours(PROPRIETAIRE, parcoursValide)).rejects.toThrow(AppError);
     expect(prismaMock.parcours.upsert).not.toHaveBeenCalled();
   });
+
+  it('persiste un lien sécurisé dans le contenu sans table séparée', async () => {
+    const parcoursAvecLien = ParcoursSchema.parse({
+      ...parcoursValide,
+      timeline: [
+        {
+          id: 'm-lien',
+          titre: 'Soirée',
+          elements: [
+            {
+              id: 'e-lien',
+              type: 'restaurant',
+              nom: 'Le Point Rouge',
+              justification: 'une table cohérente avec le parcours',
+              confiance: {
+                niveau: 'verifie',
+                source:
+                  'https://places-api.foursquare.com/places/search',
+                fournisseur: 'Foursquare',
+                recupereLe: '2026-07-28T08:15:00.000Z',
+                identifiantExterne: 'fsq-point-rouge',
+              },
+              reservation: {
+                lienExterne:
+                  'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
+                fournisseur: 'Tavily',
+                typeLien: 'reservation',
+              },
+            },
+          ],
+        },
+      ],
+    });
+    prismaMock.parcours.findUnique.mockResolvedValue(null);
+
+    await sauvegarderParcours(PROPRIETAIRE, parcoursAvecLien);
+
+    const contenu =
+      prismaMock.parcours.upsert.mock.calls[0][0].create.contenu;
+    expect(contenu).toEqual(parcoursAvecLien);
+  });
 });
 
 describe('chargerParcours — la lecture revalide le contenu', () => {

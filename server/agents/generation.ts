@@ -1,8 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { callAIAvecOutils, parseJSON } from '../services/claude/core.js';
-import { creerBoiteAOutils, type BoiteAOutils } from '../services/claude/outils.js';
-import { resoudreLiensReels } from '../services/liens.js';
+import {
+  creerBoiteAOutils,
+  type BoiteAOutils,
+  type CandidatJournal,
+} from '../services/claude/outils.js';
+import {
+  cleDemandeResolutionLien,
+  estNomTropGenerique,
+  resoudreLien,
+} from '../services/liens.js';
 import { AppError } from '../lib/AppError.js';
 import {
   ParcoursSchema,
@@ -11,14 +19,18 @@ import {
   validerParcours,
   type Confiance,
   type Parcours,
+  type Reservation,
   type TypeElement,
 } from '../domaine/parcours/index.js';
 import { normaliserDatesBrief, type Brief } from './brief.js';
 import type { PreferencesParcours } from '../domaine/preferences.js';
 import type { TypeMetierRecherche } from '../services/rechercheExterne.js';
+import type {
+  DemandeResolutionLien,
+  ResultatResolutionLien,
+} from '../services/liens/contrat.js';
 
-/** Types pour lesquels un vrai site officiel/billetterie vaut mieux qu'une carte. */
-const TYPES_AVEC_LIEN_REEL = new Set(['restaurant', 'activite', 'sortie', 'evenement']);
+const CONCURRENCE_MAX_RESOLUTION_LIENS = 3;
 
 // L'ORCHESTRATEUR (IA n°1) : brief confirmé → parcours complet.
 // À ne pas confondre avec l'agent Modification (IA n°2, modification.ts) qui
@@ -113,6 +125,18 @@ const RefusGenerationSchema = z.object({
 
 type ElementGenere = z.infer<typeof ElementGenereSchema>;
 
+interface ElementPrepare {
+  element: ElementGenere;
+  candidat?: CandidatJournal;
+  cleDemandeLien?: string;
+}
+
+interface MomentPrepare {
+  moment: z.infer<typeof SortieGenerationSchema>['moments'][number];
+  ville?: string;
+  elements: ElementPrepare[];
+}
+
 function cleTexte(texte: string): string {
   return texte
     .toLowerCase()
@@ -143,17 +167,155 @@ function typeRecherchePour(typeElement: TypeElement): TypeMetierRecherche | unde
   return undefined;
 }
 
+function texteNonVide(valeur: unknown): valeur is string {
+  return typeof valeur === 'string' && valeur.trim().length > 0;
+}
+
+function construireDemandeResolutionLien(
+  candidat: CandidatJournal,
+): DemandeResolutionLien | undefined {
+  if (
+    !texteNonVide(candidat.identifiantExterne) ||
+    !texteNonVide(candidat.nom) ||
+    !texteNonVide(candidat.villeDemandee) ||
+    !texteNonVide(candidat.source) ||
+    !texteNonVide(candidat.recupereLe) ||
+    Number.isNaN(Date.parse(candidat.recupereLe))
+  ) {
+    return undefined;
+  }
+
+  const adresseOuSalle =
+    candidat.typeMetierRecherche === 'evenement'
+      ? candidat.salle
+      : candidat.adresse;
+  const commun = {
+    identifiantExterne: candidat.identifiantExterne.trim(),
+    nom: candidat.nom.trim(),
+    villeDemandee: candidat.villeDemandee.trim(),
+    adresseOuSalle: texteNonVide(adresseOuSalle)
+      ? adresseOuSalle.trim()
+      : undefined,
+    sourceMetier: candidat.source.trim(),
+  };
+
+  if (candidat.typeMetierRecherche === 'evenement') {
+    if (
+      candidat.fournisseur !== 'PredictHQ' ||
+      !texteNonVide(candidat.dateDebut)
+    ) {
+      return undefined;
+    }
+    return {
+      ...commun,
+      typeMetierRecherche: 'evenement',
+      fournisseurMetier: 'PredictHQ',
+      dateDebut: candidat.dateDebut.trim(),
+      dateFin: texteNonVide(candidat.dateFin)
+        ? candidat.dateFin.trim()
+        : undefined,
+    };
+  }
+
+  if (candidat.fournisseur !== 'Foursquare') {
+    return undefined;
+  }
+  return {
+    ...commun,
+    typeMetierRecherche: candidat.typeMetierRecherche,
+    fournisseurMetier: 'Foursquare',
+  };
+}
+
+function preparerMomentsPourResolution(
+  moments: z.infer<typeof SortieGenerationSchema>['moments'],
+  boite: BoiteAOutils,
+  villesDuBrief: string[],
+): {
+  moments: MomentPrepare[];
+  demandes: Map<string, DemandeResolutionLien>;
+} {
+  const demandes = new Map<string, DemandeResolutionLien>();
+  const momentsPrepares = moments.map((moment) => {
+    const ville = villeDuMoment(moment.ville, villesDuBrief);
+    const elements = moment.elements.map((element): ElementPrepare => {
+      const typeMetierRecherche = typeRecherchePour(element.type);
+      const candidat =
+        typeMetierRecherche && ville
+          ? boite.rapprocherCandidat({
+              identifiantExterne: element.identifiantExterne,
+              nom: element.nom,
+              villeDemandee: ville,
+              typeMetierRecherche,
+            })
+          : undefined;
+      if (!candidat) return { element };
+
+      const demande = construireDemandeResolutionLien(candidat);
+      if (!demande) return { element };
+      if (estNomTropGenerique(candidat.nom)) {
+        return { element, candidat };
+      }
+
+      const cleDemandeLien = cleDemandeResolutionLien(demande);
+      if (!demandes.has(cleDemandeLien)) {
+        demandes.set(cleDemandeLien, demande);
+      }
+      return { element, candidat, cleDemandeLien };
+    });
+    return { moment, ville, elements };
+  });
+
+  return { moments: momentsPrepares, demandes };
+}
+
+async function resoudreDemandesLien(
+  demandes: Map<string, DemandeResolutionLien>,
+): Promise<Map<string, ResultatResolutionLien>> {
+  const entrees = [...demandes.entries()];
+  const resultats = new Map<string, ResultatResolutionLien>();
+  let prochainIndex = 0;
+
+  async function executerFile(): Promise<void> {
+    while (prochainIndex < entrees.length) {
+      const index = prochainIndex;
+      prochainIndex += 1;
+      const [cleDemande, demande] = entrees[index];
+      try {
+        const resultat = await resoudreLien(demande);
+        resultats.set(cleDemande, resultat);
+      } catch {
+        // Le lien est facultatif : une exception inattendue reste une
+        // indisponibilité technique locale, sans interrompre les autres
+        // résolutions et sans produire de repli.
+        console.warn(
+          'Résolution facultative de lien indisponible après une erreur technique inattendue.',
+        );
+      }
+    }
+  }
+
+  const nombreExecutants = Math.min(
+    CONCURRENCE_MAX_RESOLUTION_LIENS,
+    entrees.length,
+  );
+  await Promise.all(
+    Array.from({ length: nombreExecutants }, () => executerFile()),
+  );
+  return resultats;
+}
+
 function confianceVerifiee(args: {
   source: string;
   fournisseur: string;
-  recupereLe?: string;
-  identifiantExterne?: string;
+  recupereLe: string;
+  identifiantExterne: string;
 }): Confiance {
   return {
     niveau: 'verifie',
     source: args.source,
     fournisseur: args.fournisseur,
-    recupereLe: args.recupereLe ?? new Date().toISOString(),
+    recupereLe: args.recupereLe,
     identifiantExterne: args.identifiantExterne,
   };
 }
@@ -176,20 +338,19 @@ function nomSuggestion(type: TypeElement, ville?: string): string {
 /**
  * Ce qui, dans un élément, vient d'une recherche réelle et non du modèle.
  *
- * Quand le nom proposé correspond à un lieu rendu par un outil, on lui rattache
- * son adresse. Pour le LIEN EXTERNE — jamais un achat (invariant 4), le produit
- * conduit vers le lieu, il ne vend rien — deux niveaux :
- *   1. Un vrai site officiel / billetterie (resoudreLiensReels, recherche web
- *      ciblée + filet anti-hallucination) — jamais inventé par le modèle.
- *   2. La carte du connecteur (Foursquare) — jamais un lien cassé.
+ * Quand le nom proposé correspond à un candidat Foursquare ou PredictHQ, on
+ * conserve son identité et sa provenance. Un lien externe n'est ajouté que
+ * lorsque le pipeline F2-B retourne `resolu` après sélection, validation URL,
+ * contrôle DNS/SSRF et redirections.
  *
- * Les liens spécialisés d'hébergement restent hors de F1 et seront traités en
- * F3 après une recherche dédiée.
+ * Aucun résultat ambigu, refusé, introuvable ou indisponible ne déclenche de
+ * repli par nom ou par carte. Les liens d'hébergement restent hors de F2 et
+ * seront traités en F3 après une recherche dédiée.
  */
 function tracerLieuReel(
   element: ElementGenere,
-  boite: BoiteAOutils,
-  liensReels: Map<string, string | null>,
+  candidat: CandidatJournal | undefined,
+  resolutionLien: ResultatResolutionLien | undefined,
   options: {
     ville?: string;
   }
@@ -197,26 +358,12 @@ function tracerLieuReel(
   nom: string;
   lieu?: string;
   confiance: Confiance;
-  reservation?: {
-    lienExterne: string;
-    fournisseur: string;
-    typeLien: 'officiel' | 'billetterie' | 'recherche' | 'carte';
-  };
+  reservation?: Reservation;
 } {
-  const typeMetierRecherche = typeRecherchePour(element.type);
-  const reel =
-    typeMetierRecherche && options.ville
-      ? boite.rapprocherCandidat({
-          identifiantExterne: element.identifiantExterne,
-          nom: element.nom,
-          villeDemandee: options.ville,
-          typeMetierRecherche,
-        })
-      : undefined;
-  const lieuReel = reel
-    ? reel.typeMetierRecherche === 'evenement'
-      ? reel.salle
-      : reel.adresse
+  const lieuReel = candidat
+    ? candidat.typeMetierRecherche === 'evenement'
+      ? candidat.salle
+      : candidat.adresse
     : undefined;
   const lieu = lieuReel ?? element.lieu;
 
@@ -229,45 +376,26 @@ function tracerLieuReel(
     };
   }
 
-  if (reel) {
-    const lienOfficiel = liensReels.get(element.nom);
-    if (lienOfficiel) {
-      return {
-        nom: reel.nom,
-        lieu,
-        confiance: confianceVerifiee({
-          source: reel.source,
-          fournisseur: reel.fournisseur,
-          recupereLe: reel.recupereLe,
-          identifiantExterne: reel.identifiantExterne,
-        }),
-        reservation: {
-          lienExterne: lienOfficiel,
-          fournisseur: 'Web',
-          typeLien: element.type === 'evenement' ? 'billetterie' : 'officiel',
-        },
-      };
-    }
-
+  if (candidat) {
     const confiance = confianceVerifiee({
-      source: reel.source,
-      fournisseur: reel.fournisseur,
-      recupereLe: reel.recupereLe,
-      identifiantExterne: reel.identifiantExterne,
+      source: candidat.source,
+      fournisseur: candidat.fournisseur,
+      recupereLe: candidat.recupereLe,
+      identifiantExterne: candidat.identifiantExterne,
     });
-    if ('lienCarte' in reel && reel.lienCarte) {
+    if (resolutionLien?.statut === 'resolu') {
       return {
-        nom: reel.nom,
+        nom: candidat.nom,
         lieu,
         confiance,
         reservation: {
-          lienExterne: reel.lienCarte,
-          fournisseur: reel.fournisseur,
-          typeLien: 'carte',
+          lienExterne: resolutionLien.url,
+          fournisseur: resolutionLien.fournisseurRecherche,
+          typeLien: resolutionLien.typeLien,
         },
       };
     }
-    return { nom: reel.nom, lieu, confiance };
+    return { nom: candidat.nom, lieu, confiance };
   }
 
   return {
@@ -355,19 +483,17 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
     }
   }
 
-  // Un vrai site officiel / billetterie vaut mieux qu'une simple carte : une
-  // seule recherche groupée pour tout le parcours (services/liens.ts). Une
-  // recherche web échouée ou une clé absente rend une Map à null pour tous les
-  // noms — tracerLieuReel retombe alors sur la carte, jamais un lien cassé.
-  const nomsAResoudre = [
-    ...new Set(
-      sortie.data.moments
-        .flatMap((m) => m.elements)
-        .filter((e) => TYPES_AVEC_LIEN_REEL.has(e.type))
-        .map((e) => e.nom)
-    ),
-  ];
-  const liensReels = await resoudreLiensReels(nomsAResoudre, brief.lieux[0] ?? brief.intention);
+  // F2-B5 : seules les identités structurées réellement rapprochées sont
+  // résolues. Les demandes identiques sont dédupliquées, puis exécutées avec
+  // une concurrence bornée ; aucune recherche par nom brut n'est autorisée.
+  const preparation = preparerMomentsPourResolution(
+    sortie.data.moments,
+    boite,
+    brief.lieux,
+  );
+  const resolutionsLien = await resoudreDemandesLien(
+    preparation.demandes,
+  );
 
   const parcours = ParcoursSchema.parse({
     id: randomUUID(),
@@ -381,27 +507,21 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
     participants: [{ id: randomUUID(), nom: 'Organisateur', role: 'organisateur' }],
     budget: { mode: 'individuel', montantTotal: brief.budgetTotal },
     ambiance: sortie.data.ambiance ?? brief.ambiance,
-    timeline: sortie.data.moments.map((moment) => {
-      const ville = villeDuMoment(moment.ville, brief.lieux);
+    timeline: preparation.moments.map(({ moment, ville, elements }) => {
       return {
         id: randomUUID(),
         titre: moment.titre,
         plage: moment.plage,
-        elements: moment.elements.map((element) => {
-          const typeMetierRecherche = typeRecherchePour(element.type);
-          const candidat =
-            typeMetierRecherche && ville
-              ? boite.rapprocherCandidat({
-                  identifiantExterne: element.identifiantExterne,
-                  nom: element.nom,
-                  villeDemandee: ville,
-                  typeMetierRecherche,
-                })
-              : undefined;
+        elements: elements.map(({ element, candidat, cleDemandeLien }) => {
+          const resolutionLien = cleDemandeLien
+            ? resolutionsLien.get(cleDemandeLien)
+            : undefined;
           return {
             id: idParRef.get(element.ref) as string,
             type: element.type,
-            ...tracerLieuReel(element, boite, liensReels, { ville }),
+            ...tracerLieuReel(element, candidat, resolutionLien, {
+              ville,
+            }),
             plage: element.plage,
             prix: element.prix,
             prixEstime: element.prix !== undefined,

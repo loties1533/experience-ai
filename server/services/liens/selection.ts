@@ -186,6 +186,14 @@ export function normaliserNomLien(valeur: string): string {
     .trim();
 }
 
+export function estNomTropGenerique(nom: string): boolean {
+  const nomNormalise = normaliserNomLien(nom);
+  return (
+    nomNormalise.replace(/\s/g, '').length < 4 ||
+    NOMS_TROP_GENERIQUES.has(nomNormalise)
+  );
+}
+
 function decoderPrudemment(valeur: string): string {
   try {
     return decodeURIComponent(valeur);
@@ -223,11 +231,7 @@ export function nomsCorrespondent(
   candidat: Pick<ResultatWeb, 'titre' | 'url'>,
 ): boolean {
   const nomNormalise = normaliserNomLien(nomDemande);
-  const nomCompact = nomNormalise.replace(/\s/g, '');
-  if (
-    nomCompact.length < 4 ||
-    NOMS_TROP_GENERIQUES.has(nomNormalise)
-  ) {
+  if (estNomTropGenerique(nomDemande)) {
     return false;
   }
   if (contientExpression(candidat.titre, nomNormalise)) return true;

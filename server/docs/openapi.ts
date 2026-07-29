@@ -77,7 +77,7 @@ const schemas = {
       fournisseur: { type: 'string' },
       typeLien: {
         type: 'string',
-        enum: ['officiel', 'billetterie', 'recherche', 'carte'],
+        enum: ['officiel', 'billetterie', 'reservation', 'recherche', 'carte'],
       },
     },
   },

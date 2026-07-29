@@ -154,7 +154,13 @@ export const ConfianceSchema = z.discriminatedUnion('niveau', [
   }),
 ]);
 
-export const TypeLienExterneSchema = z.enum(['officiel', 'billetterie', 'recherche', 'carte']);
+export const TypeLienExterneSchema = z.enum([
+  'officiel',
+  'billetterie',
+  'reservation',
+  'recherche',
+  'carte',
+]);
 
 export const ReservationSchema = z.object({
   lienExterne: z.url(),

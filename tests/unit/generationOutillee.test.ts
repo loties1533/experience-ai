@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type {
+  DemandeResolutionLien,
+  ResultatResolutionLien,
+} from '../../server/services/liens/contrat.js';
 
 // L'orchestrateur va chercher de VRAIS lieux avant d'écrire (sprint R6).
 //
@@ -20,15 +24,25 @@ vi.mock('../../server/services/predictHQ.js', () => ({
   rechercherEvenementsPredictHQ: vi.fn(),
 }));
 vi.mock('../../server/services/weather.js', () => ({ getRealWeather: vi.fn() }));
-// Le résolveur de vrais liens a sa propre suite (tests/unit/liens.test.ts) : ici
-// on ne teste que la PRIORITÉ dans tracerLieuReel (lien réel > carte).
-vi.mock('../../server/services/liens.js', () => ({ resoudreLiensReels: vi.fn() }));
+// Le résolveur de liens a sa propre suite : ici, on teste uniquement son
+// intégration dans la génération. Les fonctions pures restent réelles.
+vi.mock('../../server/services/liens.js', async (importOriginal) => {
+  const reel =
+    await importOriginal<typeof import('../../server/services/liens.js')>();
+  return {
+    ...reel,
+    resoudreLien: vi.fn(),
+    resoudreLiensReels: vi.fn(),
+  };
+});
 
 const { callClaude, callClaudeOutils } = await import('../../server/services/providers.js');
 const { rechercherLieuxFoursquare } = await import('../../server/services/foursquare.js');
 const { rechercherEvenementsPredictHQ } = await import('../../server/services/predictHQ.js');
 const { getRealWeather } = await import('../../server/services/weather.js');
-const { resoudreLiensReels } = await import('../../server/services/liens.js');
+const { resoudreLien, resoudreLiensReels } = await import(
+  '../../server/services/liens.js'
+);
 const { creerBoiteAOutils } = await import('../../server/services/claude/outils.js');
 const { MAX_TOURS_OUTILS } = await import('../../server/services/claude/core.js');
 const { viderCacheMemoire } = await import('../../server/lib/cacheMemoire.js');
@@ -69,6 +83,40 @@ const RECHERCHE_EVENEMENTS_VIDE = {
   resultats: [] as [],
   recupereLe: DATE_RECUPERATION,
 };
+
+function lienIntrouvable(): ResultatResolutionLien {
+  return {
+    statut: 'introuvable',
+    cleDemande: 'demande-test',
+    fournisseurRecherche: 'Tavily',
+    recupereLe: DATE_RECUPERATION,
+  };
+}
+
+function lienResolu(
+  url = 'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
+  typeLien: 'reservation' | 'billetterie' = 'reservation',
+): ResultatResolutionLien {
+  return {
+    statut: 'resolu',
+    cleDemande: 'demande-test',
+    urlInitiale: url,
+    url,
+    typeLien,
+    domaine: new URL(url).hostname,
+    rang: 1,
+    fournisseurRecherche: 'Tavily',
+    recupereLe: DATE_RECUPERATION,
+    preuves: [
+      { nature: 'nom_exact', valeur: 'Le Point Rouge' },
+      { nature: 'ville', valeur: 'Bordeaux' },
+      { nature: 'page_exacte', valeur: url },
+    ],
+    redirections: [],
+    controleLe: DATE_RECUPERATION,
+    statutHttp: 200,
+  };
+}
 
 function candidatLieu(args: {
   identifiantExterne: string;
@@ -196,6 +244,7 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue(RECHERCHE_EVENEMENTS_VIDE);
   vi.mocked(getRealWeather).mockReset().mockResolvedValue(null);
+  vi.mocked(resoudreLien).mockReset().mockResolvedValue(lienIntrouvable());
   vi.mocked(resoudreLiensReels).mockReset().mockResolvedValue(new Map());
   viderCacheMemoire();
 });
@@ -232,9 +281,12 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
     expect(resultats[0].content).toContain('Le Point Rouge');
 
     expect(parcours.timeline[0].elements[0].nom).toBe('Le Point Rouge');
+    expect(parcours.timeline[0].elements[0].reservation).toBeUndefined();
+    expect(resoudreLien).toHaveBeenCalledOnce();
   });
 
-  it('trace le vrai lieu : l’adresse du connecteur, et son lien externe', async () => {
+  it('intègre un lien accepté avec son type sans remplacer la provenance métier', async () => {
+    vi.mocked(resoudreLien).mockResolvedValueOnce(lienResolu());
     vi.mocked(callClaudeOutils)
       .mockResolvedValueOnce(
         tourOutil('chercher_lieux', {
@@ -250,10 +302,21 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
     const [element] = (await genererParcours(brief)).timeline[0].elements;
 
     expect(element.lieu).toBe('3 rue Sainte-Colombe, Bordeaux');
-    // Le lien vient du connecteur, jamais du modèle — et c'est un lien, pas un achat.
-    expect(element.reservation?.lienExterne).toBe(CANDIDAT_POINT_ROUGE.lienCarte);
-    expect(element.reservation?.fournisseur).toBe('Foursquare');
-    expect(element.reservation?.typeLien).toBe('carte');
+    expect(resoudreLien).toHaveBeenCalledWith({
+      identifiantExterne: 'fsq-point-rouge',
+      nom: 'Le Point Rouge',
+      villeDemandee: 'Bordeaux',
+      adresseOuSalle: '3 rue Sainte-Colombe, Bordeaux',
+      typeMetierRecherche: 'sortie',
+      fournisseurMetier: 'Foursquare',
+      sourceMetier: 'https://places-api.foursquare.com/places/search',
+    } satisfies DemandeResolutionLien);
+    expect(element.reservation).toEqual({
+      lienExterne:
+        'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
+      fournisseur: 'Tavily',
+      typeLien: 'reservation',
+    });
     expect(element.confiance).toMatchObject({
       niveau: 'verifie',
       source: 'https://places-api.foursquare.com/places/search',
@@ -474,11 +537,112 @@ describe('la dégradation explicite des données réelles', () => {
   });
 });
 
-describe('tracerLieuReel — priorité du lien et preuve', () => {
-  it('préfère le vrai lien (site officiel/billetterie) à la carte du connecteur', async () => {
-    vi.mocked(resoudreLiensReels).mockResolvedValue(
-      new Map([['Le Point Rouge', 'https://lepointrouge.fr/']])
+describe('intégration F2-B5 — statuts du résolveur', () => {
+  it('transmet les dates PredictHQ et conserve une billetterie acceptée', async () => {
+    const evenement = candidatEvenement({
+      identifiantExterne: 'evt-festival-port',
+      nom: 'Festival du Port',
+      villeDemandee: 'Bordeaux',
+      salle: 'Hangar 14',
+      dateDebut: '2026-09-05T20:00:00Z',
+      dateFin: '2026-09-05T23:00:00Z',
+    });
+    vi.mocked(rechercherEvenementsPredictHQ).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [evenement],
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(resoudreLien).mockResolvedValueOnce(
+      lienResolu(
+        'https://www.ticketmaster.fr/fr/manifestation/festival-du-port/12345',
+        'billetterie',
+      ),
     );
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_evenements', {
+          ville: 'Bordeaux',
+          dateDebut: '2026-09-05',
+          dateFin: '2026-09-05',
+        }),
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Festival du Port', {
+          type: 'evenement',
+          identifiantExterne: 'evt-festival-port',
+          estAncre: true,
+        }),
+      );
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+
+    expect(resoudreLien).toHaveBeenCalledWith({
+      identifiantExterne: 'evt-festival-port',
+      nom: 'Festival du Port',
+      villeDemandee: 'Bordeaux',
+      adresseOuSalle: 'Hangar 14',
+      typeMetierRecherche: 'evenement',
+      fournisseurMetier: 'PredictHQ',
+      sourceMetier: 'https://api.predicthq.com/v1/events/',
+      dateDebut: '2026-09-05T20:00:00Z',
+      dateFin: '2026-09-05T23:00:00Z',
+    } satisfies DemandeResolutionLien);
+    expect(element.reservation).toEqual({
+      lienExterne:
+        'https://www.ticketmaster.fr/fr/manifestation/festival-du-port/12345',
+      fournisseur: 'Tavily',
+      typeLien: 'billetterie',
+    });
+    expect(element.confiance).toMatchObject({
+      niveau: 'verifie',
+      fournisseur: 'PredictHQ',
+      identifiantExterne: 'evt-festival-port',
+    });
+    expect(element.estAncre).toBe(true);
+  });
+
+  it('ne rattache aucun lien quand plusieurs candidats restent ambigus', async () => {
+    vi.mocked(resoudreLien).mockResolvedValueOnce({
+      statut: 'ambigu',
+      cleDemande: 'demande-test',
+      candidats: [
+        {
+          url: 'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
+          domaine: 'thefork.fr',
+          typeLienPossible: 'reservation',
+          rang: 1,
+          fournisseurRecherche: 'Tavily',
+          recupereLe: DATE_RECUPERATION,
+          preuves: [
+            { nature: 'nom_exact', valeur: 'Le Point Rouge' },
+            { nature: 'ville', valeur: 'Bordeaux' },
+            {
+              nature: 'page_exacte',
+              valeur:
+                'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
+            },
+          ],
+        },
+        {
+          url: 'https://www.opentable.com/r/le-point-rouge',
+          domaine: 'opentable.com',
+          typeLienPossible: 'reservation',
+          rang: 2,
+          fournisseurRecherche: 'Tavily',
+          recupereLe: DATE_RECUPERATION,
+          preuves: [
+            { nature: 'nom_exact', valeur: 'Le Point Rouge' },
+            { nature: 'ville', valeur: 'Bordeaux' },
+            {
+              nature: 'page_exacte',
+              valeur: 'https://www.opentable.com/r/le-point-rouge',
+            },
+          ],
+        },
+      ],
+      fournisseurRecherche: 'Tavily',
+      recupereLe: DATE_RECUPERATION,
+    });
     vi.mocked(callClaudeOutils)
       .mockResolvedValueOnce(
         tourOutil('chercher_lieux', {
@@ -493,21 +657,255 @@ describe('tracerLieuReel — priorité du lien et preuve', () => {
 
     const [element] = (await genererParcours(brief)).timeline[0].elements;
 
-    expect(element.reservation?.lienExterne).toBe('https://lepointrouge.fr/');
-    expect(element.reservation?.fournisseur).toBe('Web');
-    expect(element.reservation?.typeLien).toBe('officiel');
+    expect(element.reservation).toBeUndefined();
     expect(element.confiance.niveau).toBe('verifie');
-    expect(element.confiance).toMatchObject({
-      source: 'https://places-api.foursquare.com/places/search',
-      fournisseur: 'Foursquare',
-      identifiantExterne: 'fsq-point-rouge',
+  });
+
+  it.each([
+    [
+      'refuse',
+      {
+        statut: 'refuse',
+        cleDemande: 'demande-test',
+        raison: 'destination_interdite',
+        constateLe: DATE_RECUPERATION,
+      } satisfies ResultatResolutionLien,
+    ],
+    [
+      'indisponible',
+      {
+        statut: 'indisponible',
+        cleDemande: 'demande-test',
+        origine: 'controle_reseau',
+        raison: 'timeout',
+        constateLe: DATE_RECUPERATION,
+      } satisfies ResultatResolutionLien,
+    ],
+  ])(
+    'ne produit aucun lien ni repli quand le contrôle est %s',
+    async (_statut, resultatLien) => {
+      vi.mocked(resoudreLien).mockResolvedValueOnce(resultatLien);
+      vi.mocked(callClaudeOutils)
+        .mockResolvedValueOnce(
+          tourOutil('chercher_lieux', {
+            ville: 'Bordeaux',
+            requete: 'bar',
+            typeMetierRecherche: 'sortie',
+          })
+        )
+        .mockResolvedValueOnce(
+          tourReponse('Le Point Rouge', {
+            identifiantExterne: 'fsq-point-rouge',
+          })
+        );
+
+      const [element] = (await genererParcours(brief)).timeline[0]
+        .elements;
+
+      expect(element.reservation).toBeUndefined();
+      expect(element.confiance.niveau).toBe('verifie');
+      expect(resoudreLiensReels).not.toHaveBeenCalled();
+    },
+  );
+
+  it('n’appelle pas le résolveur pour un nom générique même associé à un candidat', async () => {
+    const candidatGenerique = candidatLieu({
+      identifiantExterne: 'fsq-bar',
+      nom: 'Bar',
+      villeDemandee: 'Bordeaux',
+      typeMetierRecherche: 'sortie',
     });
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [candidatGenerique],
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'bar',
+          typeMetierRecherche: 'sortie',
+        })
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Bar', { identifiantExterne: 'fsq-bar' })
+      );
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+
+    expect(element.reservation).toBeUndefined();
+    expect(resoudreLien).not.toHaveBeenCalled();
+    expect(resoudreLiensReels).not.toHaveBeenCalled();
+  });
+
+  it('n’appelle pas le résolveur avec une identité externe incomplète', async () => {
+    const candidatIncomplet = {
+      ...CANDIDAT_POINT_ROUGE,
+      identifiantExterne: '',
+    };
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [candidatIncomplet],
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'bar',
+          typeMetierRecherche: 'sortie',
+        })
+      )
+      .mockResolvedValueOnce(tourReponse('Le Point Rouge'));
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+
+    expect(element.reservation).toBeUndefined();
+    expect(resoudreLien).not.toHaveBeenCalled();
+    expect(resoudreLiensReels).not.toHaveBeenCalled();
+  });
+
+  it('déduplique deux occurrences du même établissement et partage le résultat accepté', async () => {
+    vi.mocked(resoudreLien).mockResolvedValueOnce(lienResolu());
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'bar',
+          typeMetierRecherche: 'sortie',
+        }),
+      )
+      .mockResolvedValueOnce([
+        {
+          type: 'text',
+          text: JSON.stringify({
+            moments: [
+              {
+                titre: 'Début de soirée',
+                ville: 'Bordeaux',
+                elements: [
+                  {
+                    ref: 'bar-debut',
+                    type: 'sortie',
+                    identifiantExterne: 'fsq-point-rouge',
+                    nom: 'Le Point Rouge',
+                    justification: 'première étape',
+                  },
+                ],
+              },
+              {
+                titre: 'Fin de soirée',
+                ville: 'Bordeaux',
+                elements: [
+                  {
+                    ref: 'bar-fin',
+                    type: 'sortie',
+                    identifiantExterne: 'fsq-point-rouge',
+                    nom: 'Le Point Rouge',
+                    justification: 'retour dans le même lieu',
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      ]);
+
+    const parcours = await genererParcours(brief);
+    const elements = parcours.timeline.flatMap((moment) => moment.elements);
+
+    expect(resoudreLien).toHaveBeenCalledOnce();
+    expect(elements).toHaveLength(2);
+    expect(elements.map((element) => element.reservation)).toEqual([
+      {
+        lienExterne:
+          'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
+        fournisseur: 'Tavily',
+        typeLien: 'reservation',
+      },
+      {
+        lienExterne:
+          'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
+        fournisseur: 'Tavily',
+        typeLien: 'reservation',
+      },
+    ]);
+  });
+
+  it('isole une exception et laisse le worker poursuivre les liens facultatifs', async () => {
+    const candidats = Array.from({ length: 4 }, (_, index) =>
+      candidatLieu({
+        identifiantExterne: `fsq-activite-${index + 1}`,
+        nom: `Atelier Bordelais ${index + 1}`,
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'activite',
+      }),
+    );
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: candidats,
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(resoudreLien).mockImplementation(async (demande) => {
+      if (demande.identifiantExterne === 'fsq-activite-1') {
+        throw new Error('erreur technique inattendue');
+      }
+      return lienResolu();
+    });
+    const avertir = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'atelier',
+          typeMetierRecherche: 'activite',
+        }),
+      )
+      .mockResolvedValueOnce([
+        {
+          type: 'text',
+          text: JSON.stringify({
+            moments: [
+              {
+                titre: 'Ateliers',
+                ville: 'Bordeaux',
+                elements: candidats.map((candidat, index) => ({
+                  ref: `atelier-${index + 1}`,
+                  type: 'activite',
+                  identifiantExterne: candidat.identifiantExterne,
+                  nom: candidat.nom,
+                  justification: 'une activité adaptée au groupe',
+                })),
+              },
+            ],
+          }),
+        },
+      ]);
+
+    const parcours = await genererParcours(brief);
+    const elements = parcours.timeline[0].elements;
+
+    expect(resoudreLien).toHaveBeenCalledTimes(4);
+    expect(elements[0].reservation).toBeUndefined();
+    expect(elements[0].confiance.niveau).toBe('verifie');
+    expect(
+      elements.slice(1).every(
+        (element) =>
+          element.reservation?.fournisseur === 'Tavily' &&
+          element.reservation.typeLien === 'reservation',
+      ),
+    ).toBe(true);
+    expect(avertir).toHaveBeenCalledWith(
+      'Résolution facultative de lien indisponible après une erreur technique inattendue.',
+    );
+    avertir.mockRestore();
+    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
   it('ne laisse jamais un lien Web seul vérifier un événement sans trace PredictHQ', async () => {
-    vi.mocked(resoudreLiensReels).mockResolvedValue(
-      new Map([['Festival du Port', 'https://billetterie.example/festival-du-port']])
-    );
     vi.mocked(callClaudeOutils).mockResolvedValueOnce([
       {
         type: 'text',
@@ -533,6 +931,8 @@ describe('tracerLieuReel — priorité du lien et preuve', () => {
     expect(element.nom).toBe('Un événement à confirmer à Bordeaux');
     expect(element.reservation).toBeUndefined();
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
+    expect(resoudreLien).not.toHaveBeenCalled();
+    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
   it('ne rattache aucun lien externe à un hébergement non vérifié', async () => {
@@ -565,8 +965,8 @@ describe('tracerLieuReel — priorité du lien et preuve', () => {
     expect(element.nom).toBe('Un hébergement à choisir à Bordeaux');
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
     expect(element.reservation).toBeUndefined();
+    expect(resoudreLien).not.toHaveBeenCalled();
   });
-
 });
 
 describe('le cache — deux générations sur la même ville ne repaient pas', () => {
@@ -864,9 +1264,6 @@ describe('la génération — ville et catégorie du candidat', () => {
       resultats: [restaurant],
       recupereLe: DATE_RECUPERATION,
     });
-    vi.mocked(resoudreLiensReels).mockResolvedValue(
-      new Map([['Le Bistrot du Port', 'https://bistrot.example/']])
-    );
     vi.mocked(callClaudeOutils)
       .mockResolvedValueOnce(
         tourOutil('chercher_lieux', {
@@ -886,6 +1283,7 @@ describe('la génération — ville et catégorie du candidat', () => {
 
     expect(element.nom).toBe('Une sortie à choisir à Bordeaux');
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
+    expect(resoudreLien).not.toHaveBeenCalled();
   });
 
   it('retire estAncre à un événement déclaré ancre sans trace PredictHQ', async () => {
@@ -995,5 +1393,102 @@ describe('la génération — ville et catégorie du candidat', () => {
       nom: 'Le Central',
       lieu: '2 place de Lyon',
     });
+    expect(vi.mocked(resoudreLien).mock.calls.map(([demande]) => ({
+      identifiantExterne: demande.identifiantExterne,
+      villeDemandee: demande.villeDemandee,
+    }))).toEqual([
+      {
+        identifiantExterne: 'fsq-central-bordeaux',
+        villeDemandee: 'Bordeaux',
+      },
+      {
+        identifiantExterne: 'fsq-central-lyon',
+        villeDemandee: 'Lyon',
+      },
+    ]);
+  });
+
+  it('borne à trois les résolutions simultanées et conserve l’ordre des demandes', async () => {
+    const candidats = Array.from({ length: 4 }, (_, index) =>
+      candidatLieu({
+        identifiantExterne: `fsq-activite-${index + 1}`,
+        nom: `Atelier Bordelais ${index + 1}`,
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'activite',
+        adresse: `${index + 1} rue des Ateliers, Bordeaux`,
+      }),
+    );
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: candidats,
+      recupereLe: DATE_RECUPERATION,
+    });
+
+    let actifs = 0;
+    let maximumActifs = 0;
+    vi.mocked(resoudreLien).mockImplementation(async () => {
+      actifs += 1;
+      maximumActifs = Math.max(maximumActifs, actifs);
+      await Promise.resolve();
+      actifs -= 1;
+      return lienIntrouvable();
+    });
+
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'atelier',
+          typeMetierRecherche: 'activite',
+          limite: 4,
+        }),
+      )
+      .mockResolvedValueOnce([
+        {
+          type: 'text',
+          text: JSON.stringify({
+            moments: [
+              {
+                titre: 'Ateliers',
+                ville: 'Bordeaux',
+                elements: candidats.map((candidat, index) => ({
+                  ref: `activite-${index + 1}`,
+                  type: 'activite',
+                  identifiantExterne: candidat.identifiantExterne,
+                  nom: candidat.nom,
+                  justification: 'une activité adaptée au groupe',
+                })),
+              },
+            ],
+          }),
+        },
+      ]);
+
+    const parcours = await genererParcours(brief);
+
+    expect(maximumActifs).toBe(3);
+    expect(
+      new Set(
+        vi.mocked(resoudreLien).mock.calls.map(
+          ([demande]) => demande.identifiantExterne,
+        ),
+      ),
+    ).toEqual(
+      new Set([
+        'fsq-activite-1',
+        'fsq-activite-2',
+        'fsq-activite-3',
+        'fsq-activite-4',
+      ]),
+    );
+    expect(
+      parcours.timeline[0].elements.map((element) => element.nom),
+    ).toEqual(candidats.map((candidat) => candidat.nom));
+    expect(
+      parcours.timeline[0].elements.every(
+        (element) => element.reservation === undefined,
+      ),
+    ).toBe(true);
+    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 });
