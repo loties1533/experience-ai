@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { estCategorieFoursquareHebergementCompatible } from '../domaine/parcours/index.js';
 import type { Activite, TravelMode } from '../lib/types.js';
 import { lienGoogleMaps } from '../lib/url.js';
 import {
@@ -57,7 +58,10 @@ const ReponseFoursquareSchema = z.object({
 
 type LieuFoursquare = z.infer<typeof LieuFoursquareSchema>;
 
-const TERMES_CATEGORIES: Record<TypeLieuRecherche, string[]> = {
+const TERMES_CATEGORIES: Record<
+  Exclude<TypeLieuRecherche, 'hebergement'>,
+  string[]
+> = {
   restaurant: [
     'restaurant',
     'bistro',
@@ -99,49 +103,7 @@ const TERMES_CATEGORIES: Record<TypeLieuRecherche, string[]> = {
     'night club',
     'pub',
   ],
-  // Contrairement aux autres types historiques, cette liste est comparée par
-  // égalité exacte. « Hotel Pool » ou « Hotel Restaurant » ne prouvent pas un
-  // hébergement. Les identifiants officiels connus restent prioritaires.
-  hebergement: [
-    'hotel',
-    'hôtel',
-    'hostel',
-    'auberge',
-    'auberge de jeunesse',
-    'aparthotel',
-    'appart hotel',
-    'appart hôtel',
-    'motel',
-    'resort',
-    'bed and breakfast',
-    'boarding house',
-    'cabin',
-    'guest house',
-    'maison d hotes',
-    'maison d hôtes',
-    'inn',
-    'lodge',
-    'vacation rental',
-  ],
 };
-
-const IDENTIFIANTS_CATEGORIES_HEBERGEMENT = new Set([
-  '19010', // Bed and Breakfast — taxonomie Places intégrée.
-  '19011', // Boarding House.
-  '19012', // Cabin.
-  '19013', // Hostel.
-  '19014', // Hotel.
-  '19015', // Inn.
-  '19016', // Lodge.
-  '19017', // Motel.
-  '19018', // Resort.
-  '19019', // Vacation Rental.
-  '4bf58dd8d48988d1fa931735', // Hotel — identifiant historique.
-  '4bf58dd8d48988d1ee931735', // Hostel.
-  '4bf58dd8d48988d1fb931735', // Motel.
-  '4bf58dd8d48988d12f951735', // Resort.
-  '4bf58dd8d48988d1f8931735', // Bed and Breakfast.
-]);
 
 function normaliserCategorie(categorie: string): string {
   return categorie
@@ -158,16 +120,12 @@ export function estCategorieFoursquareCompatible(
 ): boolean {
   const categorieNormalisee = normaliserCategorie(categorie.name);
   if (typeMetierRecherche === 'hebergement') {
-    // Quand Foursquare fournit un identifiant, il est prioritaire : un
-    // identifiant inconnu ne peut pas être compensé par un libellé séduisant.
-    if (categorie.fsq_category_id !== undefined) {
-      return IDENTIFIANTS_CATEGORIES_HEBERGEMENT.has(
-        categorie.fsq_category_id
-      );
-    }
-    return TERMES_CATEGORIES.hebergement.some(
-      (terme) => normaliserCategorie(terme) === categorieNormalisee
-    );
+    return estCategorieFoursquareHebergementCompatible({
+      nom: categorie.name,
+      ...(categorie.fsq_category_id
+        ? { identifiant: categorie.fsq_category_id }
+        : {}),
+    });
   }
 
   return TERMES_CATEGORIES[typeMetierRecherche].some((terme) => {

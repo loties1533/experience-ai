@@ -19,13 +19,16 @@ import { BriefSchema, BriefPartielSchema } from '../agents/brief.js';
 import { avancerDialogue } from '../agents/intake.js';
 import { genererParcours } from '../agents/generation.js';
 import { interpreterDemande } from '../agents/modification.js';
+import { appliquerModificationHotel } from '../services/modificationHotel.js';
 import {
-  DemandeSurElementSchema,
+  DemandeSurElementClientSchema,
   type DemandeDePartage,
   ParticipantSchema,
   VisibiliteSchema,
   appliquerModification,
+  estDemandeModificationHotelClient,
   participantsPartageables,
+  preparerDemandeSurElementClient,
   type Parcours,
 } from '../domaine/parcours/index.js';
 
@@ -150,8 +153,8 @@ router.get(
 // Seules les demandes qui portent sur un ÉLÉMENT passent ici : le partage a
 // ses propres routes, plus bas. Une porte par intention.
 const CorpsModificationSchema = z.union([
-  z.object({ demande: DemandeSurElementSchema }),
-  z.object({ phrase: z.string().min(1).max(500) }),
+  z.object({ demande: DemandeSurElementClientSchema }).strict(),
+  z.object({ phrase: z.string().min(1).max(500) }).strict(),
 ]);
 router.post(
   '/:id/modifications',
@@ -165,14 +168,33 @@ router.post(
       if (!parcours) throw new AppError('Parcours introuvable', 404);
 
       const corps = req.body as z.infer<typeof CorpsModificationSchema>;
-      const demande =
+      const demandeClient =
         'demande' in corps ? corps.demande : await interpreterDemande(parcours, corps.phrase);
 
-      const resultat = appliquerModification(parcours, demande, {
+      const contexteModification = {
         auteurId: auteurDe(parcours, req.user!.id),
         horodatage: new Date().toISOString(),
-      });
-      if (!resultat.ok) throw new AppError(resultat.erreur, 422);
+      };
+      const resultat = estDemandeModificationHotelClient(demandeClient)
+        ? await appliquerModificationHotel(
+            parcours,
+            demandeClient,
+            contexteModification
+          )
+        : appliquerModification(
+            parcours,
+            preparerDemandeSurElementClient(
+              demandeClient,
+              randomUUID
+            ),
+            contexteModification
+          );
+      if (!resultat.ok) {
+        throw new AppError(
+          resultat.erreur,
+          resultat.statutHttp ?? 422
+        );
+      }
 
       await sauvegarderParcours(req.user!.id, resultat.parcours);
       res.json({

@@ -1,4 +1,5 @@
 import {
+  estConfianceFoursquareHotelValide,
   estLienRechercheHebergementCoherent,
   estSejourHebergementDansDatesParcours,
   type Alternative,
@@ -263,6 +264,20 @@ export function validerParcours(parcours: Parcours): string[] {
     }
     if (element.type === 'temps_libre' && element.reservation) {
       erreurs.push(`un temps libre ne se réserve pas (« ${element.nom} »)`);
+    }
+    if (element.type === 'hebergement' && element.reservation) {
+      erreurs.push(
+        `un hébergement porte un lien de recherche, jamais une réservation (« ${element.nom} »)`
+      );
+    }
+    if (
+      element.type === 'hebergement' &&
+      element.confiance.niveau === 'verifie' &&
+      !estConfianceFoursquareHotelValide(element.confiance)
+    ) {
+      erreurs.push(
+        `un hébergement vérifié exige une provenance Foursquare complète (« ${element.nom} »)`
+      );
     }
     if (element.sejourHebergement && element.type !== 'hebergement') {
       erreurs.push(`un séjour hôtelier ne peut qualifier qu’un hébergement (« ${element.nom} »)`);

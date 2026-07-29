@@ -608,4 +608,213 @@ describe('intégration domaine et compatibilité legacy', () => {
     const parcours = ParcoursLectureSchema.parse(base);
     expect(parcours.contexte.occupationHebergement).toBeUndefined();
   });
+
+  it('refuse toute réservation persistée sur un hébergement neuf', () => {
+    expect(
+      ParcoursSchema.safeParse({
+        ...base,
+        timeline: [
+          {
+            id: 'nuit',
+            titre: 'Nuit',
+            elements: [
+              {
+                id: 'hotel',
+                type: 'hebergement',
+                nom: 'Hôtel inventé',
+                justification: 'dormir sur place',
+                reservation: {
+                  lienExterne: 'https://evil.test/reservation',
+                  fournisseur: 'Faux Booking',
+                  typeLien: 'reservation',
+                },
+              },
+            ],
+          },
+        ],
+      }).success
+    ).toBe(false);
+  });
+
+  it.each([
+    [
+      'un autre fournisseur',
+      {
+        niveau: 'verifie',
+        fournisseur: 'FauxSquare',
+        source: 'https://places-api.foursquare.com/places/search',
+        recupereLe: '2026-07-29T10:00:00.000Z',
+        identifiantExterne: 'fsq-1',
+        categorieFournisseur: 'Hotel',
+      },
+    ],
+    [
+      'une fausse source',
+      {
+        niveau: 'verifie',
+        fournisseur: 'Foursquare',
+        source: 'https://evil.test/foursquare',
+        recupereLe: '2026-07-29T10:00:00.000Z',
+        identifiantExterne: 'fsq-1',
+        categorieFournisseur: 'Hotel',
+      },
+    ],
+    [
+      'aucun identifiant externe',
+      {
+        niveau: 'verifie',
+        fournisseur: 'Foursquare',
+        source: 'https://places-api.foursquare.com/places/search',
+        recupereLe: '2026-07-29T10:00:00.000Z',
+        categorieFournisseur: 'Hotel',
+      },
+    ],
+    [
+      'aucune catégorie',
+      {
+        niveau: 'verifie',
+        fournisseur: 'Foursquare',
+        source: 'https://places-api.foursquare.com/places/search',
+        recupereLe: '2026-07-29T10:00:00.000Z',
+        identifiantExterne: 'fsq-1',
+      },
+    ],
+    [
+      'une catégorie incompatible',
+      {
+        niveau: 'verifie',
+        fournisseur: 'Foursquare',
+        source: 'https://places-api.foursquare.com/places/search',
+        recupereLe: '2026-07-29T10:00:00.000Z',
+        identifiantExterne: 'fsq-1',
+        categorieFournisseur: 'Restaurant',
+      },
+    ],
+    [
+      'un identifiant de catégorie inconnu',
+      {
+        niveau: 'verifie',
+        fournisseur: 'Foursquare',
+        source: 'https://places-api.foursquare.com/places/search',
+        recupereLe: '2026-07-29T10:00:00.000Z',
+        identifiantExterne: 'fsq-1',
+        categorieFournisseur: 'Hotel',
+        identifiantCategorieFournisseur: 'categorie-inconnue',
+      },
+    ],
+    [
+      'une date de récupération invalide',
+      {
+        niveau: 'verifie',
+        fournisseur: 'Foursquare',
+        source: 'https://places-api.foursquare.com/places/search',
+        recupereLe: 'hier',
+        identifiantExterne: 'fsq-1',
+        categorieFournisseur: 'Hotel',
+      },
+    ],
+    [
+      'un fournisseur avec une casse différente',
+      {
+        niveau: 'verifie',
+        fournisseur: 'foursquare',
+        source: 'https://places-api.foursquare.com/places/search',
+        recupereLe: '2026-07-29T10:00:00.000Z',
+        identifiantExterne: 'fsq-1',
+        categorieFournisseur: 'Hotel',
+      },
+    ],
+  ])('refuse un hôtel vérifié avec %s', (_cas, confiance) => {
+    expect(
+      ParcoursSchema.safeParse({
+        ...base,
+        timeline: [
+          {
+            id: 'nuit',
+            titre: 'Nuit',
+            elements: [
+              {
+                id: 'hotel',
+                type: 'hebergement',
+                nom: 'Hôtel',
+                justification: 'dormir sur place',
+                confiance,
+              },
+            ],
+          },
+        ],
+      }).success
+    ).toBe(false);
+  });
+
+  it('accepte une catégorie hôtelière textuelle sans inventer ville ou adresse', () => {
+    const parcours = ParcoursSchema.parse({
+      ...base,
+      timeline: [
+        {
+          id: 'nuit',
+          titre: 'Nuit',
+          elements: [
+            {
+              id: 'hotel',
+              type: 'hebergement',
+              nom: 'Hôtel réel',
+              justification: 'dormir sur place',
+              confiance: {
+                niveau: 'verifie',
+                fournisseur: 'Foursquare',
+                source:
+                  'https://places-api.foursquare.com/places/search',
+                recupereLe: '2026-07-29T10:00:00.000Z',
+                identifiantExterne: 'fsq-1',
+                categorieFournisseur: 'Hôtel',
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const confiance =
+      parcours.timeline[0].elements[0].confiance;
+    expect(confiance.niveau).toBe('verifie');
+    if (confiance.niveau !== 'verifie') {
+      throw new Error('confiance vérifiée attendue');
+    }
+    expect(confiance.villeConfirmee).toBeUndefined();
+    expect(confiance.adresse).toBeUndefined();
+  });
+
+  it('neutralise une réservation hôtelière legacy et une fausse vérification', () => {
+    const parcours = ParcoursLectureSchema.parse({
+      ...base,
+      timeline: [
+        {
+          id: 'nuit',
+          titre: 'Ancienne nuit',
+          elements: [
+            {
+              id: 'hotel',
+              type: 'hebergement',
+              nom: 'Ancien hôtel nommé',
+              justification: 'ancienne donnée',
+              confiance: {
+                niveau: 'verifie',
+                fournisseur: 'FauxSquare',
+                source: 'https://evil.test',
+                recupereLe: '2025-01-01T10:00:00.000Z',
+                identifiantExterne: 'faux',
+              },
+              reservation: {
+                lienExterne: 'https://evil.test/reserver',
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const hotel = parcours.timeline[0].elements[0];
+    expect(hotel.confiance).toEqual({ niveau: 'suggestion' });
+    expect(hotel.reservation).toBeUndefined();
+    expect(hotel.nom).toBe('Ancien hôtel nommé');
+  });
 });
