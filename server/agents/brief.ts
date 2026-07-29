@@ -1,9 +1,51 @@
 import { z } from 'zod';
-import { ContexteSchema } from '../domaine/parcours/index.js';
+import {
+  ContexteSchema,
+  NombreAdultesHebergementSchema,
+  NombreChambresHebergementSchema,
+  NombreEnfantsHebergementSchema,
+  SejourHebergementSchema,
+} from '../domaine/parcours/index.js';
 
 // Le brief : ce que le dialogue d'intake doit réunir avant de générer.
-// Intention + contexte sont co-égaux (ADR-0005) : les trois champs requis
-// sont l'intention, avec qui, et la durée. Le reste enrichit sans bloquer.
+// Intention + contexte sont co-égaux (ADR-0005). Le dialogue exige aussi des
+// dates globales pour lancer les connecteurs ; les données hôtelières ne
+// deviennent bloquantes que lorsqu'un hébergement est explicitement nécessaire.
+
+/**
+ * Le brief peut conserver une saisie partielle, mais son statut reste alors
+ * explicitement `a_confirmer`. La variante `declaree` exige les trois valeurs
+ * et ne peut donc jamais présenter une occupation incomplète comme certaine.
+ */
+export const OccupationHebergementBriefSchema = z.discriminatedUnion('statut', [
+  z
+    .object({
+      statut: z.literal('declaree'),
+      adultes: NombreAdultesHebergementSchema,
+      enfants: NombreEnfantsHebergementSchema,
+      chambres: NombreChambresHebergementSchema,
+    })
+    .strict(),
+  z
+    .object({
+      statut: z.literal('a_confirmer'),
+      adultes: NombreAdultesHebergementSchema.optional(),
+      enfants: NombreEnfantsHebergementSchema.optional(),
+      chambres: NombreChambresHebergementSchema.optional(),
+    })
+    .strict(),
+]);
+
+export const HebergementBriefSchema = z.discriminatedUnion('necessaire', [
+  z.object({ necessaire: z.literal(false) }).strict(),
+  z
+    .object({
+      necessaire: z.literal(true),
+      occupation: OccupationHebergementBriefSchema.default({ statut: 'a_confirmer' }),
+      sejours: z.array(SejourHebergementSchema).default([]),
+    })
+    .strict(),
+]);
 
 export const BriefSchema = z.object({
   intention: z.string().min(1),
@@ -16,12 +58,17 @@ export const BriefSchema = z.object({
   budgetTotal: z.number().positive().optional(),
   ambiance: z.string().optional(),
   contraintes: z.array(z.string().min(1)).default([]),
+  // Absent : aucun besoin hôtelier n'a été exprimé. `necessaire: false` :
+  // l'utilisateur a explicitement indiqué qu'il ne faut pas d'hébergement.
+  hebergement: HebergementBriefSchema.optional(),
 });
 
 export const BriefPartielSchema = BriefSchema.partial();
 
 export type Brief = z.infer<typeof BriefSchema>;
 export type BriefPartiel = z.infer<typeof BriefPartielSchema>;
+export type OccupationHebergementBrief = z.infer<typeof OccupationHebergementBriefSchema>;
+export type HebergementBrief = z.infer<typeof HebergementBriefSchema>;
 
 const LIBELLES_MANQUANTS: Record<'intention' | 'avecQui' | 'duree' | 'dates', string> = {
   intention: 'l’envie (que voulez-vous vivre ?)',
@@ -36,6 +83,13 @@ const LIBELLES_MANQUANTS: Record<'intention' | 'avecQui' | 'duree' | 'dates', st
   // demande d'où l'utilisateur part au lieu de quand.
   dates: 'une date de départ, même approximative (à quel moment, pas d’où)',
 };
+
+const LIBELLES_HEBERGEMENT = {
+  adultes: 'le nombre d’adultes pour l’hébergement',
+  enfants: 'le nombre d’enfants pour l’hébergement, même s’il est égal à zéro',
+  chambres: 'le nombre de chambres demandé',
+  sejours: 'la ville et les dates propres à chaque séjour hôtelier',
+} as const;
 
 /**
  * « Du 4 au 6 septembre » désigne des JOURS, pas des instants : le 6 est
@@ -87,9 +141,71 @@ export function calculerDates(
 
 /** Les champs requis encore absents — le dialogue ne pose que ces questions. */
 export function champsManquants(brief: BriefPartiel): string[] {
-  return (Object.keys(LIBELLES_MANQUANTS) as (keyof typeof LIBELLES_MANQUANTS)[])
+  const manquants = (Object.keys(LIBELLES_MANQUANTS) as (keyof typeof LIBELLES_MANQUANTS)[])
     .filter((champ) => brief[champ] === undefined)
     .map((champ) => LIBELLES_MANQUANTS[champ]);
+
+  if (brief.hebergement?.necessaire !== true) return manquants;
+
+  const occupation = brief.hebergement.occupation;
+  if (occupation.statut === 'a_confirmer') {
+    if (occupation.adultes === undefined) manquants.push(LIBELLES_HEBERGEMENT.adultes);
+    if (occupation.enfants === undefined) manquants.push(LIBELLES_HEBERGEMENT.enfants);
+    if (occupation.chambres === undefined) manquants.push(LIBELLES_HEBERGEMENT.chambres);
+  }
+  if (brief.hebergement.sejours.length === 0) {
+    manquants.push(LIBELLES_HEBERGEMENT.sejours);
+  }
+  return manquants;
+}
+
+export type ChampHebergement =
+  | 'adultes'
+  | 'enfants'
+  | 'chambres'
+  | 'sejours';
+
+/** Question déterministe : le modèle n'invente ni l'ordre ni les valeurs. */
+export function questionHebergement(
+  brief: BriefPartiel,
+  champInvalide?: ChampHebergement
+): string | undefined {
+  if (brief.hebergement?.necessaire !== true) return undefined;
+
+  const occupation = brief.hebergement.occupation;
+  const questions: Record<ChampHebergement, string> = {
+    adultes: 'Combien d’adultes séjourneront à l’hôtel ?',
+    enfants: 'Combien d’enfants séjourneront à l’hôtel ? Indique 0 s’il n’y en a pas.',
+    chambres: 'Combien de chambres te faut-il ?',
+    sejours: 'Pour chaque hébergement, quelle est la ville et quelles sont les dates d’arrivée et de départ ?',
+  };
+  const erreurs: Record<ChampHebergement, string> = {
+    adultes: 'Le nombre d’adultes doit être un entier entre 1 et 20.',
+    enfants: 'Le nombre d’enfants doit être un entier entre 0 et 20.',
+    chambres: 'Le nombre de chambres doit être un entier entre 1 et 10.',
+    sejours: 'Chaque séjour doit avoir une ville et des dates AAAA-MM-JJ, avec un départ après l’arrivée.',
+  };
+
+  let champAttendu: ChampHebergement | undefined;
+  if (occupation.statut === 'a_confirmer') {
+    if (occupation.adultes === undefined) champAttendu = 'adultes';
+    else if (occupation.enfants === undefined) champAttendu = 'enfants';
+    else if (occupation.chambres === undefined) champAttendu = 'chambres';
+  }
+  if (!champAttendu && brief.hebergement.sejours.length === 0) {
+    champAttendu = 'sejours';
+  }
+
+  // Une valeur invalide pour un champ ultérieur ne doit jamais court-circuiter
+  // l'ordre de collecte. Si l'occupation était déjà complète, une correction
+  // invalide reste toutefois signalée sur le champ réellement visé.
+  if (
+    champInvalide &&
+    (champAttendu === undefined || champInvalide === champAttendu)
+  ) {
+    return `${erreurs[champInvalide]} ${questions[champInvalide]}`;
+  }
+  return champAttendu ? questions[champAttendu] : undefined;
 }
 
 const LIBELLES_AVEC_QUI = {
@@ -132,6 +248,23 @@ export function reformulerBrief(brief: Brief): string {
   if (brief.lieux.length > 0) morceaux.push(`du côté de ${brief.lieux.join(', ')}`);
   if (brief.budgetTotal !== undefined) morceaux.push(`avec un budget d'environ ${brief.budgetTotal} €`);
   if (brief.ambiance) morceaux.push(`dans une ambiance ${brief.ambiance}`);
+  if (brief.hebergement?.necessaire === true) {
+    const { occupation, sejours } = brief.hebergement;
+    if (occupation.statut === 'declaree') {
+      morceaux.push(
+        `avec ${occupation.adultes} adulte${occupation.adultes > 1 ? 's' : ''}, ` +
+          `${occupation.enfants} enfant${occupation.enfants > 1 ? 's' : ''} et ` +
+          `${occupation.chambres} chambre${occupation.chambres > 1 ? 's' : ''} pour l’hébergement`
+      );
+    }
+    if (sejours.length > 0) {
+      morceaux.push(
+        sejours
+          .map((sejour) => `${sejour.ville} du ${sejour.arrivee} au ${sejour.depart}`)
+          .join(' puis ')
+      );
+    }
+  }
   const phrase = morceaux.join(', ');
   const fin = brief.contraintes.length > 0 ? `. À respecter : ${brief.contraintes.join(' ; ')}.` : '.';
   return phrase + fin;

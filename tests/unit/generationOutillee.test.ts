@@ -1207,6 +1207,379 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     expect(element.reservation).toBeUndefined();
     expect(resoudreLien).not.toHaveBeenCalled();
   });
+
+  it('refuse en 422 une occupation hôtelière essentielle non confirmée avant tout appel externe', async () => {
+    const briefIncomplet = BriefSchema.parse({
+      ...brief,
+      hebergement: {
+        necessaire: true,
+        occupation: {
+          statut: 'a_confirmer',
+          adultes: 2,
+          chambres: 1,
+        },
+        sejours: [
+          {
+            ville: 'Bordeaux',
+            arrivee: '2026-08-10',
+            depart: '2026-08-12',
+          },
+        ],
+      },
+    });
+
+    await expect(genererParcours(briefIncomplet)).rejects.toMatchObject({
+      statusCode: 422,
+    });
+    expect(callClaudeOutils).not.toHaveBeenCalled();
+    expect(rechercherLieuxFoursquare).not.toHaveBeenCalled();
+    expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
+    expect(resoudreLien).not.toHaveBeenCalled();
+  });
+
+  it('refuse en 422 un séjour hôtelier essentiel sans ville et dates propres', async () => {
+    const briefSansSejour = BriefSchema.parse({
+      ...brief,
+      hebergement: {
+        necessaire: true,
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+        },
+        sejours: [],
+      },
+    });
+
+    await expect(genererParcours(briefSansSejour)).rejects.toMatchObject({
+      statusCode: 422,
+    });
+    expect(callClaudeOutils).not.toHaveBeenCalled();
+    expect(rechercherLieuxFoursquare).not.toHaveBeenCalled();
+    expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
+    expect(resoudreLien).not.toHaveBeenCalled();
+  });
+
+  it('refuse en 422 un séjour hors des dates du parcours avant tout appel externe', async () => {
+    const briefHorsDates = BriefSchema.parse({
+      ...brief,
+      dates: {
+        debut: '2026-08-10T00:00:00Z',
+        fin: '2026-08-12T23:59:59Z',
+      },
+      hebergement: {
+        necessaire: true,
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+        },
+        sejours: [
+          {
+            ville: 'Bordeaux',
+            arrivee: '2026-08-20',
+            depart: '2026-08-21',
+          },
+        ],
+      },
+    });
+
+    await expect(genererParcours(briefHorsDates)).rejects.toMatchObject({
+      statusCode: 422,
+    });
+    expect(callClaudeOutils).not.toHaveBeenCalled();
+    expect(rechercherLieuxFoursquare).not.toHaveBeenCalled();
+    expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
+    expect(resoudreLien).not.toHaveBeenCalled();
+  });
+
+  it('conserve l’identité Foursquare et qualifie la demande sans inventer disponibilité ni lien', async () => {
+    const hotel = candidatHotel({
+      identifiantExterne: 'fsq-burdigala-occupation',
+      nom: 'Hôtel Burdigala',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Bordeaux',
+      adresse: '115 rue Georges Bonnac, Bordeaux',
+    });
+    const briefHotelier = BriefSchema.parse({
+      ...brief,
+      hebergement: {
+        necessaire: true,
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+        },
+        sejours: [
+          {
+            ville: 'Bordeaux',
+            arrivee: '2026-08-10',
+            depart: '2026-08-12',
+          },
+        ],
+      },
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [hotel],
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'hôtel',
+          typeMetierRecherche: 'hebergement',
+        })
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Hôtel Burdigala', {
+          type: 'hebergement',
+          ville: 'Bordeaux',
+          identifiantExterne: 'fsq-burdigala-occupation',
+          prix: 210,
+        })
+      );
+
+    const parcours = await genererParcours(briefHotelier);
+    const element = parcours.timeline[0].elements[0];
+
+    expect(parcours.contexte.occupationHebergement).toEqual({
+      statut: 'declaree',
+      adultes: 2,
+      enfants: 0,
+      chambres: 1,
+    });
+    expect(element).toMatchObject({
+      nom: 'Hôtel Burdigala',
+      confiance: {
+        niveau: 'verifie',
+        fournisseur: 'Foursquare',
+        identifiantExterne: 'fsq-burdigala-occupation',
+      },
+      sejourHebergement: {
+        ville: 'Bordeaux',
+        arrivee: '2026-08-10',
+        depart: '2026-08-12',
+      },
+      prix: 210,
+      prixEstime: true,
+    });
+    expect(element.reservation).toBeUndefined();
+    expect(element).not.toHaveProperty('disponibilite');
+    expect(resoudreLien).not.toHaveBeenCalled();
+    expect(resoudreLiensReels).not.toHaveBeenCalled();
+  });
+
+  it('rattache deux séjours uniquement à leur ville dans un parcours multi-ville', async () => {
+    const briefMultiVille = BriefSchema.parse({
+      intention: 'découvrir Bordeaux et Lyon',
+      avecQui: 'couple',
+      duree: { valeur: 4, unite: 'jours' },
+      lieux: ['Bordeaux', 'Lyon'],
+      hebergement: {
+        necessaire: true,
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+        },
+        sejours: [
+          {
+            ville: 'Bordeaux',
+            arrivee: '2026-08-10',
+            depart: '2026-08-12',
+          },
+          {
+            ville: 'Lyon',
+            arrivee: '2026-08-12',
+            depart: '2026-08-15',
+          },
+        ],
+      },
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockImplementation(
+      async (villeDemandee) => ({
+        statut: 'ok',
+        resultats: [
+          candidatHotel({
+            identifiantExterne:
+              villeDemandee === 'Bordeaux'
+                ? 'fsq-hotel-bordeaux'
+                : 'fsq-hotel-lyon',
+            nom:
+              villeDemandee === 'Bordeaux'
+                ? 'Hôtel Bordeaux'
+                : 'Hôtel Lyon',
+            villeDemandee,
+            villeConfirmee: villeDemandee,
+          }),
+        ],
+        recupereLe: DATE_RECUPERATION,
+      })
+    );
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce([
+        ...tourOutil(
+          'chercher_lieux',
+          {
+            ville: 'Bordeaux',
+            requete: 'hôtel',
+            typeMetierRecherche: 'hebergement',
+          },
+          'hotel-bordeaux'
+        ),
+        ...tourOutil(
+          'chercher_lieux',
+          {
+            ville: 'Lyon',
+            requete: 'hôtel',
+            typeMetierRecherche: 'hebergement',
+          },
+          'hotel-lyon'
+        ),
+      ])
+      .mockResolvedValueOnce([
+        {
+          type: 'text',
+          text: JSON.stringify({
+            moments: [
+              {
+                titre: 'Nuit bordelaise',
+                ville: 'Bordeaux',
+                elements: [
+                  {
+                    ref: 'hotel-bordeaux',
+                    type: 'hebergement',
+                    identifiantExterne: 'fsq-hotel-bordeaux',
+                    nom: 'Hôtel Bordeaux',
+                    justification: 'première étape',
+                  },
+                ],
+              },
+              {
+                titre: 'Nuit lyonnaise',
+                ville: 'Lyon',
+                elements: [
+                  {
+                    ref: 'hotel-lyon',
+                    type: 'hebergement',
+                    identifiantExterne: 'fsq-hotel-lyon',
+                    nom: 'Hôtel Lyon',
+                    justification: 'seconde étape',
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      ]);
+
+    const parcours = await genererParcours(briefMultiVille);
+
+    expect(
+      parcours.timeline.map(
+        (moment) => moment.elements[0].sejourHebergement
+      )
+    ).toEqual([
+      { ville: 'Bordeaux', arrivee: '2026-08-10', depart: '2026-08-12' },
+      { ville: 'Lyon', arrivee: '2026-08-12', depart: '2026-08-15' },
+    ]);
+    expect(resoudreLien).not.toHaveBeenCalled();
+  });
+
+  it('ne duplique pas un séjour sur deux hôtels proposés dans la même ville', async () => {
+    const hotelA = candidatHotel({
+      identifiantExterne: 'fsq-hotel-a',
+      nom: 'Hôtel A',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Bordeaux',
+    });
+    const hotelB = candidatHotel({
+      identifiantExterne: 'fsq-hotel-b',
+      nom: 'Hôtel B',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Bordeaux',
+    });
+    const briefHotelier = BriefSchema.parse({
+      ...brief,
+      hebergement: {
+        necessaire: true,
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+        },
+        sejours: [
+          {
+            ville: 'Bordeaux',
+            arrivee: '2026-08-10',
+            depart: '2026-08-12',
+          },
+        ],
+      },
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [hotelA, hotelB],
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'hôtel',
+          typeMetierRecherche: 'hebergement',
+        })
+      )
+      .mockResolvedValueOnce([
+        {
+          type: 'text',
+          text: JSON.stringify({
+            moments: [
+              {
+                titre: 'Deux options hôtelières',
+                ville: 'Bordeaux',
+                elements: [
+                  {
+                    ref: 'hotel-a',
+                    type: 'hebergement',
+                    identifiantExterne: 'fsq-hotel-a',
+                    nom: 'Hôtel A',
+                    justification: 'première option',
+                  },
+                  {
+                    ref: 'hotel-b',
+                    type: 'hebergement',
+                    identifiantExterne: 'fsq-hotel-b',
+                    nom: 'Hôtel B',
+                    justification: 'seconde option',
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      ]);
+
+    const parcours = await genererParcours(briefHotelier);
+    const hotels = parcours.timeline[0].elements;
+
+    expect(hotels).toHaveLength(2);
+    expect(
+      hotels.every((hotel) => hotel.sejourHebergement === undefined)
+    ).toBe(true);
+    expect(hotels.map((hotel) => hotel.confiance.niveau)).toEqual([
+      'verifie',
+      'verifie',
+    ]);
+    expect(resoudreLien).not.toHaveBeenCalled();
+  });
 });
 
 describe('le cache — deux générations sur la même ville ne repaient pas', () => {

@@ -164,6 +164,55 @@ describe('POST /api/parcours — validation du brief', () => {
     expect(res.status).toBe(400);
   });
 
+  it('400 si une occupation incomplète est présentée comme déclarée', async () => {
+    const res = await auth(request(app).post('/api/parcours')).send({
+      brief: {
+        ...BRIEF_VALIDE,
+        hebergement: {
+          necessaire: true,
+          occupation: {
+            statut: 'declaree',
+            adultes: 2,
+            chambres: 1,
+          },
+          sejours: [
+            {
+              ville: 'Lisbonne',
+              arrivee: '2026-08-10',
+              depart: '2026-08-12',
+            },
+          ],
+        },
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('400 si une valeur hôtelière est hors limites', async () => {
+    const res = await auth(request(app).post('/api/parcours')).send({
+      brief: {
+        ...BRIEF_VALIDE,
+        hebergement: {
+          necessaire: true,
+          occupation: {
+            statut: 'declaree',
+            adultes: 0,
+            enfants: 0,
+            chambres: 1,
+          },
+          sejours: [
+            {
+              ville: 'Lisbonne',
+              arrivee: '2026-08-10',
+              depart: '2026-08-12',
+            },
+          ],
+        },
+      },
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('201 avec un brief valide', async () => {
     const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF_VALIDE });
     expect(res.status).toBe(201);
@@ -177,6 +226,34 @@ describe('POST /api/parcours — validation du brief', () => {
     const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF_VALIDE });
     expect(res.status).toBe(422);
     expect(res.body.message).toContain('ne peut pas être confirmé');
+  });
+
+  it('422 quand un hébergement essentiel garde une occupation à confirmer', async () => {
+    vi.mocked(genererParcours).mockRejectedValueOnce(
+      new AppError('L’occupation de l’hébergement doit être confirmée avant la génération.', 422)
+    );
+    const res = await auth(request(app).post('/api/parcours')).send({
+      brief: {
+        ...BRIEF_VALIDE,
+        hebergement: {
+          necessaire: true,
+          occupation: {
+            statut: 'a_confirmer',
+            adultes: 2,
+            chambres: 1,
+          },
+          sejours: [
+            {
+              ville: 'Lisbonne',
+              arrivee: '2026-08-10',
+              depart: '2026-08-12',
+            },
+          ],
+        },
+      },
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.message).toContain('occupation');
   });
 
   it('503 quand les sources de vérification sont techniquement indisponibles', async () => {

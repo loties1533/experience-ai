@@ -1,4 +1,12 @@
-import type { Alternative, Element, Parcours, Participant, PlageHoraire, Role } from './schema.js';
+import {
+  estSejourHebergementDansDatesParcours,
+  type Alternative,
+  type Element,
+  type Parcours,
+  type Participant,
+  type PlageHoraire,
+  type Role,
+} from './schema.js';
 
 // Invariants 3 à 8 de docs/06-modele-conceptuel.md : logique pure, testable,
 // indépendante du stockage. Retourne des erreurs lisibles, ne lève jamais.
@@ -254,6 +262,19 @@ export function validerParcours(parcours: Parcours): string[] {
     }
     if (element.type === 'temps_libre' && element.reservation) {
       erreurs.push(`un temps libre ne se réserve pas (« ${element.nom} »)`);
+    }
+    if (element.sejourHebergement && element.type !== 'hebergement') {
+      erreurs.push(`un séjour hôtelier ne peut qualifier qu’un hébergement (« ${element.nom} »)`);
+    }
+    if (
+      element.sejourHebergement &&
+      parcours.contexte.dates &&
+      !estSejourHebergementDansDatesParcours(
+        element.sejourHebergement,
+        parcours.contexte.dates
+      )
+    ) {
+      erreurs.push(`le séjour hôtelier de « ${element.nom} » sort des dates du parcours`);
     }
     if (
       element.reservation &&

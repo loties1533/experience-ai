@@ -16,10 +16,12 @@ import {
   ParcoursSchema,
   PlageHoraireSchema,
   TypeElementSchema,
+  estSejourHebergementDansDatesParcours,
   validerParcours,
   type Confiance,
   type Parcours,
   type Reservation,
+  type SejourHebergement,
   type TypeElement,
 } from '../domaine/parcours/index.js';
 import { normaliserDatesBrief, type Brief } from './brief.js';
@@ -58,6 +60,7 @@ AVANT D'ÉCRIRE, CHERCHE. Tu disposes d'outils qui rendent de vrais lieux, de vr
 - Reprends EXACTEMENT le nom rendu par un outil, sans le reformuler.
 - N'invente JAMAIS un nom d'établissement, une date de match ni un événement. Si une recherche ne rend rien (lieu, événement OU date), reste générique et honnête ("un bar à cocktails du centre", "un match de la saison à voir sur place") — sans faire passer une invention pour un fait.
 - Pour un hébergement nommé, appelle chercher_lieux avec typeMetierRecherche "hebergement". Sans candidat Foursquare hôtelier, écris une suggestion générique et ne conserve aucun nom propre.
+- Si le brief porte un besoin d'hébergement, respecte chaque séjour (ville, arrivée, départ) sans le remplacer par les dates globales. L'occupation décrit la demande seulement : n'affirme jamais une disponibilité.
 - N'écris jamais d'URL : les liens sont ajoutés après toi.
 
 Puis réponds UNIQUEMENT avec l'une de ces deux formes JSON :
@@ -428,6 +431,94 @@ function tracerLieuReel(
   };
 }
 
+function validerDonneesHotelieresEssentielles(brief: Brief): void {
+  if (brief.hebergement?.necessaire !== true) return;
+
+  if (brief.hebergement.occupation.statut !== 'declaree') {
+    throw new AppError(
+      'L’occupation de l’hébergement doit être confirmée avant la génération.',
+      422
+    );
+  }
+  if (brief.hebergement.sejours.length === 0) {
+    throw new AppError(
+      'La ville et les dates du séjour hôtelier doivent être confirmées avant la génération.',
+      422
+    );
+  }
+
+  const villesAutorisees = new Set(brief.lieux.map(cleTexte));
+  if (
+    brief.hebergement.sejours.some(
+      (sejour) => !villesAutorisees.has(cleTexte(sejour.ville))
+    )
+  ) {
+    throw new AppError(
+      'Chaque séjour hôtelier doit correspondre à une ville du brief.',
+      422
+    );
+  }
+  if (
+    brief.dates &&
+    brief.hebergement.sejours.some(
+      (sejour) =>
+        !estSejourHebergementDansDatesParcours(sejour, brief.dates as {
+          debut: string;
+          fin: string;
+        })
+    )
+  ) {
+    throw new AppError(
+      'Chaque séjour hôtelier doit rester cohérent avec les dates du parcours.',
+      422
+    );
+  }
+}
+
+function compterHebergementsParVille(
+  moments: MomentPrepare[]
+): Map<string, number> {
+  const nombres = new Map<string, number>();
+  for (const moment of moments) {
+    if (!moment.ville) continue;
+    const nombre = moment.elements.filter(
+      ({ element }) => element.type === 'hebergement'
+    ).length;
+    if (nombre === 0) continue;
+    const cleVille = cleTexte(moment.ville);
+    nombres.set(cleVille, (nombres.get(cleVille) ?? 0) + nombre);
+  }
+  return nombres;
+}
+
+/**
+ * Un séjour n'est rattaché que lorsque la ville du moment désigne un candidat
+ * unique et un seul hôtel destinataire. Aucun repli vers la première ville, le
+ * premier séjour ou le premier hôtel n'est permis.
+ */
+function sejourHotelierDuMoment(
+  typeElement: TypeElement,
+  ville: string | undefined,
+  brief: Brief,
+  nombresHebergementsParVille: Map<string, number>
+): SejourHebergement | undefined {
+  if (
+    typeElement !== 'hebergement' ||
+    !ville ||
+    brief.hebergement?.necessaire !== true
+  ) {
+    return undefined;
+  }
+  const cleVille = cleTexte(ville);
+  if (nombresHebergementsParVille.get(cleVille) !== 1) {
+    return undefined;
+  }
+  const sejours = brief.hebergement.sejours.filter(
+    (sejour) => cleTexte(sejour.ville) === cleVille
+  );
+  return sejours.length === 1 ? sejours[0] : undefined;
+}
+
 export async function genererParcours(
   briefRecu: Brief,
   preferences: PreferencesParcours | null = null
@@ -437,6 +528,9 @@ export async function genererParcours(
   // aussi, et pas seulement à l'intake, car un brief peut arriver directement
   // par l'API sans être passé par le dialogue.
   const brief = normaliserDatesBrief(briefRecu);
+  // Un refus métier local précède tout appel à l'IA ou à un fournisseur :
+  // une occupation manquante n'est jamais une panne technique (503).
+  validerDonneesHotelieresEssentielles(brief);
 
   // Mémoire simple (sprint R5) : les préférences orientent, le brief prime.
   const blocPreferences = preferences
@@ -516,6 +610,9 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
   const resolutionsLien = await resoudreDemandesLien(
     preparation.demandes,
   );
+  const nombresHebergementsParVille = compterHebergementsParVille(
+    preparation.moments
+  );
 
   const parcours = ParcoursSchema.parse({
     id: randomUUID(),
@@ -525,6 +622,10 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
       duree: brief.duree,
       dates: brief.dates,
       lieux: brief.lieux,
+      occupationHebergement:
+        brief.hebergement?.necessaire === true
+          ? brief.hebergement.occupation
+          : undefined,
     },
     participants: [{ id: randomUUID(), nom: 'Organisateur', role: 'organisateur' }],
     budget: { mode: 'individuel', montantTotal: brief.budgetTotal },
@@ -547,6 +648,12 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
             plage: element.plage,
             prix: element.prix,
             prixEstime: element.prix !== undefined,
+            sejourHebergement: sejourHotelierDuMoment(
+              element.type,
+              ville,
+              brief,
+              nombresHebergementsParVille
+            ),
             justification: element.justification,
             // Une suggestion ne peut jamais devenir une ancre datée.
             estAncre: element.estAncre && candidat !== undefined,

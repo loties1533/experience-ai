@@ -188,6 +188,454 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
   });
 });
 
+describe('intake hôtelier F3-C1 — questions explicites sans déduction', () => {
+  const baseDialogue = {
+    intention: 'un séjour culturel',
+    avecQui: 'famille' as const,
+    duree: { valeur: 3, unite: 'jours' as const },
+    dates: {
+      debut: '2026-08-10T00:00:00.000Z',
+      fin: '2026-08-13T23:59:59.999Z',
+    },
+    lieux: ['Bordeaux'],
+  };
+  const sejour = {
+    ville: 'Bordeaux',
+    arrivee: '2026-08-10',
+    depart: '2026-08-13',
+  };
+
+  it('demande les adultes en premier lorsque l’hébergement est nécessaire', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'Question du modèle', brief: {} })
+    );
+
+    const etape = await avancerDialogue(
+      {
+        ...baseDialogue,
+        hebergement: {
+          necessaire: true,
+          occupation: { statut: 'a_confirmer' },
+          sejours: [sejour],
+        },
+      },
+      'oui, il nous faut un hôtel'
+    );
+
+    expect(etape.estComplet).toBe(false);
+    expect(etape.reponse).toBe('Combien d’adultes séjourneront à l’hôtel ?');
+  });
+
+  it('conserve les adultes explicites puis demande les enfants', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: {
+          hebergement: {
+            necessaire: true,
+            // Le modèle se trompe : seule la valeur réellement écrite dans
+            // le message doit survivre.
+            occupation: { statut: 'a_confirmer', adultes: 5 },
+            sejours: [],
+          },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(
+      {
+        ...baseDialogue,
+        hebergement: {
+          necessaire: true,
+          occupation: { statut: 'a_confirmer' },
+          sejours: [sejour],
+        },
+      },
+      'Nous sommes 2 adultes'
+    );
+
+    expect(etape.brief.hebergement).toMatchObject({
+      necessaire: true,
+      occupation: { statut: 'a_confirmer', adultes: 2 },
+      sejours: [sejour],
+    });
+    expect(etape.reponse).toContain('Combien d’enfants');
+  });
+
+  it('accepte une réponse numérique seule pour le champ hôtelier actuellement demandé', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'ok', brief: {} })
+    );
+
+    const etape = await avancerDialogue(
+      {
+        ...baseDialogue,
+        hebergement: {
+          necessaire: true,
+          occupation: { statut: 'a_confirmer' },
+          sejours: [sejour],
+        },
+      },
+      '4'
+    );
+
+    expect(etape.brief.hebergement).toMatchObject({
+      necessaire: true,
+      occupation: { statut: 'a_confirmer', adultes: 4 },
+    });
+    expect(etape.reponse).toContain('Combien d’enfants');
+  });
+
+  it('ignore une réponse numérique seule quand aucune question hôtelière n’est active', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'Quel voyage imagines-tu ?',
+        brief: {
+          hebergement: {
+            necessaire: true,
+            occupation: { statut: 'a_confirmer', adultes: 2 },
+          },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(baseDialogue, '2');
+
+    expect(
+      etape.brief.hebergement?.necessaire === true
+        ? etape.brief.hebergement.occupation.adultes
+        : undefined
+    ).toBeUndefined();
+  });
+
+  it('redemande le nombre quand il est écrit en toutes lettres', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: {
+          hebergement: {
+            necessaire: true,
+            occupation: { statut: 'a_confirmer', adultes: 4 },
+          },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(
+      {
+        ...baseDialogue,
+        hebergement: {
+          necessaire: true,
+          occupation: { statut: 'a_confirmer' },
+          sejours: [sejour],
+        },
+      },
+      'Nous sommes quatre adultes'
+    );
+
+    expect(
+      etape.brief.hebergement?.necessaire === true
+        ? etape.brief.hebergement.occupation.adultes
+        : undefined
+    ).toBeUndefined();
+    expect(etape.reponse).toContain('Combien d’adultes');
+  });
+
+  it('conserve adultes et enfants puis demande les chambres', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: {
+          hebergement: {
+            necessaire: true,
+            occupation: { statut: 'a_confirmer', enfants: 0 },
+          },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(
+      {
+        ...baseDialogue,
+        hebergement: {
+          necessaire: true,
+          occupation: { statut: 'a_confirmer', adultes: 2 },
+          sejours: [sejour],
+        },
+      },
+      'Aucun enfant'
+    );
+
+    expect(etape.brief.hebergement).toMatchObject({
+      necessaire: true,
+      occupation: { statut: 'a_confirmer', adultes: 2, enfants: 0 },
+    });
+    expect(etape.reponse).toBe('Combien de chambres te faut-il ?');
+  });
+
+  it('demande les dates propres à l’hôtel après une occupation complète', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'ok', brief: {} })
+    );
+
+    const etape = await avancerDialogue(
+      {
+        ...baseDialogue,
+        hebergement: {
+          necessaire: true,
+          occupation: {
+            statut: 'declaree',
+            adultes: 2,
+            enfants: 0,
+            chambres: 1,
+          },
+          sejours: [],
+        },
+      },
+      'voilà'
+    );
+
+    expect(etape.estComplet).toBe(false);
+    expect(etape.reponse).toContain('dates d’arrivée et de départ');
+  });
+
+  it('promeut en declaree seulement après les trois valeurs explicites', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: {
+          hebergement: {
+            necessaire: true,
+            occupation: {
+              statut: 'a_confirmer',
+              adultes: 2,
+              enfants: 2,
+              chambres: 2,
+            },
+            sejours: [sejour],
+          },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(
+      baseDialogue,
+      'Il nous faut un hôtel à Bordeaux du 10 au 13 août, pour 2 adultes, 2 enfants et 2 chambres'
+    );
+
+    expect(etape.estComplet).toBe(true);
+    expect(etape.brief.hebergement).toEqual({
+      necessaire: true,
+      occupation: {
+        statut: 'declaree',
+        adultes: 2,
+        enfants: 2,
+        chambres: 2,
+      },
+      sejours: [sejour],
+    });
+  });
+
+  it('ne déduit aucun nombre du seul mot famille', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: {
+          hebergement: {
+            necessaire: true,
+            occupation: {
+              statut: 'declaree',
+              adultes: 2,
+              enfants: 2,
+              chambres: 1,
+            },
+          },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(baseDialogue, 'Nous partons en famille et voulons un hôtel');
+
+    expect(etape.brief.hebergement).toMatchObject({
+      necessaire: true,
+      occupation: { statut: 'a_confirmer' },
+    });
+    expect(
+      etape.brief.hebergement?.necessaire === true
+        ? etape.brief.hebergement.occupation
+        : undefined
+    ).toEqual({ statut: 'a_confirmer' });
+    expect(etape.reponse).toContain('Combien d’adultes');
+  });
+
+  it('ne crée jamais enfants=0 à partir d’une valeur absente du message', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: {
+          hebergement: {
+            necessaire: true,
+            occupation: {
+              statut: 'a_confirmer',
+              adultes: 2,
+              enfants: 0,
+              chambres: 1,
+            },
+          },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(
+      {
+        ...baseDialogue,
+        hebergement: {
+          necessaire: true,
+          occupation: { statut: 'a_confirmer', adultes: 2 },
+          sejours: [sejour],
+        },
+      },
+      'Je confirme les adultes'
+    );
+
+    expect(
+      etape.brief.hebergement?.necessaire === true
+        ? etape.brief.hebergement.occupation.enfants
+        : undefined
+    ).toBeUndefined();
+    expect(etape.reponse).toContain('Combien d’enfants');
+  });
+
+  it('ne saute pas les adultes pour signaler une chambre invalide', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: {
+          hebergement: {
+            necessaire: true,
+            occupation: { statut: 'a_confirmer', chambres: 0 },
+          },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(
+      {
+        ...baseDialogue,
+        hebergement: {
+          necessaire: true,
+          occupation: { statut: 'a_confirmer' },
+          sejours: [sejour],
+        },
+      },
+      '0 chambre'
+    );
+
+    expect(etape.reponse).toBe('Combien d’adultes séjourneront à l’hôtel ?');
+  });
+
+  it('remplace une valeur déclarée par une correction explicite ultérieure', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: {
+          hebergement: {
+            necessaire: true,
+            occupation: { statut: 'a_confirmer', adultes: 3 },
+          },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(
+      {
+        ...baseDialogue,
+        hebergement: {
+          necessaire: true,
+          occupation: {
+            statut: 'declaree',
+            adultes: 2,
+            enfants: 0,
+            chambres: 1,
+          },
+          sejours: [sejour],
+        },
+      },
+      'Correction : 3 adultes'
+    );
+
+    expect(
+      etape.brief.hebergement?.necessaire === true
+        ? etape.brief.hebergement.occupation
+        : undefined
+    ).toEqual({
+      statut: 'declaree',
+      adultes: 3,
+      enfants: 0,
+      chambres: 1,
+    });
+  });
+
+  it('distingue une valeur invalide d’une valeur simplement manquante', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: {
+          hebergement: {
+            necessaire: true,
+            occupation: { statut: 'a_confirmer', adultes: 0 },
+          },
+        },
+      })
+    );
+
+    const etape = await avancerDialogue(
+      {
+        ...baseDialogue,
+        hebergement: {
+          necessaire: true,
+          occupation: { statut: 'a_confirmer' },
+          sejours: [sejour],
+        },
+      },
+      'zéro adulte'
+    );
+
+    expect(etape.reponse).toContain('doit être un entier entre 1 et 20');
+    expect(etape.brief.hebergement?.necessaire === true
+      ? etape.brief.hebergement.occupation.adultes
+      : undefined
+    ).toBeUndefined();
+  });
+
+  it('ne pose aucune question hôtelière quand l’hébergement est non nécessaire', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: { hebergement: { necessaire: false } },
+      })
+    );
+
+    const etape = await avancerDialogue(baseDialogue, 'Je dors chez des amis, aucun hôtel');
+
+    expect(etape.estComplet).toBe(true);
+    expect(etape.brief.hebergement).toEqual({ necessaire: false });
+    expect(etape.reponse).not.toMatch(/adultes|enfants|chambres/i);
+  });
+
+  it('interdit explicitement au modèle toute déduction depuis avecQui ou les participants', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'ok', brief: {} })
+    );
+
+    await avancerDialogue({}, 'Nous partons en couple');
+
+    const systeme = vi.mocked(callAI).mock.calls[0][1];
+    expect(systeme).toContain("N'infère JAMAIS l'occupation depuis avecQui");
+    expect(systeme).toContain("N'infère JAMAIS les occupants depuis les participants");
+  });
+});
+
 describe('génération (IA orchestrateur) — les ids naissent côté serveur', () => {
   const sortieLLM = {
     ambiance: 'sportive et urbaine',
