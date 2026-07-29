@@ -57,6 +57,7 @@ AVANT D'ÉCRIRE, CHERCHE. Tu disposes d'outils qui rendent de vrais lieux, de vr
 - Appelle-les d'abord, et groupe tes recherches (plusieurs outils dans le même tour) : tu as peu de tours.
 - Reprends EXACTEMENT le nom rendu par un outil, sans le reformuler.
 - N'invente JAMAIS un nom d'établissement, une date de match ni un événement. Si une recherche ne rend rien (lieu, événement OU date), reste générique et honnête ("un bar à cocktails du centre", "un match de la saison à voir sur place") — sans faire passer une invention pour un fait.
+- Pour un hébergement nommé, appelle chercher_lieux avec typeMetierRecherche "hebergement". Sans candidat Foursquare hôtelier, écris une suggestion générique et ne conserve aucun nom propre.
 - N'écris jamais d'URL : les liens sont ajoutés après toi.
 
 Puis réponds UNIQUEMENT avec l'une de ces deux formes JSON :
@@ -160,6 +161,7 @@ function typeRecherchePour(typeElement: TypeElement): TypeMetierRecherche | unde
     typeElement === 'restaurant' ||
     typeElement === 'activite' ||
     typeElement === 'sortie' ||
+    typeElement === 'hebergement' ||
     typeElement === 'evenement'
   ) {
     return typeElement;
@@ -182,6 +184,12 @@ function construireDemandeResolutionLien(
     !texteNonVide(candidat.recupereLe) ||
     Number.isNaN(Date.parse(candidat.recupereLe))
   ) {
+    return undefined;
+  }
+
+  // F3-B s'arrête à l'identité hôtelière. Un hôtel Foursquare vérifié ne doit
+  // pas déclencher Tavily ni produire une réservation avant F3-C.
+  if (candidat.typeMetierRecherche === 'hebergement') {
     return undefined;
   }
 
@@ -247,9 +255,17 @@ function preparerMomentsPourResolution(
               nom: element.nom,
               villeDemandee: ville,
               typeMetierRecherche,
+              adresse:
+                typeMetierRecherche === 'hebergement'
+                  ? element.lieu
+                  : undefined,
             })
           : undefined;
       if (!candidat) return { element };
+
+      if (candidat.typeMetierRecherche === 'hebergement') {
+        return { element, candidat };
+      }
 
       const demande = construireDemandeResolutionLien(candidat);
       if (!demande) return { element };
@@ -344,8 +360,8 @@ function nomSuggestion(type: TypeElement, ville?: string): string {
  * contrôle DNS/SSRF et redirections.
  *
  * Aucun résultat ambigu, refusé, introuvable ou indisponible ne déclenche de
- * repli par nom ou par carte. Les liens d'hébergement restent hors de F2 et
- * seront traités en F3 après une recherche dédiée.
+ * repli par nom ou par carte. F3-B sait vérifier l'identité d'un hébergement,
+ * mais ses liens restent volontairement hors de ce sous-lot.
  */
 function tracerLieuReel(
   element: ElementGenere,
@@ -365,7 +381,13 @@ function tracerLieuReel(
       ? candidat.salle
       : candidat.adresse
     : undefined;
-  const lieu = lieuReel ?? element.lieu;
+  // Une identité hôtelière vérifiée ne récupère jamais l'adresse proposée par
+  // le modèle : si Foursquare n'en donne pas, le champ reste absent. Les autres
+  // types conservent leur comportement F2 existant.
+  const lieu =
+    candidat?.typeMetierRecherche === 'hebergement'
+      ? lieuReel
+      : lieuReel ?? element.lieu;
 
   // Un temps libre ne se réserve pas (invariant 4) : rien à y rattacher.
   if (element.type === 'temps_libre') {

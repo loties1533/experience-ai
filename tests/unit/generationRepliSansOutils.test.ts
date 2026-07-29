@@ -12,7 +12,11 @@ vi.mock('../../server/services/providers.js', async (importOriginal) => {
   const reel = await importOriginal<typeof import('../../server/services/providers.js')>();
   return { ...reel, callClaude: vi.fn(), callClaudeOutils: vi.fn(), callGemini: vi.fn() };
 });
-vi.mock('../../server/services/foursquare.js', () => ({ rechercherLieuxFoursquare: vi.fn() }));
+vi.mock('../../server/services/foursquare.js', async (importOriginal) => {
+  const reel =
+    await importOriginal<typeof import('../../server/services/foursquare.js')>();
+  return { ...reel, rechercherLieuxFoursquare: vi.fn() };
+});
 vi.mock('../../server/services/predictHQ.js', () => ({
   rechercherEvenementsPredictHQ: vi.fn(),
 }));

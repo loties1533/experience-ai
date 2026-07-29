@@ -3,6 +3,12 @@ import type {
   TypeLieuRecherche,
 } from '../rechercheExterne.js';
 
+/**
+ * F3-B vérifie l'identité des hébergements, mais ne cherche encore aucun lien
+ * hôtelier. Ce sous-type empêche l'élargissement accidentel du pipeline F2-B.
+ */
+type TypeLieuAvecResolutionWeb = Exclude<TypeLieuRecherche, 'hebergement'>;
+
 export type TypeLienProuve =
   | 'officiel'
   | 'billetterie'
@@ -37,7 +43,7 @@ interface DemandeResolutionLienBase {
 
 export type DemandeResolutionLien =
   | (DemandeResolutionLienBase & {
-      typeMetierRecherche: TypeLieuRecherche;
+      typeMetierRecherche: TypeLieuAvecResolutionWeb;
       fournisseurMetier: 'Foursquare';
       dateDebut?: never;
       dateFin?: never;

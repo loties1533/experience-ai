@@ -24,7 +24,11 @@ export type ResultatRecherche<T> =
       raison: CauseIndisponibilite;
     };
 
-export type TypeLieuRecherche = 'restaurant' | 'activite' | 'sortie';
+export type TypeLieuRecherche =
+  | 'restaurant'
+  | 'activite'
+  | 'sortie'
+  | 'hebergement';
 export type TypeMetierRecherche = TypeLieuRecherche | 'evenement';
 
 export interface CandidatExterne {
@@ -39,11 +43,35 @@ export interface CandidatExterne {
   recupereLe: string;
 }
 
-export interface CandidatLieuExterne extends CandidatExterne {
-  typeMetierRecherche: TypeLieuRecherche;
+interface CandidatLieuFoursquareBase extends CandidatExterne {
+  identifiantCategorieFournisseur?: string;
   adresse?: string;
+  fournisseur: 'Foursquare';
+}
+
+export interface CandidatLieuExterne
+  extends CandidatLieuFoursquareBase {
+  typeMetierRecherche: Exclude<
+    TypeLieuRecherche,
+    'hebergement'
+  >;
   lienCarte: string;
 }
+
+/**
+ * Identité hôtelière réellement rendue par Foursquare.
+ *
+ * Aucun champ de prix, de capacité ou de disponibilité : le connecteur Places
+ * ne les prouve pas dans le chemin utilisé par Experience AI.
+ */
+export interface CandidatHotelExterne
+  extends CandidatLieuFoursquareBase {
+  typeMetierRecherche: 'hebergement';
+}
+
+export type CandidatFoursquareExterne =
+  | CandidatLieuExterne
+  | CandidatHotelExterne;
 
 export interface CandidatEvenementExterne extends CandidatExterne {
   typeMetierRecherche: 'evenement';

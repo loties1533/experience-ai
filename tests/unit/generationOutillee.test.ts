@@ -19,7 +19,11 @@ vi.mock('../../server/services/providers.js', async (importOriginal) => {
   const reel = await importOriginal<typeof import('../../server/services/providers.js')>();
   return { ...reel, callClaude: vi.fn(), callClaudeOutils: vi.fn() };
 });
-vi.mock('../../server/services/foursquare.js', () => ({ rechercherLieuxFoursquare: vi.fn() }));
+vi.mock('../../server/services/foursquare.js', async (importOriginal) => {
+  const reel =
+    await importOriginal<typeof import('../../server/services/foursquare.js')>();
+  return { ...reel, rechercherLieuxFoursquare: vi.fn() };
+});
 vi.mock('../../server/services/predictHQ.js', () => ({
   rechercherEvenementsPredictHQ: vi.fn(),
 }));
@@ -122,23 +126,57 @@ function candidatLieu(args: {
   identifiantExterne: string;
   nom: string;
   villeDemandee: string;
-  typeMetierRecherche: 'restaurant' | 'activite' | 'sortie';
+  villeConfirmee?: string;
+  typeMetierRecherche:
+    | 'restaurant'
+    | 'activite'
+    | 'sortie'
+    | 'hebergement';
   adresse?: string;
+  categorieFournisseur?: string;
+  identifiantCategorieFournisseur?: string;
 }) {
   return {
     identifiantExterne: args.identifiantExterne,
     nom: args.nom,
     villeDemandee: args.villeDemandee,
-    categorieFournisseur: 'Catégorie de test',
+    villeConfirmee: args.villeConfirmee,
+    categorieFournisseur:
+      args.categorieFournisseur ?? 'Catégorie de test',
+    identifiantCategorieFournisseur:
+      args.identifiantCategorieFournisseur,
     typeMetierRecherche: args.typeMetierRecherche,
     adresse: args.adresse,
-    lienCarte: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      `${args.nom} ${args.villeDemandee}`
-    )}`,
+    ...(args.typeMetierRecherche === 'hebergement'
+      ? {}
+      : {
+          lienCarte: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            `${args.nom} ${args.villeDemandee}`
+          )}`,
+        }),
     fournisseur: 'Foursquare' as const,
     source: 'https://places-api.foursquare.com/places/search',
     recupereLe: DATE_RECUPERATION,
   };
+}
+
+function candidatHotel(args: {
+  identifiantExterne: string;
+  nom: string;
+  villeDemandee: string;
+  villeConfirmee?: string;
+  adresse?: string;
+  categorieFournisseur?: string;
+  identifiantCategorieFournisseur?: string;
+}) {
+  return candidatLieu({
+    ...args,
+    typeMetierRecherche: 'hebergement',
+    categorieFournisseur:
+      args.categorieFournisseur ?? 'Hotel',
+    identifiantCategorieFournisseur:
+      args.identifiantCategorieFournisseur ?? '19014',
+  });
 }
 
 function candidatEvenement(args: {
@@ -175,10 +213,17 @@ function tourOutil(nom: string, entree: unknown, id = 'outil-1'): BlocReponse[] 
 function tourReponse(
   nomElement: string,
   options: {
-    type?: 'activite' | 'restaurant' | 'sortie' | 'evenement';
+    type?:
+      | 'activite'
+      | 'restaurant'
+      | 'sortie'
+      | 'hebergement'
+      | 'evenement';
     ville?: string;
     identifiantExterne?: string;
     estAncre?: boolean;
+    lieu?: string;
+    prix?: number;
   } = {}
 ): BlocReponse[] {
   return [
@@ -196,6 +241,8 @@ function tourReponse(
                 type: options.type ?? 'sortie',
                 identifiantExterne: options.identifiantExterne,
                 nom: nomElement,
+                lieu: options.lieu,
+                prix: options.prix,
                 estAncre: options.estAncre,
                 justification: 'le temps fort de la soirée',
               },
@@ -935,6 +982,199 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
+  it('vérifie un hôtel Foursquare sans lancer de résolution de lien', async () => {
+    const hotel = candidatHotel({
+      identifiantExterne: 'fsq-burdigala',
+      nom: 'Hôtel Burdigala',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Bordeaux',
+      adresse: '115 rue Georges Bonnac, Bordeaux',
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [hotel],
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'hôtel de charme',
+          typeMetierRecherche: 'hebergement',
+        })
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Hôtel Burdigala', {
+          type: 'hebergement',
+          ville: 'Bordeaux',
+          identifiantExterne: 'fsq-burdigala',
+          prix: 210,
+        })
+      );
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+
+    expect(rechercherLieuxFoursquare).toHaveBeenCalledWith(
+      'Bordeaux',
+      'hôtel de charme',
+      'hebergement',
+      4
+    );
+    expect(element).toMatchObject({
+      nom: 'Hôtel Burdigala',
+      lieu: '115 rue Georges Bonnac, Bordeaux',
+      confiance: {
+        niveau: 'verifie',
+        identifiantExterne: 'fsq-burdigala',
+        fournisseur: 'Foursquare',
+        source: 'https://places-api.foursquare.com/places/search',
+        recupereLe: DATE_RECUPERATION,
+      },
+      prix: 210,
+      prixEstime: true,
+    });
+    expect(element.reservation).toBeUndefined();
+    expect(resoudreLien).not.toHaveBeenCalled();
+    expect(resoudreLiensReels).not.toHaveBeenCalled();
+  });
+
+  it('ne conserve jamais une adresse hôtelière venant seulement du LLM', async () => {
+    const hotel = candidatHotel({
+      identifiantExterne: 'fsq-hotel-sans-adresse',
+      nom: 'Hôtel sans adresse',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Bordeaux',
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [hotel],
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'hôtel',
+          typeMetierRecherche: 'hebergement',
+        })
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Hôtel sans adresse', {
+          type: 'hebergement',
+          ville: 'Bordeaux',
+          identifiantExterne: 'fsq-hotel-sans-adresse',
+          lieu: '99 rue inventée',
+        })
+      );
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+
+    expect(element.nom).toBe('Hôtel sans adresse');
+    expect(element.lieu).toBeUndefined();
+    expect(element.confiance.niveau).toBe('verifie');
+    expect(element.reservation).toBeUndefined();
+  });
+
+  it('dégrade un hôtel vers une suggestion quand Foursquare est indisponible', async () => {
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'indisponible',
+      fournisseur: 'Foursquare',
+      raison: 'timeout',
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'hôtel',
+          typeMetierRecherche: 'hebergement',
+        })
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Grand Hôtel imaginaire', {
+          type: 'hebergement',
+          ville: 'Bordeaux',
+        })
+      );
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+
+    expect(element.nom).toBe('Un hébergement à choisir à Bordeaux');
+    expect(element.lieu).toBeUndefined();
+    expect(element.confiance).toEqual({ niveau: 'suggestion' });
+    expect(element.reservation).toBeUndefined();
+    expect(resoudreLien).not.toHaveBeenCalled();
+  });
+
+  it('dégrade un hôtel vers une suggestion après une vraie recherche vide', async () => {
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'vide',
+      resultats: [],
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'hôtel',
+          typeMetierRecherche: 'hebergement',
+        })
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Hôtel inventé', {
+          type: 'hebergement',
+          ville: 'Bordeaux',
+          lieu: '1 rue inventée',
+        })
+      );
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+
+    expect(element).toMatchObject({
+      nom: 'Un hébergement à choisir à Bordeaux',
+      confiance: { niveau: 'suggestion' },
+    });
+    expect(element.lieu).toBeUndefined();
+    expect(element.reservation).toBeUndefined();
+    expect(resoudreLien).not.toHaveBeenCalled();
+  });
+
+  it('ne vérifie pas un candidat hôtelier portant une catégorie incompatible', async () => {
+    const fauxHotel = candidatHotel({
+      identifiantExterne: 'fsq-restaurant-hotel',
+      nom: 'Hôtel Restaurant du Port',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Bordeaux',
+      categorieFournisseur: 'French Restaurant',
+      identifiantCategorieFournisseur: '13065',
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [fauxHotel],
+      recupereLe: DATE_RECUPERATION,
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'hôtel',
+          typeMetierRecherche: 'hebergement',
+        })
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Hôtel Restaurant du Port', {
+          type: 'hebergement',
+          ville: 'Bordeaux',
+          identifiantExterne: 'fsq-restaurant-hotel',
+        })
+      );
+
+    const [element] = (await genererParcours(brief)).timeline[0].elements;
+
+    expect(element.nom).toBe('Un hébergement à choisir à Bordeaux');
+    expect(element.confiance).toEqual({ niveau: 'suggestion' });
+    expect(element.reservation).toBeUndefined();
+  });
+
   it('ne rattache aucun lien externe à un hébergement non vérifié', async () => {
     vi.mocked(callClaudeOutils).mockResolvedValueOnce([
       {
@@ -988,6 +1228,47 @@ describe('le cache — deux générations sur la même ville ne repaient pas', (
     expect(seconde.trouverLieuReel('Le Point Rouge')?.recupereLe).toBe(DATE_RECUPERATION);
   });
 
+  it('restitue une identité hôtelière avec la même provenance et la même date', async () => {
+    const hotel = candidatHotel({
+      identifiantExterne: 'fsq-burdigala-cache',
+      nom: 'Hôtel Burdigala',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Bordeaux',
+      adresse: '115 rue Georges Bonnac, Bordeaux',
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [hotel],
+      recupereLe: DATE_RECUPERATION,
+    });
+    const demande = {
+      ville: 'Bordeaux',
+      requete: 'hôtel',
+      typeMetierRecherche: 'hebergement',
+    } as const;
+    const premiere = creerBoiteAOutils();
+    const seconde = creerBoiteAOutils();
+
+    await premiere.executer('chercher_lieux', demande);
+    await seconde.executer('chercher_lieux', demande);
+    const relu = seconde.rapprocherCandidat({
+      identifiantExterne: 'fsq-burdigala-cache',
+      nom: 'Hôtel Burdigala',
+      villeDemandee: 'Bordeaux',
+      typeMetierRecherche: 'hebergement',
+    });
+
+    expect(rechercherLieuxFoursquare).toHaveBeenCalledOnce();
+    expect(relu).toMatchObject({
+      identifiantExterne: 'fsq-burdigala-cache',
+      fournisseur: 'Foursquare',
+      source: 'https://places-api.foursquare.com/places/search',
+      recupereLe: DATE_RECUPERATION,
+      categorieFournisseur: 'Hotel',
+      typeMetierRecherche: 'hebergement',
+    });
+  });
+
   it('ne met jamais une indisponibilité fournisseur en cache', async () => {
     vi.mocked(rechercherLieuxFoursquare).mockResolvedValue({
       statut: 'indisponible',
@@ -1025,6 +1306,64 @@ describe('le cache — deux générations sur la même ville ne repaient pas', (
     });
 
     expect(rechercherLieuxFoursquare).toHaveBeenCalledTimes(3);
+  });
+
+  it('sépare le cache et le journal pour un même identifiant recherché sous deux types', async () => {
+    const restaurant = candidatLieu({
+      identifiantExterne: 'fsq-etablissement-mixte',
+      nom: 'Le Central',
+      villeDemandee: 'Bordeaux',
+      typeMetierRecherche: 'restaurant',
+      adresse: '1 place Centrale, Bordeaux',
+    });
+    const hotel = candidatHotel({
+      identifiantExterne: 'fsq-etablissement-mixte',
+      nom: 'Le Central',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Bordeaux',
+      adresse: '1 place Centrale, Bordeaux',
+    });
+    vi.mocked(rechercherLieuxFoursquare)
+      .mockResolvedValueOnce({
+        statut: 'ok',
+        resultats: [restaurant],
+        recupereLe: DATE_RECUPERATION,
+      })
+      .mockResolvedValueOnce({
+        statut: 'ok',
+        resultats: [hotel],
+        recupereLe: DATE_RECUPERATION,
+      });
+    const boite = creerBoiteAOutils();
+
+    await boite.executer('chercher_lieux', {
+      ville: 'Bordeaux',
+      requete: 'Le Central',
+      typeMetierRecherche: 'restaurant',
+    });
+    await boite.executer('chercher_lieux', {
+      ville: 'Bordeaux',
+      requete: 'Le Central',
+      typeMetierRecherche: 'hebergement',
+    });
+
+    expect(rechercherLieuxFoursquare).toHaveBeenCalledTimes(2);
+    expect(
+      boite.rapprocherCandidat({
+        identifiantExterne: 'fsq-etablissement-mixte',
+        nom: 'Le Central',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'restaurant',
+      })?.typeMetierRecherche
+    ).toBe('restaurant');
+    expect(
+      boite.rapprocherCandidat({
+        identifiantExterne: 'fsq-etablissement-mixte',
+        nom: 'Le Central',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'hebergement',
+      })?.typeMetierRecherche
+    ).toBe('hebergement');
   });
 
   it('repart chercher une fois le cache vidé', async () => {
@@ -1247,6 +1586,161 @@ describe('le journal de candidats — rapprochement conservateur', () => {
         typeMetierRecherche: 'restaurant',
       })?.identifiantExterne
     ).toBe('fsq-central-2');
+  });
+
+  it('ne change pas le rapprochement F2 avec une adresse LLM sur des restaurants ambigus', async () => {
+    const candidats = [
+      candidatLieu({
+        identifiantExterne: 'fsq-restaurant-adresse-1',
+        nom: 'Le Central',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'restaurant',
+        adresse: '1 rue A, Bordeaux',
+      }),
+      candidatLieu({
+        identifiantExterne: 'fsq-restaurant-adresse-2',
+        nom: 'Le Central',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'restaurant',
+        adresse: '2 rue B, Bordeaux',
+      }),
+    ];
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: candidats,
+      recupereLe: DATE_RECUPERATION,
+    });
+    const boite = creerBoiteAOutils();
+    await boite.executer('chercher_lieux', {
+      ville: 'Bordeaux',
+      requete: 'restaurant central',
+      typeMetierRecherche: 'restaurant',
+    });
+
+    expect(
+      boite.rapprocherCandidat({
+        nom: 'Le Central',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'restaurant',
+        adresse: '2 rue B, Bordeaux',
+      })
+    ).toBeUndefined();
+  });
+
+  it('priorise l’identifiant externe sans choisir arbitrairement un hôtel homonyme', async () => {
+    const premier = candidatHotel({
+      identifiantExterne: 'fsq-hotel-central-1',
+      nom: 'Hôtel Central',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Bordeaux',
+      adresse: '1 rue A, Bordeaux',
+    });
+    const second = candidatHotel({
+      identifiantExterne: 'fsq-hotel-central-2',
+      nom: 'Hôtel Central',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Bordeaux',
+      adresse: '2 rue B, Bordeaux',
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [premier, second],
+      recupereLe: DATE_RECUPERATION,
+    });
+    const boite = creerBoiteAOutils();
+    await boite.executer('chercher_lieux', {
+      ville: 'Bordeaux',
+      requete: 'hôtel central',
+      typeMetierRecherche: 'hebergement',
+    });
+
+    expect(
+      boite.rapprocherCandidat({
+        nom: 'Hôtel Central',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'hebergement',
+      })
+    ).toBeUndefined();
+    expect(
+      boite.rapprocherCandidat({
+        identifiantExterne: 'fsq-hotel-central-2',
+        nom: 'Nom reformulé par le modèle',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'hebergement',
+      })
+    ).toMatchObject({
+      identifiantExterne: 'fsq-hotel-central-2',
+      adresse: '2 rue B, Bordeaux',
+    });
+  });
+
+  it('peut lever une ambiguïté hôtelière par une adresse Foursquare exacte', async () => {
+    const candidats = [
+      candidatHotel({
+        identifiantExterne: 'fsq-hotel-adresse-1',
+        nom: 'Hôtel Central',
+        villeDemandee: 'Bordeaux',
+        villeConfirmee: 'Bordeaux',
+        adresse: '1 rue A, Bordeaux',
+      }),
+      candidatHotel({
+        identifiantExterne: 'fsq-hotel-adresse-2',
+        nom: 'Hôtel Central',
+        villeDemandee: 'Bordeaux',
+        villeConfirmee: 'Bordeaux',
+        adresse: '2 rue B, Bordeaux',
+      }),
+    ];
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: candidats,
+      recupereLe: DATE_RECUPERATION,
+    });
+    const boite = creerBoiteAOutils();
+    await boite.executer('chercher_lieux', {
+      ville: 'Bordeaux',
+      requete: 'hôtel central',
+      typeMetierRecherche: 'hebergement',
+    });
+
+    expect(
+      boite.rapprocherCandidat({
+        nom: 'Hôtel Central',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'hebergement',
+        adresse: '2 rue B, Bordeaux',
+      })?.identifiantExterne
+    ).toBe('fsq-hotel-adresse-2');
+  });
+
+  it('ne retient pas un hôtel dont la ville confirmée contredit la recherche', async () => {
+    const mauvaiseVille = candidatHotel({
+      identifiantExterne: 'fsq-hotel-paris',
+      nom: 'Hôtel Central',
+      villeDemandee: 'Bordeaux',
+      villeConfirmee: 'Paris',
+      adresse: '1 rue de Paris',
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockResolvedValueOnce({
+      statut: 'ok',
+      resultats: [mauvaiseVille],
+      recupereLe: DATE_RECUPERATION,
+    });
+    const boite = creerBoiteAOutils();
+    await boite.executer('chercher_lieux', {
+      ville: 'Bordeaux',
+      requete: 'hôtel',
+      typeMetierRecherche: 'hebergement',
+    });
+
+    expect(
+      boite.rapprocherCandidat({
+        identifiantExterne: 'fsq-hotel-paris',
+        nom: 'Hôtel Central',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'hebergement',
+      })
+    ).toBeUndefined();
   });
 });
 
