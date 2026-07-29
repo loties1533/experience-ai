@@ -67,17 +67,23 @@ describe('rechercherLieuxFoursquare — identité et provenance', () => {
   });
 
   it.each([
-    ['restaurant', 'restaurant bistronomique', 'French Restaurant'],
-    ['activite', 'escape game', 'Escape Room'],
-    ['sortie', 'bar à cocktails', 'Cocktail Bar'],
-  ] as const)('porte le type métier %s sur le chemin réellement utilisé', async (type, requete, categorie) => {
+    ['restaurant', 'restaurant bistronomique', 'French Restaurant', 'categorie-test'],
+    ['activite', 'escape game', 'Escape Room', 'categorie-test'],
+    ['sortie', 'bar à cocktails', 'Cocktail Bar', 'categorie-test'],
+    ['hebergement', 'hôtel', 'Hotel', '19014'],
+  ] as const)('porte le type métier %s sur le chemin réellement utilisé', async (type, requete, categorie, identifiantCategorie) => {
     requeteFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         results: [
           {
             ...REPONSE_FOURSQUARE.results[0],
-            categories: [{ fsq_category_id: 'categorie-test', name: categorie }],
+            categories: [
+              {
+                fsq_category_id: identifiantCategorie,
+                name: categorie,
+              },
+            ],
           },
         ],
       }),
@@ -91,6 +97,329 @@ describe('rechercherLieuxFoursquare — identité et provenance', () => {
     expect(recherche.resultats[0]).not.toHaveProperty('prix');
     expect(String(requeteFetch.mock.calls[0][0])).toContain('places-api.foursquare.com');
   });
+
+  it('conserve un hôtel Foursquare avec son identité, sa ville et sa provenance', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-28T08:15:00.000Z'));
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            fsq_place_id: 'fsq-hotel-001',
+            name: 'Hôtel Burdigala',
+            categories: [{ fsq_category_id: '19014', name: 'Hotel' }],
+            location: {
+              locality: 'Bordeaux',
+              address: '115 rue Georges Bonnac',
+            },
+          },
+        ],
+      }),
+    });
+
+    const recherche = await rechercherLieuxFoursquare(
+      'Bordeaux',
+      'hôtel de charme',
+      'hebergement',
+    );
+
+    expect(recherche).toEqual({
+      statut: 'ok',
+      recupereLe: '2026-07-28T08:15:00.000Z',
+      resultats: [
+        expect.objectContaining({
+          identifiantExterne: 'fsq-hotel-001',
+          nom: 'Hôtel Burdigala',
+          villeDemandee: 'Bordeaux',
+          villeConfirmee: 'Bordeaux',
+          adresse: '115 rue Georges Bonnac, Bordeaux',
+          categorieFournisseur: 'Hotel',
+          typeMetierRecherche: 'hebergement',
+          fournisseur: 'Foursquare',
+          source: 'https://places-api.foursquare.com/places/search',
+          recupereLe: '2026-07-28T08:15:00.000Z',
+        }),
+      ],
+    });
+    if (recherche.statut !== 'ok') throw new Error('résultat attendu');
+    expect(recherche.resultats[0]).not.toHaveProperty('lienCarte');
+    const url = new URL(String(requeteFetch.mock.calls[0][0]));
+    expect(url.searchParams.get('fsq_category_ids')).toBe('19009');
+  });
+
+  it.each([
+    ['Bed and Breakfast', '19010'],
+    ['Boarding House', '19011'],
+    ['Cabin', '19012'],
+    ['Hostel', '19013'],
+    ['Hotel', '19014'],
+    ['Inn', '19015'],
+    ['Lodge', '19016'],
+    ['Motel', '19017'],
+    ['Resort', '19018'],
+    ['Vacation Rental', '19019'],
+    ['Bed and Breakfast', undefined],
+    ['HÔTEL', undefined],
+  ])('conserve une catégorie d’hébergement compatible : %s', async (categorie, identifiantCategorie) => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            ...REPONSE_FOURSQUARE.results[0],
+            name: 'Maison du voyageur',
+            categories: [
+              {
+                ...(identifiantCategorie
+                  ? { fsq_category_id: identifiantCategorie }
+                  : {}),
+                name: categorie,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const recherche = await rechercherLieuxFoursquare(
+      'Bordeaux',
+      'auberge',
+      'hebergement',
+    );
+
+    expect(recherche).toMatchObject({
+      statut: 'ok',
+      resultats: [
+        {
+          categorieFournisseur: categorie,
+          typeMetierRecherche: 'hebergement',
+        },
+      ],
+    });
+  });
+
+  it('refuse un libellé hôtelier quand Foursquare fournit un identifiant inconnu', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            ...REPONSE_FOURSQUARE.results[0],
+            name: 'Hôtel au mauvais identifiant',
+            categories: [
+              {
+                fsq_category_id: 'categorie-inconnue',
+                name: 'Hotel',
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const recherche = await rechercherLieuxFoursquare(
+      'Bordeaux',
+      'hôtel',
+      'hebergement',
+    );
+
+    expect(recherche.statut).toBe('vide');
+  });
+
+  it('préfère une sous-catégorie hôtelière identifiée même si elle n’est pas la première', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            ...REPONSE_FOURSQUARE.results[0],
+            name: 'Auberge du Centre',
+            categories: [
+              {
+                fsq_category_id: 'categorie-inconnue',
+                name: 'Hotel',
+              },
+              {
+                fsq_category_id: '19013',
+                name: 'Hostel',
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const recherche = await rechercherLieuxFoursquare(
+      'Bordeaux',
+      'auberge',
+      'hebergement',
+    );
+
+    expect(recherche).toMatchObject({
+      statut: 'ok',
+      resultats: [
+        {
+          categorieFournisseur: 'Hostel',
+          identifiantCategorieFournisseur: '19013',
+        },
+      ],
+    });
+  });
+
+  it.each([
+    ['Hôtel Restaurant du Port', 'French Restaurant'],
+    ['Hôtel California', 'Cocktail Bar'],
+    ['Piscine du Grand Hôtel', 'Hotel Pool'],
+    ['Hôtel des Curiosités', 'Tourist Attraction'],
+  ])('rejette %s quand sa catégorie réelle est %s', async (nom, categorie) => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            ...REPONSE_FOURSQUARE.results[0],
+            name: nom,
+            categories: [
+              {
+                fsq_category_id: 'categorie-incompatible',
+                name: categorie,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const recherche = await rechercherLieuxFoursquare(
+      'Bordeaux',
+      'hôtel',
+      'hebergement',
+    );
+
+    expect(recherche.statut).toBe('vide');
+  });
+
+  it('rejette un hôtel dont la localité Foursquare contredit la ville demandée', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            ...REPONSE_FOURSQUARE.results[0],
+            name: 'Hôtel du Centre',
+            categories: [{ fsq_category_id: '19014', name: 'Hotel' }],
+            location: {
+              locality: 'Paris',
+              address: '1 rue du Centre',
+            },
+          },
+        ],
+      }),
+    });
+
+    const recherche = await rechercherLieuxFoursquare(
+      'Bordeaux',
+      'hôtel',
+      'hebergement',
+    );
+
+    expect(recherche.statut).toBe('vide');
+  });
+
+  it('compare la ville sans dépendre de la casse ni des accents', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            ...REPONSE_FOURSQUARE.results[0],
+            name: 'Hôtel des Lumières',
+            categories: [{ fsq_category_id: '19014', name: 'Hotel' }],
+            location: {
+              locality: 'ÉVRY',
+              address: '1 rue des Lumières',
+            },
+          },
+        ],
+      }),
+    });
+
+    const recherche = await rechercherLieuxFoursquare(
+      'evry',
+      'hôtel',
+      'hebergement',
+    );
+
+    expect(recherche).toMatchObject({
+      statut: 'ok',
+      resultats: [{ villeConfirmee: 'ÉVRY' }],
+    });
+  });
+
+  it('ne fabrique aucune ville confirmée lorsque Foursquare ne la fournit pas', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            fsq_place_id: 'fsq-hotel-sans-ville',
+            name: 'Hôtel sans localité',
+            categories: [{ fsq_category_id: '19014', name: 'Hotel' }],
+            location: { address: '1 rue du Port' },
+          },
+        ],
+      }),
+    });
+
+    const recherche = await rechercherLieuxFoursquare(
+      'Bordeaux',
+      'hôtel',
+      'hebergement',
+    );
+
+    expect(recherche).toMatchObject({
+      statut: 'ok',
+      resultats: [
+        {
+          villeDemandee: 'Bordeaux',
+          adresse: '1 rue du Port',
+        },
+      ],
+    });
+    if (recherche.statut !== 'ok') throw new Error('résultat attendu');
+    expect(recherche.resultats[0]).not.toHaveProperty('villeConfirmee');
+  });
+
+  it.each(['Mérignac', 'Paris 8e Arrondissement'])(
+    'rejette une localité explicitement différente : %s',
+    async (localite) => {
+      requeteFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              ...REPONSE_FOURSQUARE.results[0],
+              name: 'Hôtel du Centre',
+              categories: [{ fsq_category_id: '19014', name: 'Hotel' }],
+              location: {
+                locality: localite,
+                address: '1 rue du Centre',
+              },
+            },
+          ],
+        }),
+      });
+
+      const recherche = await rechercherLieuxFoursquare(
+        'Bordeaux',
+        'hôtel',
+        'hebergement',
+      );
+
+      expect(recherche.statut).toBe('vide');
+    }
+  );
 
   it('écarte une catégorie fournisseur incompatible avec le type métier', async () => {
     requeteFetch.mockResolvedValueOnce({
@@ -228,6 +557,29 @@ describe('rechercherLieuxFoursquare — états de recherche', () => {
 
     await expect(
       rechercherLieuxFoursquare('Bordeaux', 'restaurant', 'restaurant')
+    ).resolves.toEqual({
+      statut: 'indisponible',
+      fournisseur: 'Foursquare',
+      raison: 'reponse_invalide',
+    });
+  });
+
+  it('refuse une catégorie hôtelière externe mal formée', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            fsq_place_id: 'fsq-hotel-invalide',
+            name: 'Hôtel invalide',
+            categories: [{ fsq_category_id: 19014, name: 'Hotel' }],
+          },
+        ],
+      }),
+    });
+
+    await expect(
+      rechercherLieuxFoursquare('Bordeaux', 'hôtel', 'hebergement')
     ).resolves.toEqual({
       statut: 'indisponible',
       fournisseur: 'Foursquare',

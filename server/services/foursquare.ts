@@ -7,7 +7,7 @@ import {
   estTimeout,
   rechercheIndisponible,
   resultatVide,
-  type CandidatLieuExterne,
+  type CandidatFoursquareExterne,
   type ResultatRecherche,
   type TypeLieuRecherche,
 } from './rechercheExterne.js';
@@ -17,6 +17,11 @@ import {
 const URL_BASE_FOURSQUARE = 'https://places-api.foursquare.com';
 const VERSION_API_PLACES = '2025-06-17';
 const SOURCE_FOURSQUARE = `${URL_BASE_FOURSQUARE}/places/search`;
+// Catégorie parente officielle « Travel and Transportation > Lodging ».
+// La recherche distante est filtrée, puis chaque résultat est encore contrôlé
+// localement : le filtre fournisseur ne remplace jamais notre frontière de
+// confiance.
+const CATEGORIE_FOURSQUARE_HEBERGEMENT = '19009';
 
 const REQUETES_PAR_MODE: Record<TravelMode, string> = {
   party:    'bar,nightclub,lounge',
@@ -94,7 +99,49 @@ const TERMES_CATEGORIES: Record<TypeLieuRecherche, string[]> = {
     'night club',
     'pub',
   ],
+  // Contrairement aux autres types historiques, cette liste est comparée par
+  // égalité exacte. « Hotel Pool » ou « Hotel Restaurant » ne prouvent pas un
+  // hébergement. Les identifiants officiels connus restent prioritaires.
+  hebergement: [
+    'hotel',
+    'hôtel',
+    'hostel',
+    'auberge',
+    'auberge de jeunesse',
+    'aparthotel',
+    'appart hotel',
+    'appart hôtel',
+    'motel',
+    'resort',
+    'bed and breakfast',
+    'boarding house',
+    'cabin',
+    'guest house',
+    'maison d hotes',
+    'maison d hôtes',
+    'inn',
+    'lodge',
+    'vacation rental',
+  ],
 };
+
+const IDENTIFIANTS_CATEGORIES_HEBERGEMENT = new Set([
+  '19010', // Bed and Breakfast — taxonomie Places intégrée.
+  '19011', // Boarding House.
+  '19012', // Cabin.
+  '19013', // Hostel.
+  '19014', // Hotel.
+  '19015', // Inn.
+  '19016', // Lodge.
+  '19017', // Motel.
+  '19018', // Resort.
+  '19019', // Vacation Rental.
+  '4bf58dd8d48988d1fa931735', // Hotel — identifiant historique.
+  '4bf58dd8d48988d1ee931735', // Hostel.
+  '4bf58dd8d48988d1fb931735', // Motel.
+  '4bf58dd8d48988d12f951735', // Resort.
+  '4bf58dd8d48988d1f8931735', // Bed and Breakfast.
+]);
 
 function normaliserCategorie(categorie: string): string {
   return categorie
@@ -105,22 +152,57 @@ function normaliserCategorie(categorie: string): string {
     .trim();
 }
 
+export function estCategorieFoursquareCompatible(
+  categorie: { fsq_category_id?: string; name: string },
+  typeMetierRecherche: TypeLieuRecherche
+): boolean {
+  const categorieNormalisee = normaliserCategorie(categorie.name);
+  if (typeMetierRecherche === 'hebergement') {
+    // Quand Foursquare fournit un identifiant, il est prioritaire : un
+    // identifiant inconnu ne peut pas être compensé par un libellé séduisant.
+    if (categorie.fsq_category_id !== undefined) {
+      return IDENTIFIANTS_CATEGORIES_HEBERGEMENT.has(
+        categorie.fsq_category_id
+      );
+    }
+    return TERMES_CATEGORIES.hebergement.some(
+      (terme) => normaliserCategorie(terme) === categorieNormalisee
+    );
+  }
+
+  return TERMES_CATEGORIES[typeMetierRecherche].some((terme) => {
+    const termeNormalise = normaliserCategorie(terme);
+    return (
+      categorieNormalisee === termeNormalise ||
+      categorieNormalisee.startsWith(`${termeNormalise} `) ||
+      categorieNormalisee.endsWith(` ${termeNormalise}`) ||
+      categorieNormalisee.includes(` ${termeNormalise} `)
+    );
+  });
+}
+
 function categorieCorrespondante(
   lieu: LieuFoursquare,
   typeMetierRecherche: TypeLieuRecherche
 ): LieuFoursquare['categories'][number] | undefined {
-  return lieu.categories.find((categorie) => {
-    const categorieNormalisee = normaliserCategorie(categorie.name);
-    return TERMES_CATEGORIES[typeMetierRecherche].some((terme) => {
-      const termeNormalise = normaliserCategorie(terme);
-      return (
-        categorieNormalisee === termeNormalise ||
-        categorieNormalisee.startsWith(`${termeNormalise} `) ||
-        categorieNormalisee.endsWith(` ${termeNormalise}`) ||
-        categorieNormalisee.includes(` ${termeNormalise} `)
-      );
-    });
-  });
+  if (typeMetierRecherche === 'hebergement') {
+    const categorieIdentifiee = lieu.categories.find(
+      (categorie) =>
+        categorie.fsq_category_id !== undefined &&
+        estCategorieFoursquareCompatible(categorie, 'hebergement')
+    );
+    if (categorieIdentifiee) return categorieIdentifiee;
+
+    return lieu.categories.find(
+      (categorie) =>
+        categorie.fsq_category_id === undefined &&
+        estCategorieFoursquareCompatible(categorie, 'hebergement')
+    );
+  }
+
+  return lieu.categories.find((categorie) =>
+    estCategorieFoursquareCompatible(categorie, typeMetierRecherche)
+  );
 }
 
 // Un lieu réel, dit dans le vocabulaire du domaine (nom, adresse, lien carte).
@@ -153,7 +235,8 @@ function prixNumerique(price?: number): number {
 async function rechercherLieuxBruts(
   villeDemandee: string,
   requete: string,
-  limite: number
+  limite: number,
+  typeMetierRecherche?: TypeLieuRecherche
 ): Promise<ResultatRecherche<LieuFoursquare>> {
   const cleFoursquare = process.env.FOURSQUARE_API_KEY;
   if (!cleFoursquare) {
@@ -169,6 +252,12 @@ async function rechercherLieuxBruts(
       query: requete,
       limit: String(limite),
     });
+    if (typeMetierRecherche === 'hebergement') {
+      parametresRequete.set(
+        'fsq_category_ids',
+        CATEGORIE_FOURSQUARE_HEBERGEMENT
+      );
+    }
 
     const reponse = await fetch(`${SOURCE_FOURSQUARE}?${parametresRequete}`, {
       headers: {
@@ -248,35 +337,68 @@ export async function rechercherLieuxFoursquare(
   requete: string,
   typeMetierRecherche: TypeLieuRecherche,
   limite = 4,
-): Promise<ResultatRecherche<CandidatLieuExterne>> {
+): Promise<ResultatRecherche<CandidatFoursquareExterne>> {
   const recherche = await rechercherLieuxBruts(
     villeDemandee,
     requete,
-    Math.min(Math.max(limite, 1), 8)
+    Math.min(Math.max(limite, 1), 8),
+    typeMetierRecherche
   );
   if (recherche.statut !== 'ok') return recherche;
   const lieuxCompatibles = recherche.resultats.flatMap((lieu) => {
     const categorie = categorieCorrespondante(lieu, typeMetierRecherche);
-    return categorie ? [{ lieu, categorie }] : [];
+    if (!categorie) return [];
+    const villeConfirmee = lieu.location.locality?.trim() || undefined;
+    if (
+      typeMetierRecherche === 'hebergement' &&
+      villeConfirmee &&
+      normaliserCategorie(villeConfirmee) !==
+        normaliserCategorie(villeDemandee)
+    ) {
+      return [];
+    }
+    return [{ lieu, categorie, villeConfirmee }];
   });
   if (lieuxCompatibles.length === 0) return resultatVide(recherche.recupereLe);
 
   return {
     statut: 'ok',
     recupereLe: recherche.recupereLe,
-    resultats: lieuxCompatibles.map(({ lieu, categorie }) => ({
-      identifiantExterne: lieu.fsq_place_id,
-      nom: lieu.name,
-      villeDemandee,
-      categorieFournisseur: categorie.name,
-      typeMetierRecherche,
-      adresse:
-        [lieu.location.address, lieu.location.locality].filter(Boolean).join(', ') || undefined,
-      lienCarte: lienGoogleMaps(lieu.name, villeDemandee),
-      fournisseur: 'Foursquare',
-      source: SOURCE_FOURSQUARE,
-      recupereLe: recherche.recupereLe,
-    })),
+    resultats: lieuxCompatibles.map(
+      ({ lieu, categorie, villeConfirmee }): CandidatFoursquareExterne => {
+        const commun = {
+          identifiantExterne: lieu.fsq_place_id,
+          nom: lieu.name,
+          villeDemandee,
+          categorieFournisseur: categorie.name,
+          adresse:
+            [lieu.location.address, lieu.location.locality]
+              .filter(Boolean)
+              .join(', ') || undefined,
+          fournisseur: 'Foursquare' as const,
+          source: SOURCE_FOURSQUARE,
+          recupereLe: recherche.recupereLe,
+        };
+        if (typeMetierRecherche === 'hebergement') {
+          return {
+            ...commun,
+            typeMetierRecherche,
+            ...(villeConfirmee ? { villeConfirmee } : {}),
+            ...(categorie.fsq_category_id
+              ? {
+                  identifiantCategorieFournisseur:
+                    categorie.fsq_category_id,
+                }
+              : {}),
+          };
+        }
+        return {
+          ...commun,
+          typeMetierRecherche,
+          lienCarte: lienGoogleMaps(lieu.name, villeDemandee),
+        };
+      }
+    ),
   };
 }
 

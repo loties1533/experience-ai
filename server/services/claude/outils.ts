@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { memoriser, memoriserSelonResultat } from '../../lib/cacheMemoire.js';
-import { rechercherLieuxFoursquare } from '../foursquare.js';
+import {
+  estCategorieFoursquareCompatible,
+  rechercherLieuxFoursquare,
+} from '../foursquare.js';
 import { rechercherEvenementsPredictHQ } from '../predictHQ.js';
 import { rechercheIndisponible } from '../rechercheExterne.js';
 import { getRealWeather } from '../weather.js';
@@ -9,7 +12,7 @@ import type { OutilLLM } from '../providers.js';
 import type { TravelMode } from '../../lib/types.js';
 import type {
   CandidatEvenementExterne,
-  CandidatLieuExterne,
+  CandidatFoursquareExterne,
   CauseIndisponibilite,
   ResultatRecherche,
   TypeLieuRecherche,
@@ -41,13 +44,16 @@ const AUCUN_RESULTAT =
 const RECHERCHE_INDISPONIBLE =
   "La recherche externe est momentanément indisponible. Ne présente aucune donnée comme vérifiée et reste générique si elle est facultative.";
 
-export type CandidatJournal = CandidatLieuExterne | CandidatEvenementExterne;
+export type CandidatJournal =
+  | CandidatFoursquareExterne
+  | CandidatEvenementExterne;
 
 export interface DemandeRapprochement {
   identifiantExterne?: string;
   nom: string;
   villeDemandee: string;
   typeMetierRecherche: TypeMetierRecherche;
+  adresse?: string;
 }
 
 export type BesoinEssentielRecherche =
@@ -87,7 +93,12 @@ export interface BoiteAOutils extends BoiteAOutilsLLM {
 const EntreeLieuxSchema = z.object({
   ville: z.string().min(1),
   requete: z.string().min(1),
-  typeMetierRecherche: z.enum(['restaurant', 'activite', 'sortie']),
+  typeMetierRecherche: z.enum([
+    'restaurant',
+    'activite',
+    'sortie',
+    'hebergement',
+  ]),
   limite: z.number().int().min(1).max(8).optional(),
 });
 
@@ -115,18 +126,23 @@ const DEFINITIONS: OutilLLM[] = [
   {
     name: 'chercher_lieux',
     description:
-      "Cherche de VRAIS lieux dans une ville : bars, clubs, restaurants, cafés, activités. À utiliser avant de proposer un établissement — ne jamais citer un nom de mémoire.",
+      "Cherche de VRAIS lieux dans une ville : bars, clubs, restaurants, cafés, activités et hébergements. À utiliser avant de proposer un établissement — ne jamais citer un nom de mémoire.",
     input_schema: {
       type: 'object',
       properties: {
         ville: { type: 'string', description: 'La ville où chercher, ex. « Bordeaux »' },
         requete: {
           type: 'string',
-          description: "Ce que l'on cherche, en mots-clés courts : « bar à cocktails », « restaurant bistronomique », « escape game »",
+          description: "Ce que l'on cherche, en mots-clés courts : « bar à cocktails », « restaurant bistronomique », « escape game », « hôtel de charme »",
         },
         typeMetierRecherche: {
           type: 'string',
-          enum: ['restaurant', 'activite', 'sortie'],
+          enum: [
+            'restaurant',
+            'activite',
+            'sortie',
+            'hebergement',
+          ],
           description: 'Type métier exact qui sera produit dans le parcours',
         },
         limite: { type: 'number', description: 'Nombre de lieux souhaités (1 à 8, 4 par défaut)' },
@@ -192,10 +208,31 @@ export function creerBoiteAOutils(
   const villesAutorisees = new Set((options.villesAutorisees ?? []).map(cleNom));
 
   function cleCandidat(candidat: CandidatJournal): string {
-    return `${candidat.fournisseur}:${candidat.identifiantExterne}`;
+    return JSON.stringify([
+      candidat.fournisseur,
+      candidat.identifiantExterne,
+      candidat.typeMetierRecherche,
+      cleNom(candidat.villeDemandee),
+    ]);
   }
 
   function retenir(candidat: CandidatJournal): void {
+    if (
+      candidat.typeMetierRecherche === 'hebergement' &&
+      (!estCategorieFoursquareCompatible(
+        {
+          fsq_category_id:
+            candidat.identifiantCategorieFournisseur,
+          name: candidat.categorieFournisseur,
+        },
+        'hebergement'
+      ) ||
+        (candidat.villeConfirmee !== undefined &&
+          cleNom(candidat.villeConfirmee) !==
+            cleNom(candidat.villeDemandee)))
+    ) {
+      return;
+    }
     journal.set(cleCandidat(candidat), candidat);
   }
 
@@ -273,6 +310,7 @@ export function creerBoiteAOutils(
         identifiantExterne: lieu.identifiantExterne,
         nom: lieu.nom,
         ville: lieu.villeDemandee,
+        villeConfirmee: lieu.villeConfirmee,
         categorie: lieu.categorieFournisseur,
         typeMetierRecherche: lieu.typeMetierRecherche,
         adresse: lieu.adresse,
@@ -372,7 +410,18 @@ export function creerBoiteAOutils(
       const compatibles = [...journal.values()].filter(
         (candidat) =>
           candidat.typeMetierRecherche === demande.typeMetierRecherche &&
-          cleNom(candidat.villeDemandee) === villeDemandee
+          cleNom(candidat.villeDemandee) === villeDemandee &&
+          (candidat.typeMetierRecherche !== 'hebergement' ||
+            (estCategorieFoursquareCompatible(
+              {
+                fsq_category_id:
+                  candidat.identifiantCategorieFournisseur,
+                name: candidat.categorieFournisseur,
+              },
+              'hebergement'
+            ) &&
+              (candidat.villeConfirmee === undefined ||
+                cleNom(candidat.villeConfirmee) === villeDemandee)))
       );
 
       if (demande.identifiantExterne) {
@@ -385,7 +434,22 @@ export function creerBoiteAOutils(
       const parIdentiteMetier = compatibles.filter(
         (candidat) => cleNom(candidat.nom) === nomDemande
       );
-      return parIdentiteMetier.length === 1 ? parIdentiteMetier[0] : undefined;
+      if (parIdentiteMetier.length === 1) return parIdentiteMetier[0];
+
+      // L'adresse proposée par le modèle ne sert à départager que les hôtels
+      // de F3-B. Les règles historiques F2 restent inchangées.
+      if (demande.typeMetierRecherche !== 'hebergement') return undefined;
+      const adresseDemandee = demande.adresse
+        ? cleNom(demande.adresse)
+        : '';
+      if (!adresseDemandee) return undefined;
+      const parAdresse = parIdentiteMetier.filter(
+        (candidat) =>
+          candidat.typeMetierRecherche !== 'evenement' &&
+          candidat.adresse !== undefined &&
+          cleNom(candidat.adresse) === adresseDemandee
+      );
+      return parAdresse.length === 1 ? parAdresse[0] : undefined;
     },
 
     statutRechercheEssentielle(
