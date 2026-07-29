@@ -277,6 +277,17 @@ describe('validerParcours — cohérence structurelle', () => {
     ).toBe(false);
   });
 
+  it('conserve le type reservation produit par le pipeline sécurisé', () => {
+    expect(
+      ReservationSchema.safeParse({
+        lienExterne:
+          'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
+        fournisseur: 'Tavily',
+        typeLien: 'reservation',
+      }).success,
+    ).toBe(true);
+  });
+
   it('exige deux participants et un organisateur pour une surprise (Sam & Léa)', () => {
     const parcours = parcoursMinimal({ visibilite: 'surprise' });
     const erreurs = validerParcours(parcours);

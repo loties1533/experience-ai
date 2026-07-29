@@ -191,7 +191,8 @@ export async function rechercherWeb(
 }
 
 /**
- * Adaptateur historique conservé jusqu'à la migration de `resoudreLiensReels`.
+ * Adaptateur historique conservé pour les anciens appelants, hors génération.
+ * Le pipeline F2-B utilise directement `rechercherWeb`.
  * Il reformate le contrat structuré sans masquer une vraie recherche vide.
  */
 export async function searchWeb(

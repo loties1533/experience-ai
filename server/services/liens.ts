@@ -14,6 +14,7 @@ import {
   classifierCandidatLien,
   comparerVilleEtAdresse,
   DemandeResolutionLienInvalide,
+  estNomTropGenerique,
   estPageGenerique,
   estSourceExclue,
   cleDemandeResolutionLien,
@@ -27,6 +28,7 @@ export {
   classifierCandidatLien,
   comparerVilleEtAdresse,
   DemandeResolutionLienInvalide,
+  estNomTropGenerique,
   estPageGenerique,
   estSourceExclue,
   cleDemandeResolutionLien,
@@ -157,8 +159,9 @@ export async function resoudreLien(
 }
 
 /**
- * Compatibilité temporaire : la résolution par nom seul est désactivée jusqu'à
- * la migration structurée F2-B5.
+ * Compatibilité historique explicitement neutralisée. La génération utilise
+ * `resoudreLien` avec une identité métier structurée ; cet adaptateur ne lance
+ * aucun appel externe et ne doit jamais redevenir un repli par nom seul.
  */
 export async function resoudreLiensReels(
   noms: string[],
