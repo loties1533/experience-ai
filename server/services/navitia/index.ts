@@ -10,6 +10,14 @@ export {
   type CodeNavitia,
   type PlaceNavitia,
   type ProvenanceGareNavitia,
+  type RechercheGareNavitia,
   type StopAreaNavitia,
 } from './schema.js';
 export { candidatDepuisStopArea } from './normalisation.js';
+export {
+  evaluerResolutionGareNavitia,
+  rechercherGaresNavitia,
+  RechercheGareNavitiaInvalide,
+  type ResolutionGareNavitia,
+  type ResultatRechercheGareNavitia,
+} from './gares.js';
