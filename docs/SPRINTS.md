@@ -13,9 +13,9 @@
 |---|---|---|
 | F0 — Audit du portage | Matrice TripGenie → Experience AI | Terminé |
 | F1 — Vérité des données | Confiance, traçabilité et refus explicite | Terminé |
-| F2 — Lieux et événements | Liens fiables par ville et établissement | En cours |
-| F3 — Hébergements | Existence vérifiée et recherche Booking correcte | À faire |
-| F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | À faire |
+| F2 — Lieux et événements | Liens fiables par ville et établissement | Terminé |
+| F3 — Hébergements | Existence vérifiée et recherche Booking correcte | Terminé |
+| F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | En cours (jusqu'à F4-C2 ; C3 à venir) |
 | F5 — Génération progressive | Plan global puis lots validés | À faire |
 | F6 — Benchmark modèles | Choix mesuré du modèle de production | À faire |
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | À faire |
@@ -47,7 +47,7 @@ Rapport validé :
 - [x] Valider les scénarios F1 par la suite automatisée
 - [x] Faire accepter [ADR-0008](decisions/ADR-0008.md) dans la PR
 
-**F2 — Lieux et événements** *(en cours)*
+**F2 — Lieux et événements** *(terminé)*
 
 **F2-A — Identité, provenance et états de recherche** *(terminé)*
 
@@ -68,11 +68,13 @@ Rapport validé :
   `foursquareRechercheLieux` pour les restaurants, bars/sorties et activités
 - [x] Valider localement 361/361 tests, le typecheck et le lint
 
-**F2-B — Résolution fiable des liens** *(en cours : B1 à B4 terminés, B5 à faire)*
+**F2-B — Résolution fiable des liens** *(terminé)*
 
 > F2-B1 à F2-B3 ont été livrés par la
 > [PR #27](https://github.com/loties1533/experience-ai/pull/27). F2-B4 a été
 > livré par la [PR #28](https://github.com/loties1533/experience-ai/pull/28).
+> F2-B5 a été livré par la
+> [PR #30](https://github.com/loties1533/experience-ai/pull/30).
 
 - [x] **F2-B1** — définir `LienResolu` et la validation pure des URL
 - [x] **F2-B2** — structurer Tavily avec les états `ok`, `vide` et
@@ -81,16 +83,90 @@ Rapport validé :
   décisionnaire ni premier résultat arbitraire
 - [x] **F2-B4** — contrôler HTTPS, DNS, SSRF et redirections avec un transport
   Undici épinglé ; refuser le transfert de preuve entre domaines enregistrables
-- [ ] **F2-B5** — activer le résolveur dans la génération, définir la
-  persistance, l'OpenAPI et l'exposition client
+- [x] **F2-B5** — intégrer `resoudreLien` dans `agents/generation.ts` : le
+  pipeline sécurisé F2-B1 à B4 est désormais **branché** dans la génération
+  active. Aucune résolution depuis le seul nom : chaque demande de lien est
+  rattachée à une identité métier (Foursquare ou PredictHQ) avant recherche.
+  L'ancienne fonction `resoudreLiensReels` (résolution groupée par ville, sans
+  identité métier) reste dans le code et sa suite de tests, mais **n'est plus
+  appelée par le flux actif** — seul `resoudreLien` (singulier) l'est.
 
-> Jusqu'à F2-B5, `resoudreLiensReels` reste neutralisé : les nouveaux liens
-> sécurisés ne sont pas encore intégrés aux parcours. F2 reste **En cours**.
+F2 est donc **terminé** : identité et provenance (F2-A) puis résolution
+sécurisée et intégrée des liens (F2-B1 à B5).
 
 > **Note historique.** Les revues R6 ci-dessous expliquent pourquoi le système
 > avait été conçu pour « sortir un parcours dans tous les cas ». Elles restent
 > conservées comme historique, mais cette stratégie est désormais remplacée
 > par F1.
+
+**F3 — Hébergements** *(terminé)*
+
+> Livré par les PR
+> [#31](https://github.com/loties1533/experience-ai/pull/31) (F3-B),
+> [#32](https://github.com/loties1533/experience-ai/pull/32) (F3-C1),
+> [#33](https://github.com/loties1533/experience-ai/pull/33) (F3-C2) et
+> [#34](https://github.com/loties1533/experience-ai/pull/34) (F3-D).
+
+- [x] **F3-B** — identité hôtelière Foursquare (catégorie Lodging `19009`) :
+  un nom d'hôtel généré par le LLM n'est pas une identité — l'hébergement
+  nommé provient d'un fournisseur réel ou reste générique ; une ville ou une
+  catégorie contradictoire élimine le candidat
+- [x] **F3-C1** — contrat de séjour et d'occupation hôtelière
+  (`OccupationHebergement` déclarée ou à confirmer) ; l'occupation de l'hôtel
+  est un contrat **distinct** de l'occupation transport, jamais copiée de
+  l'un à l'autre
+- [x] **F3-C2** — lien de recherche Booking (`LienRechercheHebergement`,
+  type `recherche`) construit depuis l'hôtel, la ville, les dates et
+  l'occupation validés ; ce lien ne prouve **ni prix ni disponibilité**,
+  Booking reste responsable de ses propres résultats
+- [x] **F3-D** — verrouillage des modifications hôtelières : la route de
+  modification utilise un contrat client strict et discriminé, qui empêche
+  un appelant de forger directement une confiance, une provenance, une
+  identité Foursquare ou un lien Booking
+
+**F4 — Vols et transports** *(en cours)*
+
+**F4-A — Audit transport** — couvert par l'audit F0
+([PR #22](https://github.com/loties1533/experience-ai/pull/22)), sans
+livrable séparé. La matrice de `docs/audits/tripgenie-vers-experience-ai.md`
+couvrait déjà la recherche de vols et la logique IATA de TripGenie ; F4-A ne
+correspond à aucune branche ni PR dédiée.
+
+> F4-B1 à F4-C2 ont été livrés par les PR
+> [#35](https://github.com/loties1533/experience-ai/pull/35) (F4-B1),
+> [#36](https://github.com/loties1533/experience-ai/pull/36) (F4-B2),
+> [#37](https://github.com/loties1533/experience-ai/pull/37) (F4-C1) et
+> [#38](https://github.com/loties1533/experience-ai/pull/38) (F4-C2).
+
+- [x] **F4-B1** — contrats de domaine transport purs (`domaine/transport/`) :
+  modes, lieux demandés/confirmés, occupation, dates civiles, tronçons,
+  segments, candidats, preuves, provenance — sans fournisseur ni intégration
+- [x] **F4-B2** — brief et génération transport **fail-closed**, branchés
+  dans `agents/brief.ts`, `intake.ts` et `generation.ts` : sans source
+  externe, aucun détail de trajet ressemblant à une observation réelle n'est
+  conservé (aucun opérateur, horaire, numéro ou lien inventé)
+- [x] **F4-C1** — résolution des lieux aériens via Amadeus Airport & City
+  Search (`services/amadeus/`) : une ville n'est jamais automatiquement un
+  aéroport, un candidat fournisseur n'est jamais automatiquement un lieu
+  confirmé ; résolution unique, ambiguë, vide ou indisponible
+- [x] **F4-C2** — candidats de vols structurés via Amadeus Flight Offers
+  Search (`services/amadeus/vols.ts`) : une réponse fournisseur est une
+  observation, jamais une réservation, un billet ou une disponibilité
+  garantie ; aucun prix, aucun lien, aucune sélection automatique
+- [ ] **F4-C3** — trains et transports locaux structurés : **non commencé**
+- [ ] **F4-D1** — liens de recherche transport : à faire
+- [ ] **F4-D2** — intégration des candidats transport dans la génération
+  active : à faire
+- [ ] **F4-E** — modifications, API et front pour le transport : à faire
+
+> **F4-C1 et F4-C2 sont implémentés, testés et internes.** Ils ne sont
+> appelés ni par la génération active, ni par les routes publiques, ni par
+> l'OpenAPI, ni par le front, ni par la persistance — vérifié : aucun fichier
+> hors `server/services/amadeus/` n'importe ce module. Leur intégration
+> réelle dans un parcours est le périmètre de F4-D2, qui dépend de F4-C3.
+
+F4 reste donc **en cours** : B1, B2, C1 et C2 sont terminés ; C3, D1, D2 et E
+restent à faire avant de considérer F4 terminé.
 
 ## Refonte Experience AI — plan de build
 
