@@ -156,7 +156,9 @@ correspond à aucune branche ni PR dédiée.
 - [ ] **F4-C3** — trains et transports locaux structurés : **en cours**
   - [x] **F4-C3a** — contrat intermédiaire de gare Navitia et normalisation
     pure (`services/navitia/`), sans réseau
-  - [ ] **F4-C3b** — client Navitia et résolution interne des gares : à faire
+  - [x] **F4-C3b** — client interne Navitia et résolution des gares
+    (`unique`, `ambigu`, `vide`, `indisponible`), sans branchement actif
+  - [ ] **F4-C3c** — trajets ferroviaires via `/journeys` : à faire
 - [ ] **F4-D1** — liens de recherche transport : à faire
 - [ ] **F4-D2** — intégration des candidats transport dans la génération
   active : à faire
@@ -169,7 +171,8 @@ correspond à aucune branche ni PR dédiée.
 > réelle dans un parcours est le périmètre de F4-D2, qui dépend de F4-C3.
 
 F4 reste donc **en cours** : B1, B2, C1 et C2 sont terminés, C3 est commencé
-(C3a livré) ; C3b, D1, D2 et E restent à faire avant de considérer F4 terminé.
+(C3a et C3b livrés) ; C3c, D1, D2 et E restent à faire avant de considérer F4
+terminé.
 
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
@@ -211,6 +214,45 @@ F4 reste donc **en cours** : B1, B2, C1 et C2 sont terminés, C3 est commencé
   ni génération. Prochain sous-lot : **F4-C3b** — configuration, client HTTP,
   authentification et résolution interne des gares (`unique`, `ambigu`, `vide`,
   `indisponible`) avec cache.
+
+### Revue F4-C3b — résoudre une gare sans jamais la choisir (30/07)
+
+- **Un connecteur interne, pas une intégration.** `services/navitia/` gagne sa
+  configuration, son authentification, son client HTTP et sa recherche de gares
+  via `/places`. Rien n'est branché : ni génération, ni route, ni OpenAPI, ni
+  front, ni persistance.
+- **Quatre issues explicites, jamais confondues** : `unique`, `ambigu`, `vide`,
+  `indisponible`. `unique` signifie seulement que Navitia a rendu une seule gare
+  compatible — **pas** que c'est la gare voulue par l'utilisateur, et rien n'est
+  confirmé ni persisté. En cas d'ambiguïté, **aucun premier candidat n'est
+  choisi** : les deux gares remontent telles quelles.
+- **Une panne ne devient jamais un résultat vide.** Configuration absente,
+  401/403, 429, 404, 5xx, timeout, réseau, contenu non JSON et enveloppe
+  invalide produisent tous une indisponibilité qualifiée, distincte d'une
+  recherche réellement sans résultat.
+- **Un `stop_area` inconvertible refuse toute la réponse**, tandis qu'un objet
+  d'un autre `embedded_type` (adresse, POI, région) est simplement ignoré comme
+  hors cible. Le silence serait ici le vrai danger : écarter une gare illisible
+  pourrait transformer une ambiguïté en faux résultat unique, et donc désigner
+  une gare que personne n'a demandée.
+- **La déduplication ne se fait que par identité fournisseur**
+  (`identifiantExterne`). Ni le nom, ni des coordonnées proches, ni un code
+  supposé ne fusionnent deux gares : deux identifiants distincts restent deux
+  candidats, donc une ambiguïté honnête.
+- **Le jeton ne fuit nulle part.** Authentification HTTP Basic (jeton en
+  identifiant, mot de passe vide), en-tête construit à un seul endroit ; le
+  jeton n'apparaît ni dans l'URL, ni dans la provenance enregistrée, ni dans une
+  raison d'indisponibilité. La lecture d'environnement est centralisée dans
+  `config.ts`.
+- **Cache différencié** : 24 h pour une résolution positive (un référentiel de
+  gares bouge peu), 10 minutes pour un résultat vide (une faute de frappe
+  corrigée doit pouvoir retrouver la gare), et **jamais** pour une
+  indisponibilité. La clé normalise casse et espaces, sépare les couvertures, et
+  la requête envoyée à Navitia reste celle saisie.
+- 70 tests ajoutés (`navitiaAuth`, `navitiaGares`), 1358 verts sur toute la
+  suite, typecheck OK, lint sans erreur. Tout le HTTP est simulé : aucun appel
+  réseau réel, aucun jeton réel.
+- Prochain sous-lot : **F4-C3c** — trajets ferroviaires via `/journeys`.
 
 ## Refonte Experience AI — plan de build
 

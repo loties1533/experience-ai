@@ -111,6 +111,55 @@ export const PlaceNavitiaSchema = z.object({
 });
 
 /**
+ * Enveloppe rendue par `/places`. L'API ne pagine pas cette ressource : la
+ * liste reçue est la liste complète.
+ */
+export const ReponseLieuxNavitiaSchema = z.object({
+  places: z.array(PlaceNavitiaSchema).max(200),
+});
+
+const LONGUEUR_MIN_RECHERCHE_GARE = 2;
+const LONGUEUR_MAX_RECHERCHE_GARE = 80;
+
+function contientCaractereControle(texte: string): boolean {
+  return [...texte].some((caractere) => {
+    const code = caractere.codePointAt(0);
+    return code !== undefined && (code <= 31 || code === 127);
+  });
+}
+
+const MotCleGareNavitiaSchema = z
+  .string()
+  .trim()
+  .min(LONGUEUR_MIN_RECHERCHE_GARE)
+  .max(LONGUEUR_MAX_RECHERCHE_GARE)
+  .refine(
+    (requete) => !contientCaractereControle(requete),
+    'la recherche contient un caractère de contrôle'
+  );
+
+/**
+ * Identifiant de couverture Navitia (par exemple `fr-idf`). Il est repris dans
+ * le chemin appelé : son format est donc volontairement fermé, aucune valeur
+ * ne peut s'échapper du chemin ni changer l'origine interrogée.
+ */
+const CouvertureNavitiaSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+    'la couverture doit être un identifiant Navitia simple'
+  )
+  .max(40);
+
+export const RechercheGareNavitiaSchema = z
+  .object({
+    requete: MotCleGareNavitiaSchema,
+    couverture: CouvertureNavitiaSchema.optional(),
+  })
+  .strict();
+
+/**
  * Identité intermédiaire observée chez Navitia.
  *
  * Elle ne constitue pas un `LieuTransportConfirme` : ni ville, ni code pays, ni
@@ -153,6 +202,7 @@ export const ProvenanceGareNavitiaSchema = z
 export type CodeNavitia = z.infer<typeof CodeNavitiaSchema>;
 export type StopAreaNavitia = z.infer<typeof StopAreaNavitiaSchema>;
 export type PlaceNavitia = z.infer<typeof PlaceNavitiaSchema>;
+export type RechercheGareNavitia = z.infer<typeof RechercheGareNavitiaSchema>;
 export type CandidatGareNavitia = z.infer<typeof CandidatGareNavitiaSchema>;
 export type ProvenanceGareNavitia = z.infer<
   typeof ProvenanceGareNavitiaSchema
