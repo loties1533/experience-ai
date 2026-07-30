@@ -23,3 +23,8 @@ export function lireConfigurationNavitia(): ConfigurationNavitia | null {
 export function cheminLieuxNavitia(couverture?: string): string {
   return couverture ? `/v1/coverage/${couverture}/places` : '/v1/places';
 }
+
+/** Même règle que pour les lieux : la couverture est déjà validée en amont. */
+export function cheminTrajetsNavitia(couverture?: string): string {
+  return couverture ? `/v1/coverage/${couverture}/journeys` : '/v1/journeys';
+}
