@@ -75,10 +75,11 @@ server/
 │   │   ├── schema.ts           ← le modèle (Zod) : Parcours, Moment, Élément, Alternative…
 │   │   ├── invariants.ts       ← dépendants, conflits d'horaires, responsabilités des rôles
 │   │   └── modifications.ts    ← modification ciblée, pure et immuable
+│   ├── transport/               ← contrats transport purs (F4-B1) : modes, tronçons, occupation
 │   └── preferences.ts
 ├── agents/                     ← les usages du LLM, un rôle par fichier
 │   ├── intake.ts               ← dialogue : n'extrait/ne pose que ce qui manque
-│   ├── brief.ts                ← reformulation + normalisation (dates, etc.)
+│   ├── brief.ts                ← reformulation + normalisation (dates, transport, etc.)
 │   ├── generation.ts           ← brief → parcours complet, outillé (recherche de vrais lieux)
 │   └── modification.ts         ← langage naturel → demande structurée
 ├── services/
@@ -86,9 +87,10 @@ server/
 │   │   ├── core.ts             ← cascade de fournisseurs LLM + boucle d'outils
 │   │   └── outils.ts           ← chercher_lieux · chercher_evenements · consulter_meteo
 │   ├── tools/webSearch.ts       ← candidats Web structurés fournis par Tavily
-│   ├── liens.ts                 ← sélection métier puis contrôle réseau
+│   ├── liens.ts                 ← sélection métier puis contrôle réseau (branché en génération)
 │   ├── liens/                   ← contrat, validation URL, sélection, DNS et redirections
-│   └── foursquare.ts · predictHQ.ts · weather.ts · smartSearch.ts
+│   ├── amadeus/                  ← aéroports (F4-C1) et vols (F4-C2) — **interne, non branché**
+│   └── foursquare.ts · predictHQ.ts · weather.ts · modificationHotel.ts
 ├── depots/                     ← la seule frontière avec PostgreSQL
 │   ├── depotParcours.ts        ← valide à chaque lecture, projette à chaque écriture
 │   ├── depotPartage.ts         ← un jeton de partage par participant
@@ -142,12 +144,33 @@ ne produit aucun lien, et une redirection vers un autre domaine enregistrable
 invalide les preuves de réservation ou de billetterie. Faute de preuve externe
 forte, F2-B ne produit actuellement aucun lien qualifié d'officiel.
 
-La résolution sécurisée des liens est implémentée jusqu'à **F2-B4**. Son
-intégration dans la génération des parcours reste prévue dans **F2-B5** :
-`resoudreLiensReels` demeure volontairement neutralisé et aucun lien nouveau
-n'est encore exposé au client. Le
+La résolution sécurisée des liens est **intégrée dans la génération active**
+(F2-B1 à F2-B5) : `resoudreLien` est appelé depuis `agents/generation.ts` pour
+chaque demande de lien rattachée à une identité métier. L'ancienne fonction
+`resoudreLiensReels` (résolution groupée par ville, antérieure à F2-B) reste
+dans le code et sa suite de tests, mais n'est plus appelée par le flux actif.
+Le
 [pipeline détaillé](docs/architecture/README.md#pipeline-de-résolution-des-liens)
 est documenté avec ses limites actuelles.
+
+### Hébergements et transport (F3, F4)
+
+**Hébergements (terminé) :** un nom d'hôtel proposé par le LLM n'est jamais
+une identité — il est confronté à Foursquare (catégorie Lodging), rattaché à
+un séjour et une occupation déclarés, puis accompagné d'un lien de
+**recherche** Booking qui ne prouve ni prix ni disponibilité. Les
+modifications hôtelières sont verrouillées contre toute donnée forgée.
+
+**Transport (en cours) :** le brief transport est validé en fail-closed (une
+donnée essentielle manquante refuse ou dégrade en suggestion générique,
+jamais un trajet inventé). Un connecteur Amadeus interne sait résoudre des
+aéroports réels (F4-C1) et rechercher des candidats de vols structurés
+(F4-C2) — **mais ces deux capacités sont internes et non branchées** : aucun
+appel depuis la génération active, les routes publiques, l'OpenAPI, le front
+ou la persistance. Aucun vol n'est donc encore présenté à un utilisateur.
+Prochain sous-lot : F4-C3 (trains et transports locaux). Détail complet dans
+[le plan de fiabilité](docs/14-fiabilite-parcours.md) et
+[l'architecture](docs/architecture/README.md).
 
 ### Modification ciblée : le cœur du produit
 
@@ -271,16 +294,27 @@ Deux règles de gouvernance :
 
 Le modèle de domaine est **stable pour le MVP** : validé par crash-test contre six parcours très différents (passionné solo, couple avec surprise, soirée improvisée, famille, EVG, festival), puis par une recette manuelle de bout en bout qui a corrigé deux défauts réels (le brief qui perdait des informations, la génération qui échouait sur des dates de fin légitimes).
 
-F0 et **F1 — vérité des données** sont validés : provenance persistée, niveaux
-de confiance visibles, suggestions génériques, refus métier et panne technique
-sont séparés. **F2 — lieux et événements** reste en cours : F2-A est terminé,
-ainsi que F2-B1 à F2-B4 pour la résolution sécurisée des liens. **F2-B5 reste à
-faire** pour activer ces liens dans la génération et définir leur exposition
-finale. Voir le
-[plan détaillé](docs/14-fiabilite-parcours.md) et les
-[futurs sprints](docs/SPRINTS.md).
+Le backend de fiabilité est **avancé** : F0, F1, **F2 — lieux et événements**
+et **F3 — hébergements** sont terminés. Provenance persistée, niveaux de
+confiance visibles, suggestions génériques, refus métier et panne technique
+séparés (ADR-0008) ; liens réels intégrés à la génération (F2-B5) ; identité
+hôtelière Foursquare, séjour, occupation, lien de recherche Booking et
+verrouillage des modifications (F3-B à F3-D).
 
-**Aucun vertical n'est retenu comme périmètre de validation.** Le scénario NBA
-servira d'abord de test de robustesse et l'EVG de test de valeur, après la
-fiabilisation. Le choix du premier marché reste une
+**F4 — vols et transports** est **en cours**, jusqu'à F4-C2 : contrats de
+domaine, génération fail-closed et connecteur Amadeus (aéroports, candidats de
+vols) sont livrés, mais Amadeus reste **interne** — non appelé par la
+génération active, les routes, l'OpenAPI, le front ou la persistance. **Aucun
+vol n'est donc encore actif dans un parcours utilisateur.** Prochaine étape :
+F4-C3 (trains et transports locaux structurés), puis l'intégration active.
+Voir le
+[plan détaillé](docs/14-fiabilite-parcours.md) et
+[l'avancement par sprint](docs/SPRINTS.md).
+
+**Ce projet n'est pas prêt pour un lancement public ou un démarchage
+sérieux** : la règle du chantier reste « aucun faux parcours présenté comme
+réel », et la recette de sortie (F9) n'est ouverte qu'une fois F4 à F8
+terminés. **Aucun vertical n'est retenu comme périmètre de validation.** Le
+scénario NBA servira d'abord de test de robustesse et l'EVG de test de
+valeur, après la fiabilisation. Le choix du premier marché reste une
 [question ouverte](docs/questions-ouvertes.md).
