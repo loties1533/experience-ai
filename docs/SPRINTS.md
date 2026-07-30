@@ -153,7 +153,10 @@ correspond à aucune branche ni PR dédiée.
   Search (`services/amadeus/vols.ts`) : une réponse fournisseur est une
   observation, jamais une réservation, un billet ou une disponibilité
   garantie ; aucun prix, aucun lien, aucune sélection automatique
-- [ ] **F4-C3** — trains et transports locaux structurés : **non commencé**
+- [ ] **F4-C3** — trains et transports locaux structurés : **en cours**
+  - [x] **F4-C3a** — contrat intermédiaire de gare Navitia et normalisation
+    pure (`services/navitia/`), sans réseau
+  - [ ] **F4-C3b** — client Navitia et résolution interne des gares : à faire
 - [ ] **F4-D1** — liens de recherche transport : à faire
 - [ ] **F4-D2** — intégration des candidats transport dans la génération
   active : à faire
@@ -165,8 +168,49 @@ correspond à aucune branche ni PR dédiée.
 > hors `server/services/amadeus/` n'importe ce module. Leur intégration
 > réelle dans un parcours est le périmètre de F4-D2, qui dépend de F4-C3.
 
-F4 reste donc **en cours** : B1, B2, C1 et C2 sont terminés ; C3, D1, D2 et E
-restent à faire avant de considérer F4 terminé.
+F4 reste donc **en cours** : B1, B2, C1 et C2 sont terminés, C3 est commencé
+(C3a livré) ; C3b, D1, D2 et E restent à faire avant de considérer F4 terminé.
+
+### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
+
+- **Un contrat intermédiaire, pas un lieu confirmé.** `CandidatGareNavitia`
+  (`services/navitia/schema.ts`) porte seulement des faits observés :
+  identifiant Navitia, nom, coordonnées, fuseau IANA, code métier, source et
+  date de récupération. Il ne porte **ni ville, ni code pays, ni niveau de
+  confiance** : Navitia ne les garantit pas depuis ses régions administratives,
+  et les inventer serait exactement le faux parcours qu'ADR-0008 interdit. Le
+  contrat est `.strict()` — horaire, opérateur, prix, disponibilité ou
+  réservation y sont refusés par construction.
+- **Le domaine générique n'a pas bougé.** `CodeLieuTransportSchema` est réutilisé
+  tel quel : ses systèmes `UIC` et `NAVITIA` étaient déjà prévus depuis F4-B1.
+  Le candidat vit dans `services/navitia/` parce qu'il est indissociable du
+  format Navitia — un billettiste ferroviaire n'exposerait pas la même identité.
+- **L'UIC est facultatif, l'identité Navitia ne l'est pas.** Un code UIC
+  illisible est ignoré — jamais reformaté ni renuméroté — au profit d'un UIC
+  valide déclaré à côté de lui, ou du repli sur l'identifiant Navitia réel. En
+  revanche, **deux codes UIC valides et contradictoires refusent la gare** :
+  c'est une ambiguïté d'identité, et aucun des deux n'est choisi arbitrairement.
+- **La provenance est fournie, jamais devinée.** `candidatDepuisStopArea` reçoit
+  la source exacte et la date de récupération ; aucune valeur par défaut, aucune
+  configuration, aucun `process.env`, aucune horloge implicite. F4-C3b pourra
+  donc enregistrer l'URL de couverture réellement interrogée.
+- **Un décalage ne devient jamais un fuseau.** Le fuseau est validé puis
+  canonisé par le runtime (`europe/paris` → `Europe/Paris`). `Intl` acceptant
+  `+02:00` comme zone sur les runtimes récents, un décalage seul est écarté
+  avant cette lecture — la règle F4-C1 tient.
+- **Les coordonnées textuelles de Navitia ne deviennent jamais zéro.** Une
+  chaîne vide ou non numérique refuse la gare ; les bornes latitude/longitude
+  sont contrôlées une seule fois, par le contrat du candidat.
+- 92 tests (`tests/unit/navitiaNormalisation.test.ts`), 1288 verts sur toute la
+  suite, typecheck OK, lint sans erreur. Deux garde-fous : aucun appel à `fetch`
+  pendant la normalisation, et **aucune référence directe au module Navitia dans
+  les couches actives contrôlées** (`server/agents`, `server/routes`,
+  `server/docs`, `server/depots`, `client-react/src`, `prisma`) — une recherche
+  textuelle sur ces couches, pas une preuve du graphe d'imports transitifs.
+- **Aucun branchement actif.** Ni route, ni OpenAPI, ni front, ni persistance,
+  ni génération. Prochain sous-lot : **F4-C3b** — configuration, client HTTP,
+  authentification et résolution interne des gares (`unique`, `ambigu`, `vide`,
+  `indisponible`) avec cache.
 
 ## Refonte Experience AI — plan de build
 
