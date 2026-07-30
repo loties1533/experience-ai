@@ -158,7 +158,8 @@ correspond à aucune branche ni PR dédiée.
     pure (`services/navitia/`), sans réseau
   - [x] **F4-C3b** — client interne Navitia et résolution des gares
     (`unique`, `ambigu`, `vide`, `indisponible`), sans branchement actif
-  - [ ] **F4-C3c** — trajets ferroviaires via `/journeys` : à faire
+  - [x] **F4-C3c** — trajets ferroviaires internes via `/journeys`, à heures
+    locales, sans branchement actif
 - [ ] **F4-D1** — liens de recherche transport : à faire
 - [ ] **F4-D2** — intégration des candidats transport dans la génération
   active : à faire
@@ -170,9 +171,8 @@ correspond à aucune branche ni PR dédiée.
 > hors `server/services/amadeus/` n'importe ce module. Leur intégration
 > réelle dans un parcours est le périmètre de F4-D2, qui dépend de F4-C3.
 
-F4 reste donc **en cours** : B1, B2, C1 et C2 sont terminés, C3 est commencé
-(C3a et C3b livrés) ; C3c, D1, D2 et E restent à faire avant de considérer F4
-terminé.
+F4 reste donc **en cours** : B1, B2, C1, C2 et C3 (a, b, c) sont terminés
+**en interne** ; D1, D2 et E restent à faire avant de considérer F4 terminé.
 
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
@@ -253,6 +253,54 @@ terminé.
   suite, typecheck OK, lint sans erreur. Tout le HTTP est simulé : aucun appel
   réseau réel, aucun jeton réel.
 - Prochain sous-lot : **F4-C3c** — trajets ferroviaires via `/journeys`.
+
+### Revue F4-C3c — des trajets observés, jamais des billets (30/07)
+
+- **`/journeys` interne, entre deux gares déjà résolues.** La recherche exige
+  des `CandidatGareNavitia` — pas de simples chaînes : une ville ou un nom saisi
+  ne peut donc pas devenir une gare au passage.
+- **Les heures restent locales.** Navitia rend `AAAAMMJJTHHMMSS` sans décalage :
+  la valeur est seulement reponctuée en `AAAA-MM-JJTHH:mm:ss`, jamais promue en
+  instant absolu. Aucun `Date.parse` sur une heure locale, aucun fuseau système
+  appliqué, aucun offset déduit. Le fuseau IANA de chaque extrémité est conservé
+  **séparément**, lu uniquement là où Navitia le publie (sur un `stop_area`) —
+  sans fuseau fiable, le trajet est refusé plutôt qu'inventé. Un trajet qui
+  passe minuit garde ses dates locales complètes.
+- **Un train reste un train.** Le mode vient du `physical_mode` exact publié par
+  Navitia, par correspondance stricte — jamais par sous-chaîne ni depuis le nom
+  commercial d'une ligne. Un mode inconnu devient `autre`, et un itinéraire sans
+  aucune section ferroviaire est ignoré : bus, métro ou tram seuls ne
+  deviennent jamais un trajet en train. Marche, correspondance et attente sont
+  conservées pour ne pas faire passer un trajet mixte pour un train de bout en
+  bout.
+- **Réseau n'est pas vendeur, code de ligne n'est pas billet.** Seuls les champs
+  réellement publiés sont conservés (réseau, mode commercial, mode physique,
+  code de ligne, direction), sous des noms qui ne promettent rien de commercial.
+  Le nombre de correspondances est celui du fournisseur, pas un calcul maison.
+- **Théorique et temps réel ne se confondent pas.** `base_schedule` par défaut,
+  `realtime` seulement si demandé ; la fraîcheur est conservée sur chaque
+  candidat et entre dans la clé de cache. Ni l'un ni l'autre n'est présenté
+  comme une disponibilité ou une garantie de circulation.
+- **Un itinéraire inconvertible refuse toute la réponse**, tandis qu'un
+  itinéraire valide mais sans train est simplement ignoré. Écarter en silence un
+  trajet illisible retirerait un choix de la liste et ferait passer les trajets
+  restants pour l'offre complète. Une absence de solution déclarée par Navitia
+  (`no_solution`) est un résultat **vide** ; toute autre erreur reste une
+  indisponibilité — aucune panne ne devient un résultat vide.
+- **Aucune élection de « meilleur » trajet** : l'ordre du fournisseur est
+  conservé, sans tri, sans score, sans prix, sans lien, sans réservation. La
+  déduplication n'utilise qu'une signature de faits fournisseur.
+- **Cache différencié** : 30 min pour un horaire théorique, 2 min pour du temps
+  réel, 5 min pour un résultat vide, jamais pour une indisponibilité. La clé
+  sépare origine, destination, date, sens, fraîcheur, couverture et nombre
+  demandé — un aller et son retour ne se mélangent pas.
+- 127 tests ajoutés (`navitiaNormalisationTrajets`, `navitiaJourneys`), 1485
+  verts sur toute la suite, typecheck OK, lint sans erreur. Tout le HTTP est
+  simulé.
+- **F4-C3 est terminé comme chantier interne** (a, b, c) : toujours aucun
+  branchement dans la génération, les routes, l'OpenAPI, le front ou la
+  persistance. Prochaine étape : **F4-D1** (liens de recherche transport) puis
+  **F4-D2** (intégration des candidats dans la génération active).
 
 ## Refonte Experience AI — plan de build
 
