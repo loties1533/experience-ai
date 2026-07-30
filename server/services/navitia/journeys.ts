@@ -75,7 +75,10 @@ function dureeCachePourResultat(
  */
 function candidatsDepuisJourneys(
   journeys: readonly JourneyNavitia[],
-  contexte: ProvenanceGareNavitia & { fraicheur: FraicheurNavitia }
+  contexte: ProvenanceGareNavitia & {
+    fraicheur: FraicheurNavitia;
+    fuseauIana: string;
+  }
 ): CandidatTrajetFerroviaireNavitia[] | null {
   const candidats: CandidatTrajetFerroviaireNavitia[] = [];
   for (const journey of journeys) {
@@ -133,7 +136,7 @@ async function effectuerRecherche(
   }
 
   const recupereLe = new Date().toISOString();
-  const { error: erreur, journeys } = validation.data;
+  const { error: erreur, journeys, context } = validation.data;
   // Une absence de solution est une réponse fournisseur valide ; toute autre
   // erreur reste une indisponibilité et ne devient jamais un résultat vide.
   if (erreur) {
@@ -144,11 +147,17 @@ async function effectuerRecherche(
   if (!journeys) {
     return rechercheIndisponible(FOURNISSEUR_NAVITIA, 'reponse_invalide');
   }
+  // Le fuseau de toutes les dates est celui du contexte racine : sans lui,
+  // aucun horaire n'a de fuseau fiable et la réponse est refusée.
+  if (!context) {
+    return rechercheIndisponible(FOURNISSEUR_NAVITIA, 'reponse_invalide');
+  }
 
   const candidats = candidatsDepuisJourneys(journeys, {
     source: reponse.url,
     recupereLe,
     fraicheur: recherche.fraicheur,
+    fuseauIana: context.timezone,
   });
   if (!candidats) {
     return rechercheIndisponible(FOURNISSEUR_NAVITIA, 'reponse_invalide');

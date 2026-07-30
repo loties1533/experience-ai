@@ -266,14 +266,13 @@ const NOMBRE_MAX_JOURNEYS_BRUTS = 50;
 const DUREE_MAX_TRAJET_SECONDES = 2_592_000;
 
 /**
- * Extrémité d'une section. Le fuseau n'existe que sur un `stop_area` : il est
- * lu là où Navitia le publie réellement, jamais déduit d'une coordonnée ni
- * d'un nom de gare.
+ * Extrémité d'une section : seule l'identité fournisseur est consommée. Le
+ * fuseau des horaires vient de `context.timezone` (racine de la réponse), qui
+ * s'applique à toutes les dates ; un éventuel `timezone` imbriqué reste ignoré.
  */
 const StopAreaSectionNavitiaSchema = z.object({
   id: IdentifiantExterneSchema,
   name: TexteCourtSchema,
-  timezone: FuseauIanaNavitiaSchema,
 });
 
 const PointSectionNavitiaSchema = z.object({
@@ -317,9 +316,17 @@ export const JourneyNavitiaSchema = z.object({
  * Enveloppe `/journeys`. Navitia peut rendre une erreur métier explicite
  * (`no_solution`) au lieu d'une liste vide : les deux sont des réponses
  * techniquement valides, jamais des pannes.
+ *
+ * `context.timezone` porte le fuseau IANA de toutes les dates de la réponse.
+ * Il est optionnel ici pour ne pas transformer une erreur `no_solution` (sans
+ * contexte) en réponse invalide ; sa présence redevient obligatoire dès qu'il
+ * faut normaliser des itinéraires (imposée alors par le connecteur).
  */
 export const ReponseJourneysNavitiaSchema = z.object({
   journeys: z.array(JourneyNavitiaSchema).max(NOMBRE_MAX_JOURNEYS_BRUTS).optional(),
+  context: z
+    .object({ timezone: FuseauIanaNavitiaSchema })
+    .optional(),
   error: z
     .object({
       id: z.string().trim().min(1),

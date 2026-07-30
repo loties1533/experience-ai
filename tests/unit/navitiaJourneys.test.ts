@@ -88,8 +88,13 @@ function journey(
   };
 }
 
-function reponseJourneys(journeys: unknown[]): Response {
-  return reponseJson({ journeys });
+const FUSEAU_CONTEXTE = 'Europe/Paris';
+
+function reponseJourneys(
+  journeys: unknown[],
+  context: unknown = { timezone: FUSEAU_CONTEXTE }
+): Response {
+  return reponseJson({ journeys, context });
 }
 
 async function rechercher(
@@ -269,6 +274,22 @@ describe('rechercherTrajetsFerroviairesNavitia — indisponibilités', () => {
       'une date de départ illisible',
       { journeys: [{ ...journey(), departure_date_time: '2026-08-01' }] },
     ],
+    [
+      'des trajets sans contexte de fuseau',
+      { journeys: [journey()] },
+    ],
+    [
+      'un contexte sans fuseau',
+      { journeys: [journey()], context: {} },
+    ],
+    [
+      'un contexte au fuseau invalide',
+      { journeys: [journey()], context: { timezone: '+02:00' } },
+    ],
+    [
+      'un contexte au fuseau inconnu',
+      { journeys: [journey()], context: { timezone: 'Zone/Inconnue' } },
+    ],
   ])('refuse %s', async (_libelle, contenu) => {
     requeteFetch.mockResolvedValue(reponseJson(contenu));
 
@@ -358,6 +379,63 @@ describe('rechercherTrajetsFerroviairesNavitia — candidats rendus', () => {
     expect(candidat.recupereLe).toBe(DATE_CONTROLE);
     expect(candidat.fraicheur).toBe('base_schedule');
     expect(candidat.departLocal).toBe('2026-08-01T08:00:00');
+  });
+
+  it('accepte un trajet grâce au fuseau de contexte, même sans fuseau imbriqué', async () => {
+    requeteFetch.mockResolvedValue(
+      reponseJourneys(
+        [
+          journey([
+            sectionTrain({
+              from: {
+                embedded_type: 'stop_point',
+                stop_point: {
+                  stop_area: {
+                    id: 'stop_area:SNCF:87581009',
+                    name: 'Bordeaux Saint-Jean',
+                  },
+                },
+              },
+            }),
+          ]),
+        ],
+        { timezone: 'UTC' }
+      )
+    );
+
+    const resultat = await rechercher();
+
+    expect(resultat.statut).toBe('ok');
+    if (resultat.statut !== 'ok') return;
+    expect(resultat.resultats[0].origine.fuseauIana).toBe('UTC');
+  });
+
+  it('conserve un passage de minuit en heures locales', async () => {
+    requeteFetch.mockResolvedValue(
+      reponseJourneys([
+        journey(
+          [
+            sectionTrain({
+              departure_date_time: '20260801T233000',
+              arrival_date_time: '20260802T011500',
+            }),
+          ],
+          {
+            departure_date_time: '20260801T233000',
+            arrival_date_time: '20260802T011500',
+          }
+        ),
+      ])
+    );
+
+    const resultat = await rechercher();
+
+    expect(resultat.statut === 'ok' && resultat.resultats[0].departLocal).toBe(
+      '2026-08-01T23:30:00'
+    );
+    expect(resultat.statut === 'ok' && resultat.resultats[0].arriveeLocale).toBe(
+      '2026-08-02T01:15:00'
+    );
   });
 
   it('conserve l’ordre du fournisseur sans élire de meilleur trajet', async () => {

@@ -15,6 +15,7 @@ const CONTEXTE = {
   source: SOURCE,
   recupereLe: RECUPERE_LE,
   fraicheur: 'base_schedule' as const,
+  fuseauIana: 'Europe/Paris',
 };
 
 function extremite(
@@ -290,20 +291,31 @@ describe('candidatDepuisJourney — itinéraires ferroviaires', () => {
     expect(candidat?.arriveeLocale).toBe('2026-08-02T01:15:00');
   });
 
-  it('conserve deux fuseaux distincts sans en déduire un instant', () => {
+  it('applique le fuseau de contexte aux deux extrémités sans en déduire un instant', () => {
     const candidat = candidatDepuisJourney(
       journey([
         sectionTrain({
           to: extremite('stop_area:SNCF:8727100', 'Londres', 'Europe/London'),
         }),
       ]),
-      CONTEXTE
+      { ...CONTEXTE, fuseauIana: 'Europe/Paris' }
     );
 
+    // Le fuseau imbriqué (Europe/London) est ignoré : seul context.timezone fait foi.
     expect(candidat?.origine.fuseauIana).toBe('Europe/Paris');
-    expect(candidat?.destination.fuseauIana).toBe('Europe/London');
+    expect(candidat?.destination.fuseauIana).toBe('Europe/Paris');
     expect(candidat?.departLocal).not.toMatch(/Z|[+-]\d{2}:\d{2}$/u);
     expect(candidat?.arriveeLocale).not.toMatch(/Z|[+-]\d{2}:\d{2}$/u);
+  });
+
+  it('reflète le fuseau de contexte demandé, quel que soit celui imbriqué', () => {
+    const candidat = candidatDepuisJourney(journey(), {
+      ...CONTEXTE,
+      fuseauIana: 'UTC',
+    });
+
+    expect(candidat?.origine.fuseauIana).toBe('UTC');
+    expect(candidat?.destination.fuseauIana).toBe('UTC');
   });
 
   it('conserve la fraîcheur temps réel telle qu’elle a été demandée', () => {
@@ -384,17 +396,6 @@ describe('candidatDepuisJourney — hors cible et refus', () => {
 
   it.each([
     [
-      'un fuseau absent à l’origine',
-      {
-        from: {
-          embedded_type: 'stop_point',
-          stop_point: {
-            stop_area: { id: 'stop_area:X', name: 'Sans fuseau' },
-          },
-        },
-      },
-    ],
-    [
       'un stop_point sans stop_area',
       { from: { embedded_type: 'stop_point', stop_point: {} } },
     ],
@@ -414,16 +415,30 @@ describe('candidatDepuisJourney — hors cible et refus', () => {
     expect(resultat).toBeNull();
   });
 
-  it('refuse un fuseau que le runtime ne reconnaît pas', () => {
+  it('accepte une extrémité dont le stop_area n’expose aucun fuseau imbriqué', () => {
+    // Le fuseau vient de context.timezone, pas de l'extrémité : son absence
+    // ici n'est plus un défaut.
+    const candidat = candidatDepuisJourney(
+      journey([
+        sectionTrain({
+          from: {
+            embedded_type: 'stop_point',
+            stop_point: {
+              stop_area: { id: 'stop_area:X', name: 'Sans fuseau imbriqué' },
+            },
+          },
+        }),
+      ]),
+      CONTEXTE
+    );
+
+    expect(candidat?.origine.fuseauIana).toBe('Europe/Paris');
+  });
+
+  it('refuse le candidat quand le fuseau de contexte transmis est invalide', () => {
     expect(
-      JourneyNavitiaSchema.safeParse(
-        journeyBrut([
-          sectionTrain({
-            from: extremite('stop_area:X', 'Gare', 'Zone/Inconnue'),
-          }),
-        ])
-      ).success
-    ).toBe(false);
+      candidatDepuisJourney(journey(), { ...CONTEXTE, fuseauIana: '+02:00' })
+    ).toBeNull();
   });
 });
 
@@ -484,6 +499,32 @@ describe('ReponseJourneysNavitiaSchema — enveloppe', () => {
     });
 
     expect(valide.success && valide.data.error?.id).toBe('no_solution');
+  });
+
+  it.each([
+    ['Europe/Paris', 'Europe/Paris'],
+    ['UTC', 'UTC'],
+    ['un alias canonisé', 'Etc/UTC'],
+  ])('accepte un contexte de fuseau %s', (_libelle, timezone) => {
+    expect(
+      ReponseJourneysNavitiaSchema.safeParse({
+        journeys: [journeyBrut()],
+        context: { timezone },
+      }).success
+    ).toBe(true);
+  });
+
+  it.each([
+    ['un décalage seul', '+02:00'],
+    ['une zone inconnue', 'Zone/Inconnue'],
+    ['un fuseau vide', ''],
+  ])('refuse un contexte de fuseau %s', (_libelle, timezone) => {
+    expect(
+      ReponseJourneysNavitiaSchema.safeParse({
+        journeys: [journeyBrut()],
+        context: { timezone },
+      }).success
+    ).toBe(false);
   });
 
   it('ignore les champs Navitia non consommés sans les rendre', () => {

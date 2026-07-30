@@ -49,28 +49,30 @@ export function modeTransportDepuisModePhysiqueNavitia(
 }
 
 /**
- * Le fuseau n'est lu que là où Navitia le publie : sur un `stop_area`, qu'il
- * soit l'extrémité elle-même ou celui rattaché au `stop_point`. Sans fuseau
- * fiable, l'extrémité n'est pas représentable et la section est refusée.
+ * L'identité de l'extrémité vient du `stop_area` de la section ; son fuseau
+ * vient du `context.timezone` de la réponse, qui s'applique à toutes ses dates.
+ * Sans identité fournisseur, l'extrémité n'est pas représentable.
  */
 function pointDepuisExtremite(
-  extremite: SectionNavitia['from']
+  extremite: SectionNavitia['from'],
+  fuseauIana: string
 ): PointTrajetNavitia | null {
   const stopArea = extremite?.stop_area ?? extremite?.stop_point?.stop_area;
   if (!stopArea) return null;
   return {
     identifiantExterne: stopArea.id,
     nom: stopArea.name,
-    fuseauIana: stopArea.timezone,
+    fuseauIana,
   };
 }
 
 function sectionTransportPublic(
-  section: SectionNavitia
+  section: SectionNavitia,
+  fuseauIana: string
 ): SectionTrajetNavitia | null {
   const modePhysique = section.display_informations?.physical_mode;
-  const origine = pointDepuisExtremite(section.from);
-  const destination = pointDepuisExtremite(section.to);
+  const origine = pointDepuisExtremite(section.from, fuseauIana);
+  const destination = pointDepuisExtremite(section.to, fuseauIana);
   if (
     !modePhysique ||
     !origine ||
@@ -112,10 +114,11 @@ function estSectionTransportPublic(
 }
 
 function sectionNormalisee(
-  section: SectionNavitia
+  section: SectionNavitia,
+  fuseauIana: string
 ): SectionTrajetNavitia | null {
   if (section.type === TYPE_SECTION_TRANSPORT_PUBLIC) {
-    return sectionTransportPublic(section);
+    return sectionTransportPublic(section, fuseauIana);
   }
   return {
     nature: 'hors_transport_public',
@@ -159,18 +162,22 @@ function signatureTrajet(
  * Normalise un itinéraire Navitia en candidat ferroviaire.
  *
  * Fonction pure : ni réseau, ni environnement, ni horloge. Les heures restent
- * locales — aucune n'est interprétée par `Date`, et aucun fuseau n'est déduit.
+ * locales — aucune n'est interprétée par `Date`, et le fuseau n'est jamais
+ * déduit : il vient du `context.timezone` de la réponse, transmis ici.
  *
  * Rend `null` lorsque l'itinéraire n'est pas représentable prudemment, et
  * `undefined` lorsqu'il est valide mais hors cible (aucune section ferroviaire).
  */
 export function candidatDepuisJourney(
   journey: JourneyNavitia,
-  contexte: ProvenanceGareNavitia & { fraicheur: FraicheurNavitia }
+  contexte: ProvenanceGareNavitia & {
+    fraicheur: FraicheurNavitia;
+    fuseauIana: string;
+  }
 ): CandidatTrajetFerroviaireNavitia | null | undefined {
   const sections: SectionTrajetNavitia[] = [];
   for (const section of journey.sections) {
-    const normalisee = sectionNormalisee(section);
+    const normalisee = sectionNormalisee(section, contexte.fuseauIana);
     if (!normalisee) return null;
     sections.push(normalisee);
   }
