@@ -17,7 +17,7 @@
 | F3 — Hébergements | Existence vérifiée et recherche Booking correcte | Terminé |
 | F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | Terminé |
 | F5 — Génération progressive | Plan global puis lots validés | En cours |
-| F6 — Benchmark modèles | Choix mesuré du modèle de production | En cours |
+| F6 — Benchmark modèles | Choix mesuré du modèle de production | Terminé |
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | À faire |
 | F8 — Modification complète | Régénération atomique des seuls dépendants | À faire |
 | F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
@@ -417,7 +417,7 @@ modification, l'OpenAPI et le front.
 - [x] **F5-A** — plan dérivé pur et transport déterministe
 - [x] **F5-B** — génération lot par lot, assemblage et reprise du lot en échec
 
-**F6 — Benchmark des modèles** *(en cours)*
+**F6 — Benchmark des modèles** *(terminé)*
 
 - [x] **F6-A** — instrumentation des appels IA (modèle injectable, métriques)
 - [x] **F6-B** — script de benchmark manuel, reproductible, réseau réel non lancé en CI
@@ -426,6 +426,28 @@ modification, l'OpenAPI et le front.
 - [x] **F6-E** — refus structuré hors périmètre dans la génération outillée
 - [x] **F6-F** — correction de `plage_hors_lot` sur un lot mono-bloc (soirée courte)
 - [x] **F6-G** — correction de `schema_generation_invalide` (`identifiantExterne` vide)
+- [x] **F6-H** — benchmark final et décision du modèle de production
+
+### Revue F6-H — clôture, décision du modèle de production (01/08)
+
+> [ADR-0009](decisions/ADR-0009.md).
+
+- **Benchmark final (01/08).** 2 modèles (`claude-haiku-4-5-20251001`,
+  `claude-sonnet-5`) × 3 scénarios fixes × 3 répétitions = 18 essais, via
+  `benchmarker-modeles.ts`. JSON local, jamais committé :
+  `server/benchmark/resultats/benchmark-2026-07-31T22-47-12-345Z.json`.
+- **Bordeaux et EVG : 3/3 pour les deux modèles**, fiabilité équivalente.
+  Haiku plus rapide (facteur 2 à 3) et environ 3 fois moins de tokens pour
+  un résultat de conformité équivalente.
+- **NBA multi-villes : 0/3 pour les deux modèles**, indépendamment du choix
+  de modèle — hors périmètre France pour les outils actuels. Ce défaut
+  n'est pas résolu par cette décision et reste un chantier séparé (F9,
+  robustesse NBA).
+- **Décision.** `claude-haiku-4-5-20251001` reste le modèle de production.
+  `MODELE_CLAUDE` était déjà positionné sur cette valeur : aucun changement
+  de code apporté par cette mission.
+- **Hors périmètre.** Le scénario NBA multi-villes, tout routage dynamique
+  de modèle, tout changement de `MODELE_CLAUDE`.
 
 ### Revue F6-G — correction de `schema_generation_invalide` (01/08)
 
