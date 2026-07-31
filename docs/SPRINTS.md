@@ -18,7 +18,7 @@
 | F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | Terminé |
 | F5 — Génération progressive | Plan global puis lots validés | Terminé |
 | F6 — Benchmark modèles | Choix mesuré du modèle de production | Terminé |
-| F7 — Dialogue fiable | Dates relatives et absence de répétitions | À faire |
+| F7 — Dialogue fiable | Dates relatives et absence de répétitions | En cours |
 | F8 — Modification complète | Régénération atomique des seuls dépendants | À faire |
 | F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
 
@@ -437,6 +437,51 @@ ouvert. F5 passe à Terminé.
 - [x] **F6-F** — correction de `plage_hors_lot` sur un lot mono-bloc (soirée courte)
 - [x] **F6-G** — correction de `schema_generation_invalide` (`identifiantExterne` vide)
 - [x] **F6-H** — benchmark final et décision du modèle de production
+
+**F7 — Dialogue fiable** *(en cours)*
+
+- [x] **F7-A** — résolution déterministe des dates relatives
+
+### Revue F7-A — résolution déterministe des dates relatives (01/08)
+
+- **Résolveur pur ajouté** :
+  [`server/agents/resolutionDatesRelatives.ts`](../server/agents/resolutionDatesRelatives.ts).
+  Horloge et fuseau injectés (jamais de `new Date()` implicite dans le calcul) ;
+  couvre aujourd'hui, demain, après-demain, dans X jours/semaines, ce week-end
+  et le week-end prochain.
+- **Conventions verrouillées et documentées dans le module et les tests** :
+  une expression à un seul jour rend la journée civile locale complète
+  (00:00:00.000–23:59:59.999) ; « ce week-end » = samedi–dimanche, et un
+  dimanche en cours en fait encore partie — seul le lundi suivant bascule sur
+  le week-end suivant ; « le week-end prochain » suit toujours celui de
+  « ce week-end », jamais celui en cours.
+- **Fuseau de référence** : `Europe/Paris`
+  (`FUSEAU_SERVEUR_PAR_DEFAUT`), explicite et documenté comme fuseau serveur —
+  ne prétend pas représenter le fuseau réel de l'utilisateur (aucun fuseau
+  utilisateur disponible dans le domaine à ce stade).
+- **Intégration intake** (`server/agents/intake.ts`) : l'expression relative
+  du dernier message est résolue avant l'appel au LLM ; le repère temporel
+  (date de référence + fuseau) est injecté dans le prompt à chaque appel, et
+  la plage déjà résolue y est ajoutée quand elle existe. `SYSTEM_INTAKE`
+  demande explicitement au modèle de reprendre ces dates telles quelles sans
+  les recalculer. Le brief applique la plage résolue lui-même si le LLM ne
+  l'a pas reprise — même filet déterministe que la plage explicite JJ/MM déjà
+  en place — et seulement si aucune date n'est déjà arrêtée dans le brief.
+- **Cas laissés au LLM (hors périmètre F7-A)** : « pendant les vacances »,
+  « à Noël », « au printemps », « le mois prochain », toute expression avec
+  heures précises, tout fuseau déduit d'une ville.
+- **Tests ajoutés** : 15 cas purs du résolveur
+  (`tests/unit/resolutionDatesRelatives.test.ts`, horloge fixe, passages de
+  mois/année et heure été/hiver à Paris) et 5 cas d'intégration intake dans
+  `tests/unit/agents.test.ts` (résolution avant l'appel LLM, injection du
+  repère temporel, dates absolues reçues sans structuration LLM, aucune
+  régression sans expression relative, aucune date déjà arrêtée écrasée).
+  Aucun appel réseau réel.
+- **Résultats** : typecheck OK, lint sans nouvelle erreur (avertissements
+  préexistants inchangés), suite complète verte (1727 tests).
+- **PR** : [#56](https://github.com/loties1533/experience-ai/pull/56).
+- **Recommandation** : prêt pour revue humaine avant fusion — aucun blocage
+  identifié côté build.
 
 ### Revue F6-H — clôture, décision du modèle de production (01/08)
 

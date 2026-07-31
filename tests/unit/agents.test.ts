@@ -188,6 +188,60 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
   });
 });
 
+describe('intake F7-A — résolution déterministe des dates relatives, injectée avant le LLM', () => {
+  it('résout "demain" avant l’appel au LLM et l’injecte dans le prompt', async () => {
+    vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
+    await avancerDialogue(
+      { intention: 'vivre la NBA', avecQui: 'solo', duree: { valeur: 3, unite: 'jours' } },
+      'on part demain'
+    );
+    const prompt = vi.mocked(callAI).mock.calls[0][0];
+    expect(prompt).toContain('Repère temporel :');
+    expect(prompt).toMatch(/Dates déjà résolues.*du .*Z au .*Z/);
+  });
+
+  it('injecte toujours le repère temporel, même sans expression relative reconnue', async () => {
+    vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
+    await avancerDialogue({ intention: 'vivre la NBA' }, 'je ne sais pas encore quand');
+    const prompt = vi.mocked(callAI).mock.calls[0][0];
+    expect(prompt).toContain('Repère temporel :');
+    expect(prompt).not.toContain('Dates déjà résolues');
+  });
+
+  it('le brief reçoit les dates absolues résolues quand le LLM ne les structure pas', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'ok', brief: {} }) // le LLM répond sans reprendre "dates"
+    );
+    const etape = await avancerDialogue(
+      { intention: 'vivre la NBA', avecQui: 'solo', duree: { valeur: 3, unite: 'jours' } },
+      'on part demain'
+    );
+    expect(etape.brief.dates?.debut).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(etape.brief.dates?.fin).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(etape.estComplet).toBe(true);
+  });
+
+  it('un message sans expression relative conserve le comportement existant (pas de dates inventées)', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'Et la durée ?', brief: { avecQui: 'solo' } })
+    );
+    const etape = await avancerDialogue({ intention: 'vivre la NBA' }, 'je suis seul');
+    expect(etape.brief.dates).toBeUndefined();
+  });
+
+  it('n’écrase jamais une date déjà arrêtée dans le brief, même si le message contient "demain"', async () => {
+    const briefAvecDates = {
+      intention: 'vivre la NBA',
+      avecQui: 'solo' as const,
+      duree: { valeur: 3, unite: 'jours' as const },
+      dates: { debut: '2026-08-15T00:00:00.000Z', fin: '2026-08-17T23:59:59.999Z' },
+    };
+    vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
+    const etape = await avancerDialogue(briefAvecDates, 'ah non plutôt demain finalement');
+    expect(etape.brief.dates).toEqual(briefAvecDates.dates);
+  });
+});
+
 describe('intake hôtelier F3-C1 — questions explicites sans déduction', () => {
   const baseDialogue = {
     intention: 'un séjour culturel',
