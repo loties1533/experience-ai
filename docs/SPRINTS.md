@@ -164,8 +164,11 @@ correspond à aucune branche ni PR dédiée.
   construction déterministe de liens de **recherche** vers Google Flights
   (vols, codes IATA) et Google Maps (gares et transport local, API « Maps
   URLs »), sans branchement actif
-- [ ] **F4-D2** — intégration des candidats transport dans la génération
-  active : à faire
+- [x] **F4-D2** — intégration des liens de recherche transport dans la
+  génération active (`agents/enrichissementLiensTransport.ts`) : résolution
+  aérienne (Amadeus) ou ferroviaire (Navitia) uniquement pour un mode éligible,
+  lien F4-D1 seulement après résolution unique des deux extrémités, absence
+  prudente sinon
 - [ ] **F4-E** — modifications, API et front pour le transport : à faire
 
 > **F4-C1 et F4-C2 sont implémentés, testés et internes.** Ils ne sont
@@ -336,6 +339,35 @@ F4 reste donc **en cours** : B1, B2, C1, C2 et C3 (a, b, c) sont terminés
   d'architecture le garantit. L'intégration réelle relève de **F4-D2**.
 - 35 tests ajoutés (`tests/unit/liensTransport.test.ts`), 1533 verts sur toute
   la suite, typecheck OK, lint sans erreur, aucun appel réseau.
+
+### Revue F4-D2 — brancher les liens, jamais forcer un trajet (31/07)
+
+- **Un seul point d'intégration.** `genererParcours` appelle
+  `ajouterLiensRechercheTransport` (`agents/enrichissementLiensTransport.ts`)
+  après l'enrichissement hôtelier, sur le parcours déjà validé, avant la
+  revalidation finale du domaine. Le résolveur legacy `resoudreLiensReels`
+  reste inutilisé.
+- **Modes réellement couverts : avion et train.** L'avion résout ses deux
+  extrémités via Amadeus (`preference: 'aeroport'`, jamais une ville promue en
+  aéroport) puis appelle `creerLienRechercheVol`. Le train résout ses gares via
+  Navitia et n'utilise que le **nom observé** — aucun identifiant Navitia ni
+  code UIC dans l'URL — puis appelle `creerLienRechercheTrain`. Le transport
+  local est **hors périmètre** : la demande ne porte que des villes, jamais un
+  lieu observé, et une paire de villes ne doit pas être promue en lieux réels.
+- **Lien seulement sur deux identités uniques.** Toute résolution ambiguë,
+  vide, sans code IATA, indisponible, ou aux extrémités identiques produit
+  l'absence de lien. Une panne fournisseur laisse le transport sans lien sans
+  jamais faire échouer la génération ni se déguiser en résultat normal.
+- **Aucune URL assemblée hors de F4-D1.** L'enrichissement délègue toute
+  construction d'URL aux constructeurs F4-D1 ; ni `?q=`, ni `tfs`, ni domaine
+  arbitraire. Le contrat de sortie gagne un champ optionnel
+  `lienRechercheTransport` réservé aux éléments transport ; le nom, la
+  justification et le niveau de confiance (`suggestion`) du transport restent
+  inchangés. Aucun prix, billet, réservation ni disponibilité.
+- Nouveau branchement testé sans réseau réel
+  (`tests/unit/enrichissementLiensTransport.test.ts`) ; garde d'architecture
+  F4-D1 adapté au branchement désormais légitime. Prochaine étape : **F4-E**
+  (modifications, API et front pour le transport).
 
 ## Refonte Experience AI — plan de build
 

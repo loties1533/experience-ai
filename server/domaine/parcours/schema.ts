@@ -3,6 +3,7 @@ import {
   DemandeTransportSchema,
   JUSTIFICATION_TRANSPORT_GENERIQUE,
   LIBELLE_TRANSPORT_GENERIQUE,
+  LienRechercheTransportSchema,
   estVilleTransportDemandeePrudente,
   justificationTransportDemande,
   libelleTransportDemande,
@@ -513,6 +514,10 @@ export const ElementSchema = z.object({
   // Recherche locale préremplie : distincte d'une réservation et sans preuve
   // de disponibilité. F3-C2 ne la produit que pour un séjour hôtelier validé.
   lienRechercheHebergement: LienRechercheHebergementSchema.optional(),
+  // Raccourci de recherche transport (F4-D2) : jamais un billet, une
+  // réservation, un prix ni une disponibilité. Ajouté après résolution unique
+  // des deux extrémités d'un tronçon ; réservé aux éléments transport.
+  lienRechercheTransport: LienRechercheTransportSchema.optional(),
   // Propre à cet hôtel : on ne réutilise jamais une plage globale du parcours
   // ni le premier lieu d'un brief multi-ville.
   sejourHebergement: SejourHebergementSchema.optional(),
@@ -795,6 +800,16 @@ export const ParcoursSchema = z
             code: 'custom',
             message: 'un lien de recherche hôtelière ne peut qualifier qu’un hébergement',
             path: ['timeline', indexMoment, 'elements', indexElement, 'lienRechercheHebergement'],
+          });
+        }
+        if (
+          element.lienRechercheTransport &&
+          element.type !== 'transport'
+        ) {
+          contexte.addIssue({
+            code: 'custom',
+            message: 'un lien de recherche transport ne peut qualifier qu’un transport',
+            path: ['timeline', indexMoment, 'elements', indexElement, 'lienRechercheTransport'],
           });
         }
         if (
