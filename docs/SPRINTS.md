@@ -419,6 +419,8 @@ modification, l'OpenAPI et le front.
 
 ### Revue F5-A — un plan dérivé, un transport aligné sur la demande (31/07)
 
+> Livré par la [PR #46](https://github.com/loties1533/experience-ai/pull/46).
+
 - **Un plan dérivé, pas encore branché.** `deriverPlan` (et les contrats
   internes `PlanGeneration` / `LotPrevu`) découpe un parcours en lots par ville
   et par blocs de jours, à partir du seul brief : aucun appel IA, aucun réseau,
