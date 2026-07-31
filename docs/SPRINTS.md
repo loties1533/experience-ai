@@ -424,6 +424,45 @@ modification, l'OpenAPI et le front.
 - [x] **F6-C** — sous-code interne pour distinguer les causes du 502 « sortie inexploitable »
 - [x] **F6-D** — ciblage explicite de couples modèle/scénario dans le benchmark
 - [x] **F6-E** — refus structuré hors périmètre dans la génération outillée
+- [x] **F6-F** — correction de `plage_hors_lot` sur un lot mono-bloc (soirée courte)
+
+### Revue F6-F — correction de `plage_hors_lot` sur un lot mono-bloc (01/08)
+
+- **Constat du retest ciblé (31/07).** `sonnet × soiree-bordeaux` (scénario à
+  un seul lot, un seul jour) échouait en `sortie_inexploitable/plage_hors_lot`
+  — un débordement de plage jamais reproduit par `haiku`, alors que le
+  contrat de sortie est identique.
+- **Cause racine, dans `briefPourLot`.** Pour tout lot portant une plage de
+  jours (`lot.plage`), le brief transmis au modèle reconstruisait
+  systématiquement `dates` en jour civil UTC plein
+  (`00:00:00.000Z`→`23:59:59.999Z`), y compris pour un plan à un seul lot où
+  cette plage EST tout le brief. Pour `soiree-bordeaux` (18h→23h59 UTC), cela
+  remplaçait la fenêtre réelle de 5h par une journée entière, sans borne de
+  fin explicite avant minuit : rien n'empêchait plus le modèle de clore la
+  soirée après minuit UTC (soit après 2h du matin heure de Bordeaux en
+  septembre), un instant que `validerScopeLot` — bornée au seul jour du lot —
+  rejette légitimement.
+- **Correction minimale, au contrat, pas à la validation.** `briefPourLot`
+  prend un paramètre `lotUniqueDuPlan` : quand le lot couvre à lui seul tout
+  le plan, les heures précises de `brief.dates` sont transmises telles
+  quelles, sans reconstruction en jour civil plein. Un plan à plusieurs lots
+  garde la reconstruction inchangée (chaque lot n'y couvre qu'une sous-plage
+  de jours dont le brief ne porte pas les heures).
+- **`validerScopeLot` n'a pas bougé.** Toujours au grain du jour civil,
+  toujours aucune tolérance pour une plage qui déborde du jour du lot — une
+  soirée qui franchit réellement minuit UTC reste un vrai débordement, testé
+  explicitement.
+- Tests ajoutés dans `tests/unit/generationProgressive.test.ts` (describe
+  F6-F) : heures précises conservées pour un lot mono-bloc, activité acceptée
+  dans la plage, débuts/fins hors plage rejetés, bornes exactes du brief
+  acceptées, soirée franchissant minuit toujours rejetée (règle produit
+  inchangée), plage sans suffixe `Z` traitée comme UTC sans décalage
+  implicite, reconstruction en jour civil plein inchangée pour un plan
+  multi-lot. Suite complète verte (1705 tests), typecheck OK, lint sans
+  nouvelle erreur.
+- **Hors périmètre.** `validerScopeLot`, `SYSTEM_GENERATION`, le scénario de
+  benchmark et le modèle de production n'ont pas été modifiés ; aucun
+  benchmark réseau relancé.
 
 ### Revue F6-E — refus structuré hors périmètre dans la génération outillée (31/07)
 
