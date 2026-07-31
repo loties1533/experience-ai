@@ -42,6 +42,11 @@ import {
   type TronconTransportBrief,
   type BriefPartiel,
 } from './brief.js';
+import {
+  resoudreExpressionRelative,
+  contexteTemporelParDefaut,
+  dateReferenceLisible,
+} from './resolutionDatesRelatives.js';
 
 // Agent d'intake : mène le dialogue d'entrée, extrait le brief au fil des
 // réponses et ne pose QUE les questions nécessaires. Il ne génère rien —
@@ -83,7 +88,15 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
 - "reponse" : UNE question courte et chaleureuse en français sur UN champ requis manquant (intention, avecQui, duree,
   une date de départ approximative — jamais "point de départ", qui prête à confusion avec une ville). Jamais deux
   questions. TUTOIE toujours l'utilisateur (« tu », jamais « vous »).
-- N'invente jamais un champ que l'utilisateur n'a pas exprimé.`;
+- N'invente jamais un champ que l'utilisateur n'a pas exprimé.
+- Le message peut contenir un repère temporel ("Repère temporel : ...") et des dates déjà résolues
+  ("Dates déjà résolues : ..."). Si des dates déjà résolues sont fournies, reprends-les TELLES QUELLES
+  dans "dates" — ne les recalcule pas, ne les modifie pas, n'en déduis pas d'autres. Elles ne remplacent
+  jamais des dates explicites différentes que l'utilisateur vient d'exprimer dans le même message.
+- Convention déjà appliquée en amont pour "aujourd'hui", "demain", "après-demain", "dans X jours/semaines",
+  "ce week-end" et "le week-end prochain" (à ne jamais recalculer toi-même, ni contredire dans "reponse") :
+  "ce week-end" couvre samedi et dimanche du week-end courant tant que ce dimanche n'est pas terminé, sinon
+  celui à venir ; "le week-end prochain" est toujours celui qui suit "ce week-end".`;
 
 const SortieIntakeSchema = z.object({
   reponse: z.string().min(1),
@@ -903,9 +916,24 @@ export async function avancerDialogue(
   briefActuel: BriefPartiel,
   messageUtilisateur: string
 ): Promise<EtapeDialogue> {
+  // Résolution déterministe AVANT l'appel au LLM : une expression relative
+  // reconnue ("demain", "ce week-end"...) ne lui est jamais confiée. On ne la
+  // tente que si aucune date n'est déjà arrêtée dans le brief — jamais pour
+  // écraser une date explicite déjà validée.
+  const contexteTemporel = contexteTemporelParDefaut();
+  const dateRelativeResolue = briefActuel.dates
+    ? undefined
+    : resoudreExpressionRelative(messageUtilisateur, contexteTemporel);
+
   const prompt = `Brief déjà établi : ${JSON.stringify(briefActuel)}
 Dernier message de l'utilisateur : "${sanitizeInput(messageUtilisateur)}"
-Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'aucun'}`;
+Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'aucun'}
+Repère temporel : nous sommes le ${dateReferenceLisible(contexteTemporel)} (fuseau ${contexteTemporel.fuseau}).${
+    dateRelativeResolue
+      ? `
+Dates déjà résolues pour l'expression temporelle de ce message : du ${dateRelativeResolue.debut} au ${dateRelativeResolue.fin}.`
+      : ''
+  }`;
 
   const brut = await callAI(prompt, SYSTEM_INTAKE, 'onboarding');
   const sortie = SortieIntakeSchema.safeParse(parseJSON(brut));
@@ -938,6 +966,16 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
     ...(hebergement ? { hebergement } : {}),
     ...(transport ? { transport } : {}),
   });
+
+  // Si le LLM n'a pas repris les dates relatives déjà résolues (ou n'a rien
+  // structuré du tout), on les applique nous-mêmes : jamais dépendant de lui
+  // seul pour un champ aussi structurant, même logique que la plage explicite
+  // ci-dessous.
+  let dateRelativeUtilisee = false;
+  if (!brief.dates && dateRelativeResolue) {
+    brief = { ...brief, dates: dateRelativeResolue };
+    dateRelativeUtilisee = true;
+  }
 
   // Filet déterministe, avant de compter sur le LLM : une plage explicite
   // ("du 15/08 au 10/09") qu'il aurait comprise sans la structurer.
@@ -982,7 +1020,8 @@ Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'a
       extractionHebergement.hebergement !== undefined ||
       extractionTransport.transport !== undefined ||
       dateDebutUtilise ||
-      plageExpliciteUtilisee;
+      plageExpliciteUtilisee ||
+      dateRelativeUtilisee;
     const briefActuelDejaTermine =
       BriefSchema.safeParse(briefActuel).success && champsManquants(briefActuel).length === 0;
     if (!auMoinsUnChampNouveau && briefActuelDejaTermine) {
