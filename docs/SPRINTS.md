@@ -423,6 +423,8 @@ modification, l'OpenAPI et le front.
 
 ### Revue F6-A — modèle injectable et métriques sans changer le produit (31/07)
 
+> Livré par la [PR #48](https://github.com/loties1533/experience-ai/pull/48).
+
 - **Modèle Anthropic injectable, comportement inchangé.** `callClaudeOutils`
   et `callAIAvecOutils` acceptent désormais une option `modele` ; sans elle,
   `MODELE_CLAUDE` (Haiku 4.5) reste utilisé exactement comme avant. Aucun
