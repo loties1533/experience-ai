@@ -87,7 +87,10 @@ async function executerUnEssai(
       tours: evenements.reduce((somme, e) => somme + e.tours, 0),
       jsonValide: false,
       lotsGeneres,
-      reprises: Math.max(0, evenements.length - lotsGeneres),
+      // Le dernier événement d'un essai en échec est la panne TERMINALE (non
+      // rejouable, ou budget de reprises épuisé) : elle n'a jamais déclenché
+      // de nouvelle tentative, contrairement aux échecs qui la précèdent.
+      reprises: Math.max(0, evenements.length - lotsGeneres - 1),
     };
   }
 }
