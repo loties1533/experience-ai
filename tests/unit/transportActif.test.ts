@@ -476,6 +476,58 @@ describe('nettoyage fail-closed des sorties transport', () => {
     ).toHaveLength(3);
   });
 
+  it('place chaque transport avant les moments de sa destination, jamais regroupé en fin de parcours', () => {
+    const demande = {
+      troncons: [
+        {
+          origine: { ville: 'Paris' },
+          destination: { ville: 'Lyon' },
+          depart: { date: '2026-09-11' },
+        },
+        {
+          origine: { ville: 'Lyon' },
+          destination: { ville: 'Marseille' },
+          depart: { date: '2026-09-13' },
+        },
+      ],
+      occupation: DEMANDE_TRANSPORT.occupation,
+    };
+    const placeholderTransport = (ref: string) => ({
+      ...hallucination.elements[0],
+      ref,
+    });
+    const activite = (ref: string, nom: string) => ({
+      ref,
+      type: 'activite' as const,
+      nom,
+      justification: 'étape du parcours',
+      dependDe: [],
+      estAncre: false,
+    });
+
+    const resultat = nettoyerMomentsTransport(
+      [
+        { titre: 'Visite parisienne', elements: [activite('paris', 'Louvre')] },
+        { titre: 'Départ', elements: [placeholderTransport('t1')] },
+        { titre: 'Visite lyonnaise', elements: [activite('lyon', 'Vieux Lyon')] },
+        { titre: 'Départ', elements: [placeholderTransport('t2')] },
+        {
+          titre: 'Visite marseillaise',
+          elements: [activite('marseille', 'Vieux-Port')],
+        },
+      ],
+      demande
+    );
+
+    expect(resultat.map((moment) => moment.elements[0].nom)).toEqual([
+      'Louvre',
+      'Transport à organiser de Paris vers Lyon',
+      'Vieux Lyon',
+      'Transport à organiser de Lyon vers Marseille',
+      'Vieux-Port',
+    ]);
+  });
+
   it('ne mute profondément ni les moments ni la demande reçus', () => {
     const moments = [
       {

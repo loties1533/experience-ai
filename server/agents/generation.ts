@@ -312,55 +312,11 @@ interface MomentPrepare {
  * Un moment mixte est séparé : les horaires légitimes de ses autres éléments
  * restent intacts, tandis que le transport rejoint un wrapper sans plage.
  */
-export function nettoyerMomentsTransport(
-  moments: MomentGenere[],
-  demandeTransport: DemandeTransport | undefined
-): MomentGenere[] {
-  const refsTransport = new Set(
-    moments.flatMap((moment) =>
-      moment.elements
-        .filter((element) => element.type === 'transport')
-        .map((element) => element.ref)
-    )
-  );
-
-  // 1. Les moments non transport, débarrassés de tout élément transport écrit
-  //    par le LLM et de toute dépendance vers un transport ainsi retiré.
-  const momentsSansTransport: MomentGenere[] = [];
-  for (const moment of moments) {
-    const autresElements = moment.elements
-      .filter((element) => element.type !== 'transport')
-      .map((element) => ({
-        ...element,
-        dependDe: element.dependDe.filter(
-          (ref) => !refsTransport.has(ref)
-        ),
-      }));
-    if (autresElements.length === 0) continue;
-    const contenaitTransport = moment.elements.some(
-      (element) => element.type === 'transport'
-    );
-    momentsSansTransport.push({
-      ...moment,
-      // Dès qu'un wrapper contenait un transport, son titre libre peut
-      // contenir un vol, une gare ou une heure. On le reconstruit depuis les
-      // éléments non transport au lieu d'essayer de filtrer sa prose.
-      titre: contenaitTransport
-        ? autresElements.length === 1
-          ? autresElements[0].nom
-          : 'Moment du parcours'
-        : moment.titre,
-      elements: autresElements,
-    });
-  }
-
-  // 2. Exactement un transport par tronçon déclaré, dans l'ordre de la demande.
-  //    Le LLM ne pose plus de placeholder : ni le nombre, ni l'ordre, ni le
-  //    prix des transports ne dépendent de sa sortie. Une donnée absente de la
-  //    demande (comme un prix) reste absente plutôt que d'être inventée.
-  const momentsTransport: MomentGenere[] = (
-    demandeTransport?.troncons ?? []
-  ).map((troncon, index) => ({
+function synthetiserTransport(
+  troncon: DemandeTransport['troncons'][number],
+  index: number
+): MomentGenere {
+  return {
     titre: libelleTransportDemande(troncon),
     elements: [
       {
@@ -372,9 +328,75 @@ export function nettoyerMomentsTransport(
         estAncre: false,
       },
     ],
-  }));
+  };
+}
 
-  return [...momentsSansTransport, ...momentsTransport];
+export function nettoyerMomentsTransport(
+  moments: MomentGenere[],
+  demandeTransport: DemandeTransport | undefined
+): MomentGenere[] {
+  const troncons = demandeTransport?.troncons ?? [];
+  let indexTroncon = 0;
+  const nettoyes: MomentGenere[] = [];
+  const refsTransport = new Set(
+    moments.flatMap((moment) =>
+      moment.elements
+        .filter((element) => element.type === 'transport')
+        .map((element) => element.ref)
+    )
+  );
+
+  // Le LLM ne pose plus de placeholder de contenu, mais sa POSITION reste
+  // une indication chronologique légitime (le transport Paris → Lyon doit
+  // rester avant les moments lyonnais, pas relégué en fin de timeline). On
+  // consomme donc les tronçons dans l'ordre, à l'endroit où le LLM a placé
+  // ses éléments transport, en ne conservant du placeholder que sa place —
+  // jamais son nom, son prix ou sa référence.
+  for (const moment of moments) {
+    const autresElements = moment.elements
+      .filter((element) => element.type !== 'transport')
+      .map((element) => ({
+        ...element,
+        dependDe: element.dependDe.filter(
+          (ref) => !refsTransport.has(ref)
+        ),
+      }));
+    const nombreTransportsIci = moment.elements.filter(
+      (element) => element.type === 'transport'
+    ).length;
+
+    if (autresElements.length > 0) {
+      nettoyes.push({
+        ...moment,
+        // Dès qu'un wrapper contenait un transport, son titre libre peut
+        // contenir un vol, une gare ou une heure. On le reconstruit depuis
+        // les éléments non transport au lieu d'essayer de filtrer sa prose.
+        titre:
+          nombreTransportsIci > 0
+            ? autresElements.length === 1
+              ? autresElements[0].nom
+              : 'Moment du parcours'
+            : moment.titre,
+        elements: autresElements,
+      });
+    }
+
+    for (let i = 0; i < nombreTransportsIci; i += 1) {
+      const troncon = troncons[indexTroncon];
+      if (troncon) nettoyes.push(synthetiserTransport(troncon, indexTroncon));
+      indexTroncon += 1;
+    }
+  }
+
+  // Le LLM a émis moins de placeholders que de tronçons déclarés (voire
+  // aucun) : les tronçons restants n'ont aucune position suggérée, on les
+  // ajoute à la fin plutôt que de les faire disparaître silencieusement.
+  while (indexTroncon < troncons.length) {
+    nettoyes.push(synthetiserTransport(troncons[indexTroncon], indexTroncon));
+    indexTroncon += 1;
+  }
+
+  return nettoyes;
 }
 
 function cleTexte(texte: string): string {
