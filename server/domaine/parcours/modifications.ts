@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   AvisSchema,
+  DemandeTransportParcoursSchema,
   ElementSchema,
   OccupationHebergementDeclareeSchema,
   ParticipantSchema,
@@ -115,6 +116,21 @@ export const DemandeModificationHotelClientSchema = z.discriminatedUnion(
   ]
 );
 
+/**
+ * Frontière HTTP transport : le client ne peut décrire qu'une intention de
+ * trajet — villes, dates civiles, modes souhaités et occupation déclarée. Le
+ * schéma persistant refuse déjà toute gare, aéroport, terminal ou code
+ * fournisseur (villes prudentes uniquement) : aucune identité IATA ou UIC ne
+ * peut donc être forgée côté client. La reconstruction des liens reste au
+ * serveur, via la résolution prudente Amadeus/Navitia (F4-D2).
+ */
+export const DemandeModificationTransportClientSchema = z
+  .object({
+    type: z.literal('modifier_demande_transport'),
+    demandeTransport: DemandeTransportParcoursSchema,
+  })
+  .strict();
+
 const DemandeSurElementClientPureSchema = z.discriminatedUnion('type', [
   z
     .object({
@@ -163,6 +179,7 @@ const DemandeSurElementClientPureSchema = z.discriminatedUnion('type', [
 export const DemandeSurElementClientSchema = z.discriminatedUnion('type', [
   ...DemandeSurElementClientPureSchema.options,
   ...DemandeModificationHotelClientSchema.options,
+  DemandeModificationTransportClientSchema,
 ]);
 
 // Un remplacement ne porte pas d'id : il hérite de celui de l'élément remplacé.
@@ -241,6 +258,9 @@ export type DemandeSurElementClient = z.infer<
 export type DemandeModificationHotelClient = z.infer<
   typeof DemandeModificationHotelClientSchema
 >;
+export type DemandeModificationTransportClient = z.infer<
+  typeof DemandeModificationTransportClientSchema
+>;
 export type DemandeDePartage = z.infer<typeof DemandeDePartageSchema>;
 export type DemandeModification = z.infer<typeof DemandeModificationSchema>;
 
@@ -254,6 +274,12 @@ export function estDemandeModificationHotelClient(
   );
 }
 
+export function estDemandeModificationTransportClient(
+  demande: DemandeSurElementClient
+): demande is DemandeModificationTransportClient {
+  return demande.type === 'modifier_demande_transport';
+}
+
 /**
  * Transforme l'intention client déjà validée en commande interne. C'est ici,
  * côté serveur, que l'id d'un ajout et les valeurs de confiance minimales sont
@@ -262,7 +288,7 @@ export function estDemandeModificationHotelClient(
 export function preparerDemandeSurElementClient(
   demande: Exclude<
     DemandeSurElementClient,
-    DemandeModificationHotelClient
+    DemandeModificationHotelClient | DemandeModificationTransportClient
   >,
   creerId: () => string
 ): DemandeSurElement {

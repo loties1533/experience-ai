@@ -389,7 +389,6 @@ const schemas = {
     type: 'object',
     required: ['troncons', 'occupation'],
     additionalProperties: false,
-    readOnly: true,
     properties: {
       troncons: {
         type: 'array',
@@ -455,6 +454,36 @@ const schemas = {
     },
     description:
       'Lien de recherche hôtelier local. Booking n’est pas contacté pendant la génération et aucune réservation n’est effectuée.',
+    readOnly: true,
+  },
+  LienRechercheTransport: {
+    type: 'object',
+    required: ['type', 'fournisseur', 'url', 'libelle', 'genereLe'],
+    additionalProperties: false,
+    properties: {
+      type: {
+        type: 'string',
+        enum: [
+          'recherche_vol',
+          'recherche_train',
+          'recherche_transport_local',
+        ],
+      },
+      fournisseur: {
+        type: 'string',
+        enum: ['Google Flights', 'Google Maps'],
+      },
+      url: {
+        type: 'string',
+        format: 'uri',
+        description:
+          'Recherche transport préremplie. Ne prouve ni billet, ni réservation, ni disponibilité, ni prix.',
+      },
+      libelle: { type: 'string' },
+      genereLe: { type: 'string', format: 'date-time' },
+    },
+    description:
+      'Raccourci de recherche transport (vol ou itinéraire entre gares). Construit seulement après résolution unique des deux extrémités ; jamais un billet ni une réservation.',
     readOnly: true,
   },
   PropositionElementClient: {
@@ -620,10 +649,26 @@ const schemas = {
           sejour: { $ref: '#/components/schemas/SejourHebergement' },
         },
       },
+      {
+        type: 'object',
+        required: ['type', 'demandeTransport'],
+        additionalProperties: false,
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['modifier_demande_transport'],
+          },
+          demandeTransport: {
+            allOf: [{ $ref: '#/components/schemas/DemandeTransport' }],
+            description:
+              'Nouvelle intention de trajet : villes, dates civiles, modes souhaités et occupation déclarée. Le serveur redérive les libellés et reconstruit les liens ; aucun code IATA, gare ou identifiant fournisseur n’est accepté ici.',
+          },
+        },
+      },
     ],
     discriminator: { propertyName: 'type' },
     description:
-      'Intention client stricte. Elle ne peut contenir ni confiance, provenance, identifiant externe, adresse fournisseur, réservation, disponibilité ou lien Booking.',
+      'Intention client stricte. Elle ne peut contenir ni confiance, provenance, identifiant externe, adresse fournisseur, réservation, disponibilité ou lien Booking. Une modification transport ne porte que des villes, jamais une gare, un aéroport ni un code.',
   },
   Element: {
     type: 'object',
@@ -656,6 +701,14 @@ const schemas = {
           { $ref: '#/components/schemas/LienRechercheHebergement' },
         ],
         readOnly: true,
+      },
+      lienRechercheTransport: {
+        allOf: [
+          { $ref: '#/components/schemas/LienRechercheTransport' },
+        ],
+        readOnly: true,
+        description:
+          'Présent seulement sur un élément transport dont les deux extrémités se sont résolues. Un raccourci de recherche, jamais un billet.',
       },
       sejourHebergement: {
         allOf: [{ $ref: '#/components/schemas/SejourHebergement' }],

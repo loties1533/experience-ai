@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
 import AvisGroupe from '../components/AvisGroupe'
-import { BadgeConfiance, LibelleLien, libelleLien } from '../components/ConfianceElement'
+import { BadgeConfiance, LibelleLien, libelleLien, LienRechercheTransport } from '../components/ConfianceElement'
 import {
   chargerParcoursPartage, reagirSurElement,
   type Avis, type Element,
@@ -128,6 +128,7 @@ export default function ParcoursPartage() {
                           <LibelleLien element={element} />
                         </a>
                       )}
+                      <LienRechercheTransport element={element} />
                       <p className="text-sm text-encre-light mt-2 italic">« {element.justification} »</p>
                       <AvisGroupe parcours={parcours} element={element} />
                     </div>

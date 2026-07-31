@@ -15,7 +15,7 @@
 | F1 — Vérité des données | Confiance, traçabilité et refus explicite | Terminé |
 | F2 — Lieux et événements | Liens fiables par ville et établissement | Terminé |
 | F3 — Hébergements | Existence vérifiée et recherche Booking correcte | Terminé |
-| F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | En cours (interne jusqu'à F4-D1 ; intégration F4-D2 à venir) |
+| F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | Terminé |
 | F5 — Génération progressive | Plan global puis lots validés | À faire |
 | F6 — Benchmark modèles | Choix mesuré du modèle de production | À faire |
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | À faire |
@@ -169,7 +169,11 @@ correspond à aucune branche ni PR dédiée.
   aérienne (Amadeus) ou ferroviaire (Navitia) uniquement pour un mode éligible,
   lien F4-D1 seulement après résolution unique des deux extrémités, absence
   prudente sinon
-- [ ] **F4-E** — modifications, API et front pour le transport : à faire
+- [x] **F4-E** — modifications, API et front pour le transport
+  ([PR #45](https://github.com/loties1533/experience-ai/pull/45)) : contrat
+  client `modifier_demande_transport`, reconstruction des liens via la
+  résolution prudente F4-D2, exposition OpenAPI et affichage du lien dans le
+  détail et le partage
 
 > **F4-C1 et F4-C2 sont implémentés, testés et internes.** Ils ne sont
 > appelés ni par la génération active, ni par les routes publiques, ni par
@@ -177,8 +181,9 @@ correspond à aucune branche ni PR dédiée.
 > hors `server/services/amadeus/` n'importe ce module. Leur intégration
 > réelle dans un parcours est le périmètre de F4-D2, qui dépend de F4-C3.
 
-F4 reste donc **en cours** : B1, B2, C1, C2 et C3 (a, b, c) sont terminés
-**en interne** ; D1, D2 et E restent à faire avant de considérer F4 terminé.
+F4 est désormais **terminé** : B1, B2, C1, C2 et C3 (a, b, c) posés en
+interne, puis D1, D2 et E qui les branchent réellement dans la génération, la
+modification, l'OpenAPI et le front.
 
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
@@ -368,6 +373,35 @@ F4 reste donc **en cours** : B1, B2, C1, C2 et C3 (a, b, c) sont terminés
   (`tests/unit/enrichissementLiensTransport.test.ts`) ; garde d'architecture
   F4-D1 adapté au branchement désormais légitime. Prochaine étape : **F4-E**
   (modifications, API et front pour le transport).
+
+### Revue F4-E — modifier le trajet sans jamais forger un lieu (31/07)
+
+- **Un seul contrat client ajouté.** `modifier_demande_transport` rejoint la
+  discrimination stricte de la route de modification. Il ne porte qu'une
+  `DemandeTransportParcours` — villes prudentes, dates civiles, modes souhaités,
+  occupation déclarée. Le schéma persistant refuse déjà toute gare, aéroport,
+  terminal ou code fournisseur : aucune identité IATA ou UIC ne peut être forgée
+  côté client, y compris via une ville déguisée (« Aéroport de… », « BOD »).
+- **Reconstruction déléguée, jamais réinventée.** Le service
+  `modificationTransport.ts` met à jour la demande, redérive libellé et
+  justification côté serveur (contrat positionnel tronçon ↔ élément, comme la
+  génération) puis réutilise **tel quel** l'enrichissement F4-D2
+  (`ajouterLiensRechercheTransport`) : Amadeus/Navitia, résolution unique
+  obligatoire, aucune URL assemblée hors des constructeurs F4-D1. Une résolution
+  ambiguë, vide ou indisponible retire l'ancien lien et n'en pose aucun, sans
+  faire échouer la modification. `resoudreLiensReels` reste inactif.
+- **Fail-closed sur le périmètre.** Modifier le nombre de trajets, ou modifier
+  un parcours sans demande transport, est refusé (422) : ajouter ou retirer un
+  transport relève des opérations d'élément existantes, hors de ce lot. Le
+  niveau de confiance (`suggestion`) et le transport local restent inchangés.
+- **OpenAPI synchronisée.** `LienRechercheTransport` documenté et exposé en
+  lecture seule sur `Element` ; dixième discriminant ajouté au contrat de
+  modification. Front : un composant unique réutilisé par le détail et le
+  partage affiche le lien seulement s'il existe, comme une recherche externe
+  explicite, jamais comme une réservation.
+- 8 tests ajoutés (`tests/unit/modificationTransport.test.ts`), OpenAPI
+  resynchronisée, 1565 verts sur toute la suite, typecheck OK, lint sans
+  nouvelle erreur, aucun appel réseau. F4 est terminé.
 
 ## Refonte Experience AI — plan de build
 

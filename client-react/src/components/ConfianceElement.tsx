@@ -52,3 +52,18 @@ export function LibelleLien({ element }: { element: Element }) {
   if (!element.reservation) return null
   return <>{libelleLien(element)}</>
 }
+
+// Raccourci de recherche transport : présent seulement quand le serveur a
+// résolu les deux extrémités du trajet. C'est une recherche externe, jamais un
+// billet ni une réservation — le libellé vient du serveur et le dit clairement.
+export function LienRechercheTransport({ element }: { element: Element }) {
+  const lien = element.lienRechercheTransport
+  if (!lien) return null
+  return (
+    <a href={lien.url} target="_blank" rel="noopener noreferrer"
+      className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
+      aria-label={`${lien.libelle} pour « ${element.nom} » (recherche externe, nouvel onglet)`}>
+      {lien.libelle}
+    </a>
+  )
+}
