@@ -664,71 +664,44 @@ describe('invariants actifs du parcours transport', () => {
 });
 
 describe('modifications génériques et compatibilité legacy', () => {
-  it('neutralise un ajout transport précis avant son entrée dans le domaine', () => {
-    const demande = DemandeSurElementClientSchema.parse({
-      type: 'ajouter_element',
-      momentId: 'm-transport',
-      element: {
-        type: 'transport',
-        nom: 'Vol AF123',
-        lieu: 'CDG terminal 2',
-        plage: {
-          debut: '2026-09-10T09:42:00Z',
-          fin: '2026-09-10T11:18:00Z',
+  // F4-E — le transport ne passe plus par le chemin générique : il est refusé
+  // au contrat, comme l'hébergement. Sa seule voie client est
+  // `modifier_demande_transport`, qui préserve la correspondance positionnelle
+  // tronçon ↔ élément. On ne peut donc plus forger ni désynchroniser un
+  // transport via ajouter_element / remplacer_element.
+  it('refuse un ajout transport précis par le chemin générique', () => {
+    expect(
+      DemandeSurElementClientSchema.safeParse({
+        type: 'ajouter_element',
+        momentId: 'm-transport',
+        element: {
+          type: 'transport',
+          nom: 'Vol AF123',
+          lieu: 'CDG terminal 2',
+          plage: {
+            debut: '2026-09-10T09:42:00Z',
+            fin: '2026-09-10T11:18:00Z',
+          },
+          prix: 145,
+          justification: 'Billet disponible',
         },
-        prix: 145,
-        justification: 'Billet disponible',
-      },
-    });
-    if (
-      demande.type !== 'ajouter_element'
-    ) {
-      throw new Error('ajout attendu');
-    }
-    const interne = preparerDemandeSurElementClient(
-      demande,
-      () => 'transport-serveur'
-    );
-    if (interne.type !== 'ajouter_element') {
-      throw new Error('ajout interne attendu');
-    }
-    expect(interne.element).toMatchObject({
-      id: 'transport-serveur',
-      type: 'transport',
-      nom: 'Transport à organiser',
-      prix: 145,
-      prixEstime: true,
-      confiance: { niveau: 'suggestion' },
-      justification:
-        'Prévoir un transport selon les informations déclarées.',
-    });
-    expect(interne.element).not.toHaveProperty('lieu');
-    expect(interne.element).not.toHaveProperty('plage');
+      }).success
+    ).toBe(false);
   });
 
-  it('neutralise aussi un remplacement transport sans changer les autres types', () => {
-    const remplacement = DemandeSurElementClientSchema.parse({
-      type: 'remplacer_element',
-      elementId: 'e-transport',
-      remplacement: {
-        type: 'transport',
-        nom: 'TGV 8421',
-        lieu: 'Gare Montparnasse',
-        justification: 'Train confirmé',
-      },
-    });
-    if (remplacement.type !== 'remplacer_element') {
-      throw new Error('remplacement attendu');
-    }
-    const interne = preparerDemandeSurElementClient(
-      remplacement,
-      () => 'inutilise'
-    );
-    if (interne.type !== 'remplacer_element') {
-      throw new Error('remplacement interne attendu');
-    }
-    expect(interne.remplacement.nom).toBe('Transport à organiser');
-    expect(interne.remplacement).not.toHaveProperty('lieu');
+  it('refuse un remplacement transport sans gêner les autres types', () => {
+    expect(
+      DemandeSurElementClientSchema.safeParse({
+        type: 'remplacer_element',
+        elementId: 'e-transport',
+        remplacement: {
+          type: 'transport',
+          nom: 'TGV 8421',
+          lieu: 'Gare Montparnasse',
+          justification: 'Train confirmé',
+        },
+      }).success
+    ).toBe(false);
 
     const restaurant = DemandeSurElementClientSchema.parse({
       type: 'ajouter_element',

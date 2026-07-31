@@ -497,12 +497,11 @@ const schemas = {
           'activite',
           'restaurant',
           'sortie',
-          'transport',
           'evenement',
           'temps_libre',
         ],
         description:
-          'Un hébergement ne peut pas être créé ou remplacé par ce contrat générique.',
+          'Ni un hébergement ni un transport ne peuvent être créés ou remplacés par ce contrat générique : ils passent par leur contrat dédié (remplacer_hotel, modifier_demande_transport).',
       },
       nom: { type: 'string', minLength: 1, maxLength: 200 },
       lieu: {

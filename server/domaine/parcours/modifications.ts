@@ -20,10 +20,6 @@ import {
   verifierResponsabilite,
   type ActionParcours,
 } from './invariants.js';
-import {
-  JUSTIFICATION_TRANSPORT_GENERIQUE,
-  LIBELLE_TRANSPORT_GENERIQUE,
-} from '../transport/index.js';
 
 // Le cœur du produit (invariant 3 + ADR-0004) : modifier un élément sans tout
 // refaire. Logique pure et immuable — le parcours d'origine n'est jamais touché.
@@ -39,12 +35,18 @@ import {
  * jamais un élément persistant complet. Les preuves, identifiants externes,
  * liens, statuts de confiance et dérivés restent donc impossibles à exprimer.
  *
- * L'hébergement est volontairement exclu de ce chemin générique : son identité
- * doit passer par `remplacer_hotel`, donc par Foursquare côté serveur.
+ * L'hébergement et le transport sont volontairement exclus de ce chemin
+ * générique : leur identité doit passer par un contrat dédié — `remplacer_hotel`
+ * (Foursquare) pour l'hébergement, `modifier_demande_transport` (F4-E) pour le
+ * transport — plutôt que par un libellé libre que le client pourrait forger.
+ * Sans cette exclusion, un `ajouter_element`/`remplacer_element` de type
+ * `transport` pourrait désynchroniser la correspondance positionnelle entre
+ * tronçons de la demande et éléments transport de la timeline, sur laquelle
+ * `modifier_demande_transport` s'appuie.
  */
 export const PropositionElementClientSchema = z
   .object({
-    type: TypeElementSchema.exclude(['hebergement']),
+    type: TypeElementSchema.exclude(['hebergement', 'transport']),
     nom: z.string().trim().min(1).max(200),
     lieu: z.string().trim().min(1).max(300).optional(),
     plage: PlageHoraireSchema.strict().optional(),
@@ -52,24 +54,6 @@ export const PropositionElementClientSchema = z
     justification: z.string().trim().min(1).max(1000),
   })
   .strict();
-
-type PropositionElementClient = z.infer<
-  typeof PropositionElementClientSchema
->;
-
-function neutraliserPropositionTransport(
-  proposition: PropositionElementClient
-): PropositionElementClient {
-  if (proposition.type !== 'transport') return proposition;
-  return {
-    type: 'transport',
-    nom: LIBELLE_TRANSPORT_GENERIQUE,
-    justification: JUSTIFICATION_TRANSPORT_GENERIQUE,
-    ...(proposition.prix === undefined
-      ? {}
-      : { prix: proposition.prix }),
-  };
-}
 
 export const DemandeModificationHotelClientSchema = z.discriminatedUnion(
   'type',
@@ -294,9 +278,7 @@ export function preparerDemandeSurElementClient(
 ): DemandeSurElement {
   switch (demande.type) {
     case 'ajouter_element': {
-      const proposition = neutraliserPropositionTransport(
-        demande.element
-      );
+      const proposition = demande.element;
       return {
         ...demande,
         element: ElementSchema.parse({
@@ -308,9 +290,7 @@ export function preparerDemandeSurElementClient(
       };
     }
     case 'remplacer_element': {
-      const proposition = neutraliserPropositionTransport(
-        demande.remplacement
-      );
+      const proposition = demande.remplacement;
       const element = ElementSchema.parse({
         id: 'remplacement-interne',
         ...proposition,

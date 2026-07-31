@@ -394,14 +394,23 @@ modification, l'OpenAPI et le front.
   un parcours sans demande transport, est refusé (422) : ajouter ou retirer un
   transport relève des opérations d'élément existantes, hors de ce lot. Le
   niveau de confiance (`suggestion`) et le transport local restent inchangés.
+- **Le transport n'a plus qu'une seule porte client.** Comme l'hébergement, le
+  type `transport` est désormais exclu du contrat générique
+  (`PropositionElementClientSchema`) : `ajouter_element` et `remplacer_element`
+  ne peuvent plus créer ni remplacer un transport. Sans cette exclusion, un
+  ajout générique aurait pu désynchroniser la correspondance positionnelle
+  tronçon ↔ élément et rattacher un lien au mauvais tronçon. La reconstruction
+  positionnelle est donc sûre : aucune route cliente ne peut plus la fausser.
 - **OpenAPI synchronisée.** `LienRechercheTransport` documenté et exposé en
   lecture seule sur `Element` ; dixième discriminant ajouté au contrat de
   modification. Front : un composant unique réutilisé par le détail et le
   partage affiche le lien seulement s'il existe, comme une recherche externe
   explicite, jamais comme une réservation.
-- 8 tests ajoutés (`tests/unit/modificationTransport.test.ts`), OpenAPI
-  resynchronisée, 1565 verts sur toute la suite, typecheck OK, lint sans
-  nouvelle erreur, aucun appel réseau. F4 est terminé.
+- Tests ajoutés pour le service (`tests/unit/modificationTransport.test.ts`) et
+  pour l'exclusion transport du chemin générique
+  (`modifications.test.ts`, `transportActif.test.ts`), OpenAPI resynchronisée,
+  1568 verts sur toute la suite, typecheck OK, lint sans nouvelle erreur, aucun
+  appel réseau. F4 est terminé.
 
 ## Refonte Experience AI — plan de build
 
