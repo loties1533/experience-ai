@@ -436,25 +436,37 @@ modification, l'OpenAPI et le front.
 - **Deuxième variante de refus, jamais confondue avec la première.** Le
   contrat IA de `server/agents/generation.ts` distinguait déjà un refus pour
   donnée essentielle introuvable (`donnees_essentielles_insuffisantes`, avec
-  `besoinEssentiel` vérifiable via `statutRechercheEssentielle`). S'y ajoute
-  `hors_perimetre_produit` : `{"refus":{"code":"hors_perimetre_produit","message":string}}`,
-  sans recherche associée — jamais requalifiable en indisponibilité technique
-  (503). Les deux variantes sont un `z.discriminatedUnion('code', …)` `.strict()` :
-  aucun champ hors contrat, aucun code inconnu accepté, aucun texte libre.
+  `besoinEssentiel` vérifiable via `statutRechercheEssentielle`, message
+  public porté par le modèle — comportement inchangé). S'y ajoute
+  `hors_perimetre_produit`, sans recherche associée — jamais requalifiable en
+  indisponibilité technique (503).
+- **Revue finale ciblée (PR #52) : le message IA ne devient jamais public.**
+  Le premier contrat de `hors_perimetre_produit` acceptait un champ
+  `message` du modèle et le renvoyait tel quel comme message d'erreur
+  public — un texte libre de l'IA pouvait donc fuiter (justification,
+  mention d'outils ou d'instructions internes). Corrigé : le contrat de cette
+  variante est réduit au seul `code` (`{"refus":{"code":"hors_perimetre_produit"}}`,
+  `RefusHorsPerimetreSchema` sans `.strict()`, donc tout champ `message`
+  ajouté quand même par le modèle est silencieusement supprimé par le
+  parsing Zod — jamais lu, jamais renvoyé, jamais persisté). Le serveur
+  associe ce code à un message public fixe et maîtrisé
+  (`MESSAGE_PUBLIC_REFUS_HORS_PERIMETRE`). `donnees_essentielles_insuffisantes`
+  reste inchangé (message porté par le modèle, hors périmètre de cette
+  correction).
 - **`SYSTEM_GENERATION` documente les trois sorties possibles** (parcours,
-  refus pour donnée essentielle, refus hors périmètre) et rappelle qu'un refus
-  est toujours l'une de ces deux formes JSON, jamais une phrase hors JSON.
+  refus pour donnée essentielle, refus hors périmètre) et précise que le
+  refus hors périmètre est réduit au seul code, choisi par le modèle — jamais
+  de champ ni de justification libre.
 - **502 conservé pour toute sortie réellement inexploitable** : texte libre
-  (`json_invalide`), code de refus inconnu ou refus incomplet
+  (`json_invalide`), code de refus inconnu ou refus sans code
   (`schema_generation_invalide`, car ni refus valide ni parcours valide).
-  Le message public d'un refus reste la phrase courte fournie par le modèle
-  dans `message` — jamais le prompt ni la réponse brute.
 - Tests ajoutés dans `tests/unit/generationOutillee.test.ts` : refus hors
-  périmètre structuré (422, aucune recherche déclenchée), code de refus
-  inconnu rejeté (502), refus hors périmètre incomplet rejeté (502), refus en
-  texte libre toujours `json_invalide` (502, jamais un 422 déguisé), parcours
-  valide inchangé. Suite complète verte (1696 tests), typecheck OK, lint sans
-  nouvelle erreur.
+  périmètre structuré (422, message public fixe, aucune recherche
+  déclenchée), un `message` ajouté quand même par le modèle n'apparaît
+  jamais dans la réponse publique, code de refus inconnu rejeté (502), refus
+  sans code rejeté (502), refus en texte libre toujours `json_invalide`
+  (502, jamais un 422 déguisé), parcours valide inchangé. Suite complète
+  verte (1697 tests), typecheck OK, lint sans nouvelle erreur.
 - **Hors périmètre.** Aucun benchmark réseau lancé ; aucun changement du
   périmètre géographique produit, du modèle de production, de
   `MAX_TOURS_OUTILS` ni de la politique de reprise.

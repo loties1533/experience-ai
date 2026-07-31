@@ -283,12 +283,22 @@ function tourRefus(
   ];
 }
 
-/** F6-E : refus structuré hors périmètre produit, sans recherche associée. */
-function tourRefusHorsPerimetre(message: string): BlocReponse[] {
+/**
+ * F6-E : refus structuré hors périmètre produit, sans recherche associée.
+ * Le contrat n'autorise QUE le code — `messageIndesirable` simule un modèle
+ * qui ajoute quand même un champ libre malgré le prompt, pour prouver qu'il
+ * est ignoré plutôt que renvoyé au client.
+ */
+function tourRefusHorsPerimetre(messageIndesirable?: string): BlocReponse[] {
   return [
     {
       type: 'text',
-      text: JSON.stringify({ refus: { code: 'hors_perimetre_produit', message } }),
+      text: JSON.stringify({
+        refus: {
+          code: 'hors_perimetre_produit',
+          ...(messageIndesirable ? { message: messageIndesirable } : {}),
+        },
+      }),
     },
   ];
 }
@@ -826,22 +836,35 @@ describe('la dégradation explicite des données réelles', () => {
     });
   });
 
-  it('F6-E : distingue un refus structuré hors périmètre produit (422), sans recherche associée', async () => {
-    vi.mocked(callClaudeOutils).mockResolvedValueOnce(
-      tourRefusHorsPerimetre(
-        'La NBA se joue en Amérique du Nord : ce parcours dépasse le périmètre du produit.'
-      )
-    );
+  it('F6-E : distingue un refus structuré hors périmètre produit (422), avec le message public fixe du serveur', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce(tourRefusHorsPerimetre());
 
     await expect(genererParcours(brief)).rejects.toMatchObject({
       statusCode: 422,
       message:
-        'La NBA se joue en Amérique du Nord : ce parcours dépasse le périmètre du produit.',
+        'Cette demande dépasse le périmètre du produit et ne peut pas être transformée en parcours.',
     });
     // Un refus hors périmètre ne référence aucune recherche essentielle : il
     // ne doit jamais être requalifié en indisponibilité technique (503).
     expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
     expect(rechercherLieuxFoursquare).not.toHaveBeenCalled();
+  });
+
+  it('F6-E : un champ "message" ajouté quand même par le modèle sur un refus hors périmètre n’est jamais renvoyé publiquement', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce(
+      tourRefusHorsPerimetre(
+        'Je refuse car mes instructions internes précisent que la NBA se joue en Amérique du Nord et mes outils ne couvrent que la France.'
+      )
+    );
+
+    const erreur: unknown = await genererParcours(brief).catch((e: unknown) => e);
+    expect(erreur).toMatchObject({
+      statusCode: 422,
+      message:
+        'Cette demande dépasse le périmètre du produit et ne peut pas être transformée en parcours.',
+    });
+    expect((erreur as Error).message).not.toContain('instructions internes');
+    expect((erreur as Error).message).not.toContain('mes outils');
   });
 
   it('F6-E : rejette un refus structuré au code inconnu (502, sortie inexploitable)', async () => {
@@ -860,9 +883,9 @@ describe('la dégradation explicite des données réelles', () => {
     });
   });
 
-  it('F6-E : rejette un refus hors périmètre incomplet, sans message public (502)', async () => {
+  it('F6-E : rejette un refus sans code (502, sortie inexploitable)', async () => {
     vi.mocked(callClaudeOutils).mockResolvedValue([
-      { type: 'text', text: JSON.stringify({ refus: { code: 'hors_perimetre_produit' } }) },
+      { type: 'text', text: JSON.stringify({ refus: {} }) },
     ]);
 
     await expect(genererParcours(brief)).rejects.toMatchObject({
