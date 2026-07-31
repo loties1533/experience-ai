@@ -1060,6 +1060,67 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
     await expect(genererParcours(briefComplet)).rejects.toThrow('inexploitable');
   });
 
+  // F6-G — reproduction du chemin Zod exact observé en benchmark réel
+  // (claude-sonnet-5 × evg-deux-jours) : moments[0].elements[0].identifiantExterne,
+  // code too_small, quand le modèle écrit "" au lieu d'omettre la clé (typiquement
+  // après une recherche Foursquare restée sans candidat, y compris à la suite
+  // d'une erreur HTTP 400 du fournisseur).
+  it('accepte un identifiantExterne vide comme absent (chemin Zod moments[0].elements[0].identifiantExterne)', async () => {
+    vi.mocked(callAIAvecOutils).mockResolvedValue(
+      JSON.stringify({
+        moments: [
+          {
+            titre: 'Soirée à Bordeaux',
+            elements: [
+              {
+                ref: 'resto-soir-1',
+                type: 'restaurant',
+                identifiantExterne: '',
+                nom: 'Un restaurant proposé par le modèle',
+                justification: 'clôturer la soirée',
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    const parcours = await genererParcours(briefComplet);
+
+    expect(() => ParcoursSchema.parse(parcours)).not.toThrow();
+    // Sans candidat rapproché (identifiantExterne vide = absent, comme un nom
+    // introuvable), aucun contenu inventé par le modèle n'est conservé : le
+    // nom retombe sur la suggestion générique du serveur.
+    expect(parcours.timeline[0].elements[0]).toMatchObject({
+      confiance: { niveau: 'suggestion' },
+    });
+    expect(parcours.timeline[0].elements[0].nom).not.toBe(
+      'Un restaurant proposé par le modèle'
+    );
+  });
+
+  it('rejette toujours un identifiantExterne d’un type incorrect (le schéma reste strict, seule la chaîne vide est normalisée)', async () => {
+    vi.mocked(callAIAvecOutils).mockResolvedValue(
+      JSON.stringify({
+        moments: [
+          {
+            titre: 'Soirée à Bordeaux',
+            elements: [
+              {
+                ref: 'resto-soir-1',
+                type: 'restaurant',
+                identifiantExterne: 42,
+                nom: 'Un restaurant',
+                justification: 'clôturer la soirée',
+              },
+            ],
+          },
+        ],
+      })
+    );
+    await expect(genererParcours(briefComplet)).rejects.toThrow('inexploitable');
+  });
+
   it('rejette une forme invalide avant tout appel au modèle', async () => {
     await expect(
       genererParcours({
