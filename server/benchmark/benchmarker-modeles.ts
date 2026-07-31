@@ -5,6 +5,10 @@
 //   npm run benchmark:modeles
 //   npx tsx server/benchmark/benchmarker-modeles.ts --modeles=claude-haiku-4-5-20251001,claude-sonnet-5 --repetitions=3
 //
+// F6-D — cibler des couples précis modèle/scénario (prime sur --modeles) :
+//   npx tsx server/benchmark/benchmarker-modeles.ts \
+//     --essais=claude-haiku-4-5-20251001:nba-multi-villes,claude-sonnet-5:soiree-bordeaux --repetitions=1
+//
 // Jamais lancé par Vitest ni par la CI. Ne modifie ni ne persiste aucun
 // parcours utilisateur réel : chaque appel passe par genererParcours() sur
 // un brief fictif, exactement comme un vrai parcours, mais rien n'est écrit
@@ -23,6 +27,7 @@ import {
   categoriserEchec,
   construireRapport,
   coutEstime,
+  executerCouplesCibles,
   executerTousLesEssais,
   parserArguments,
   parserTarifs,
@@ -142,29 +147,30 @@ function ecrireRapport(rapport: RapportBenchmark): string {
 
 async function main(): Promise<void> {
   verifierCleAnthropic(process.env);
-  const { modeles, repetitions } = parserArguments(process.argv.slice(2), process.env);
+  const { modeles, repetitions, essaisCibles } = parserArguments(process.argv.slice(2), process.env);
   const tarifs = parserTarifs(process.env.BENCHMARK_TARIFS_JSON);
 
   console.log(
-    `Benchmark F6-B — ${modeles.length} modèle(s), ${SCENARIOS_BENCHMARK.length} scénario(s), ` +
-      `${repetitions} répétition(s) chacun.`
+    essaisCibles
+      ? `Benchmark F6-D — ${essaisCibles.length} couple(s) ciblé(s), ${repetitions} répétition(s) chacun.`
+      : `Benchmark F6-B — ${modeles.length} modèle(s), ${SCENARIOS_BENCHMARK.length} scénario(s), ` +
+          `${repetitions} répétition(s) chacun.`
   );
 
-  const executions = await executerTousLesEssais(
-    modeles,
-    SCENARIOS_BENCHMARK,
-    repetitions,
-    async (scenario, modele, repetition) => {
-      console.log(`→ ${modele} / ${scenario.nom} / essai ${repetition}/${repetitions}`);
-      const resultat = await executerUnEssai(scenario, modele, repetition);
-      console.log(
-        resultat.succes
-          ? `  OK — ${resultat.dureeMs} ms, ${resultat.tokensEntree}+${resultat.tokensSortie} tokens`
-          : `  ÉCHEC (${resultat.categorieEchec}${resultat.sousCodeEchec ? `/${resultat.sousCodeEchec}` : ''}) — ${resultat.dureeMs} ms`
-      );
-      return resultat;
-    }
-  );
+  const executerUnEssaiTrace = async (scenario: ScenarioBenchmark, modele: string, repetition: number) => {
+    console.log(`→ ${modele} / ${scenario.nom} / essai ${repetition}/${repetitions}`);
+    const resultat = await executerUnEssai(scenario, modele, repetition);
+    console.log(
+      resultat.succes
+        ? `  OK — ${resultat.dureeMs} ms, ${resultat.tokensEntree}+${resultat.tokensSortie} tokens`
+        : `  ÉCHEC (${resultat.categorieEchec}${resultat.sousCodeEchec ? `/${resultat.sousCodeEchec}` : ''}) — ${resultat.dureeMs} ms`
+    );
+    return resultat;
+  };
+
+  const executions = essaisCibles
+    ? await executerCouplesCibles(essaisCibles, SCENARIOS_BENCHMARK, repetitions, executerUnEssaiTrace)
+    : await executerTousLesEssais(modeles, SCENARIOS_BENCHMARK, repetitions, executerUnEssaiTrace);
 
   // Garde-fou : n'importe quel champ hors de cette liste indiquerait une
   // fuite de contenu (prompt, réponse, clé). Vérifié AVANT d'écrire quoi que

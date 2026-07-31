@@ -12,11 +12,13 @@ import {
   construireRapport,
   construireStatistiquesEnsemble,
   coutEstime,
+  executerCouplesCibles,
   executerTousLesEssais,
   mediane,
   minMax,
   moyenne,
   parserArguments,
+  parserEssaisCibles,
   parserTarifs,
   sousCodeEchec,
   variance,
@@ -79,6 +81,68 @@ describe('parserArguments', () => {
 
   it.each(['0', '-1', 'x', '1.5'])('refuse un nombre de répétitions invalide (%s)', (valeur) => {
     expect(() => parserArguments([`--repetitions=${valeur}`], {})).toThrow(/répétitions/i);
+  });
+
+  it("n'a pas de couples ciblés par défaut", () => {
+    expect(parserArguments([], {}).essaisCibles).toBeUndefined();
+  });
+
+  it('lit des couples ciblés depuis --essais (prime implicitement sur --modeles)', () => {
+    const options = parserArguments(
+      [
+        '--modeles=claude-haiku-4-5-20251001',
+        '--essais=claude-haiku-4-5-20251001:nba-multi-villes,claude-sonnet-5:soiree-bordeaux,claude-sonnet-5:evg-deux-jours',
+      ],
+      {}
+    );
+    expect(options.essaisCibles).toEqual([
+      { modele: 'claude-haiku-4-5-20251001', scenarioId: 'nba-multi-villes' },
+      { modele: 'claude-sonnet-5', scenarioId: 'soiree-bordeaux' },
+      { modele: 'claude-sonnet-5', scenarioId: 'evg-deux-jours' },
+    ]);
+  });
+
+  it('lit --essais depuis BENCHMARK_ESSAIS si aucun argument n’est fourni', () => {
+    const options = parserArguments([], { BENCHMARK_ESSAIS: 'claude-sonnet-5:soiree-bordeaux' });
+    expect(options.essaisCibles).toEqual([{ modele: 'claude-sonnet-5', scenarioId: 'soiree-bordeaux' }]);
+  });
+});
+
+describe('parserEssaisCibles — F6-D', () => {
+  it('sélectionne exactement les trois couples précis de la mission F6-D', () => {
+    const couples = parserEssaisCibles(
+      'claude-haiku-4-5-20251001:nba-multi-villes,claude-sonnet-5:soiree-bordeaux,claude-sonnet-5:evg-deux-jours',
+      SCENARIOS_BENCHMARK
+    );
+    expect(couples).toEqual([
+      { modele: 'claude-haiku-4-5-20251001', scenarioId: 'nba-multi-villes' },
+      { modele: 'claude-sonnet-5', scenarioId: 'soiree-bordeaux' },
+      { modele: 'claude-sonnet-5', scenarioId: 'evg-deux-jours' },
+    ]);
+    expect(couples).toHaveLength(3);
+  });
+
+  it('refuse un scénario inconnu', () => {
+    expect(() => parserEssaisCibles('claude-sonnet-5:scenario-fantome', SCENARIOS_BENCHMARK)).toThrow(
+      /scénario inconnu/i
+    );
+  });
+
+  it('refuse un modèle vide', () => {
+    expect(() => parserEssaisCibles(':nba-multi-villes', SCENARIOS_BENCHMARK)).toThrow(/modèle vide/i);
+  });
+
+  it.each(['claude-sonnet-5', 'claude-sonnet-5:nba-multi-villes:trop', ''])(
+    'refuse un couple mal formé ("%s")',
+    (brut) => {
+      expect(() => parserEssaisCibles(brut, SCENARIOS_BENCHMARK)).toThrow();
+    }
+  );
+
+  it('refuse un couple dupliqué', () => {
+    expect(() =>
+      parserEssaisCibles('claude-sonnet-5:soiree-bordeaux,claude-sonnet-5:soiree-bordeaux', SCENARIOS_BENCHMARK)
+    ).toThrow(/dupliqué/i);
   });
 });
 
@@ -366,5 +430,41 @@ describe('executerTousLesEssais — poursuite après l’échec d’un essai', (
       resultat({ scenarioId: scenario.id, modele, succes: true, repetition })
     );
     expect(resultats).toHaveLength(4);
+  });
+});
+
+describe('executerCouplesCibles — F6-D', () => {
+  const scenarios: ScenarioBenchmark[] = [
+    { id: 'nba-multi-villes', nom: 'NBA', brief: {} as Brief },
+    { id: 'soiree-bordeaux', nom: 'Bordeaux', brief: {} as Brief },
+    { id: 'evg-deux-jours', nom: 'EVG', brief: {} as Brief },
+  ];
+
+  it("n'exécute que les couples ciblés, sans combinaison supplémentaire", async () => {
+    const couples = [
+      { modele: 'claude-haiku-4-5-20251001', scenarioId: 'nba-multi-villes' },
+      { modele: 'claude-sonnet-5', scenarioId: 'soiree-bordeaux' },
+      { modele: 'claude-sonnet-5', scenarioId: 'evg-deux-jours' },
+    ];
+    const appels: Array<{ modele: string; scenarioId: string }> = [];
+    const resultats = await executerCouplesCibles(couples, scenarios, 1, async (scenario, modele, repetition) => {
+      appels.push({ modele, scenarioId: scenario.id });
+      return resultat({ scenarioId: scenario.id, modele, succes: true, repetition });
+    });
+
+    expect(appels).toEqual([
+      { modele: 'claude-haiku-4-5-20251001', scenarioId: 'nba-multi-villes' },
+      { modele: 'claude-sonnet-5', scenarioId: 'soiree-bordeaux' },
+      { modele: 'claude-sonnet-5', scenarioId: 'evg-deux-jours' },
+    ]);
+    expect(resultats).toHaveLength(3);
+  });
+
+  it('applique les répétitions pour chaque couple ciblé', async () => {
+    const couples = [{ modele: 'claude-sonnet-5', scenarioId: 'soiree-bordeaux' }];
+    const resultats = await executerCouplesCibles(couples, scenarios, 3, async (scenario, modele, repetition) =>
+      resultat({ scenarioId: scenario.id, modele, succes: true, repetition })
+    );
+    expect(resultats.map((r) => r.repetition)).toEqual([1, 2, 3]);
   });
 });
