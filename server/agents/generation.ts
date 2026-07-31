@@ -942,12 +942,22 @@ type LotPrevu = PlanGeneration['lots'][number];
  * assemblage, jamais par le LLM) et l'hébergement n'est transmis que pour les
  * séjours de cette ville. La durée globale est masquée dès qu'une plage précise
  * la remplace, pour ne pas inviter le modèle à couvrir tout le parcours.
+ *
+ * F6-F — un lot qui couvre À LUI SEUL tout le plan (mono-ville, mono-bloc)
+ * garde les heures précises du brief (ex. une soirée 18h-23h59) plutôt que de
+ * les reconstruire en jour civil plein (00:00-23:59:59.999) : cette fenêtre
+ * plus large que celle demandée invitait le modèle à raisonner en heure
+ * locale et à écrire une plage franchissant minuit UTC, hors du seul jour que
+ * couvre le lot. Un plan à plusieurs lots garde la reconstruction : chaque
+ * lot n'y couvre qu'une sous-plage de jours du brief, dont le brief ne porte
+ * pas les heures.
  */
-function briefPourLot(brief: Brief, lot: LotPrevu): Record<string, unknown> {
+function briefPourLot(brief: Brief, lot: LotPrevu, lotUniqueDuPlan: boolean): Record<string, unknown> {
   const lieux = lot.ville ? [lot.ville] : brief.lieux;
-  const dates = lot.plage
-    ? { debut: `${lot.plage.debut}T00:00:00.000Z`, fin: `${lot.plage.fin}T23:59:59.999Z` }
-    : brief.dates;
+  const dates =
+    lot.plage && !lotUniqueDuPlan
+      ? { debut: `${lot.plage.debut}T00:00:00.000Z`, fin: `${lot.plage.fin}T23:59:59.999Z` }
+      : brief.dates;
 
   const sejoursDuLot =
     brief.hebergement?.necessaire === true && lot.ville
@@ -1185,7 +1195,7 @@ async function genererEtAssemblerLots(
   for (let index = 0; index < plan.lots.length; index += 1) {
     const lot = plan.lots[index];
     const prompt = `Construis un parcours pour ce brief :
-${JSON.stringify(briefPourLot(brief, lot), null, 2)}${blocPreferences}`;
+${JSON.stringify(briefPourLot(brief, lot, plan.lots.length === 1), null, 2)}${blocPreferences}`;
     const villesAutoriseesDuLot = lot.ville ? [lot.ville] : brief.lieux;
 
     let tentative = 0;

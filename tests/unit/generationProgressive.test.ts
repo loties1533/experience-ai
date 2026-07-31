@@ -423,6 +423,150 @@ describe('F5-B — validation technique du scope d’un lot', () => {
   });
 });
 
+describe('F6-F — bornes temporelles d’un lot mono-bloc (ex. soirée courte)', () => {
+  const briefSoiree: Brief = BriefSchema.parse({
+    intention: 'passer une bonne soirée entre amis à Bordeaux',
+    avecQui: 'amis',
+    duree: { valeur: 5, unite: 'heures' },
+    dates: { debut: '2026-09-12T18:00:00.000Z', fin: '2026-09-12T23:59:00.000Z' },
+    lieux: ['Bordeaux'],
+  });
+
+  function elementAvecPlage(debut: string, fin: string) {
+    return {
+      titre: 'Soirée',
+      ville: 'Bordeaux',
+      elements: [
+        {
+          ref: 'sortie-1',
+          type: 'sortie',
+          nom: 'Bar',
+          justification: 'clôture de soirée',
+          plage: { debut, fin },
+        },
+      ],
+    };
+  }
+
+  it('conserve les heures précises du brief pour un lot unique, sans les élargir au jour civil plein', async () => {
+    expect(deriverPlan(briefSoiree).lots).toHaveLength(1);
+    let datesRecues: { debut: string; fin: string } | undefined;
+    vi.mocked(callAIAvecOutils).mockImplementation(
+      llmParLot(({ ville, dates }) => {
+        datesRecues = dates;
+        return { moments: [momentActivite(ville)] };
+      })
+    );
+
+    await genererParcours(briefSoiree);
+
+    expect(datesRecues).toEqual(briefSoiree.dates);
+  });
+
+  it('accepte une activité entièrement dans la plage acceptée', async () => {
+    vi.mocked(callAIAvecOutils).mockImplementation(async () =>
+      JSON.stringify({
+        moments: [elementAvecPlage('2026-09-12T19:00:00.000Z', '2026-09-12T21:00:00.000Z')],
+      })
+    );
+
+    await expect(genererParcours(briefSoiree)).resolves.toBeTruthy();
+  });
+
+  it('rejette une plage qui commence la veille du lot', async () => {
+    vi.mocked(callAIAvecOutils).mockImplementation(async () =>
+      JSON.stringify({
+        moments: [elementAvecPlage('2026-09-11T19:00:00.000Z', '2026-09-12T21:00:00.000Z')],
+      })
+    );
+
+    await expect(genererParcours(briefSoiree)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'plage_hors_lot',
+    });
+  });
+
+  it('rejette une plage qui finit le lendemain du lot', async () => {
+    vi.mocked(callAIAvecOutils).mockImplementation(async () =>
+      JSON.stringify({
+        moments: [elementAvecPlage('2026-09-12T22:00:00.000Z', '2026-09-13T01:00:00.000Z')],
+      })
+    );
+
+    await expect(genererParcours(briefSoiree)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'plage_hors_lot',
+    });
+  });
+
+  it('accepte une plage strictement calée sur les bornes exactes du brief', async () => {
+    vi.mocked(callAIAvecOutils).mockImplementation(async () =>
+      JSON.stringify({
+        moments: [
+          elementAvecPlage(briefSoiree.dates!.debut, briefSoiree.dates!.fin),
+        ],
+      })
+    );
+
+    await expect(genererParcours(briefSoiree)).resolves.toBeTruthy();
+  });
+
+  it('une soirée qui franchit minuit UTC reste hors périmètre du lot — règle produit inchangée', async () => {
+    // Le brief borne lui-même la soirée à 23:59 UTC le 12 : une plage qui
+    // déborde sur le 13 n'est jamais admise silencieusement, même si elle
+    // correspond à un horaire local raisonnable (minuit UTC ≈ 2h du matin à
+    // Bordeaux en septembre). Franchir minuit reste un vrai débordement tant
+    // que le brief ne le couvre pas explicitement.
+    vi.mocked(callAIAvecOutils).mockImplementation(async () =>
+      JSON.stringify({
+        moments: [elementAvecPlage('2026-09-12T23:00:00.000Z', '2026-09-13T00:30:00.000Z')],
+      })
+    );
+
+    await expect(genererParcours(briefSoiree)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'plage_hors_lot',
+    });
+  });
+
+  it('une plage sans suffixe "Z" est traitée comme UTC, sans décalage local implicite', async () => {
+    vi.mocked(callAIAvecOutils).mockImplementation(async () =>
+      JSON.stringify({
+        moments: [elementAvecPlage('2026-09-12T19:00:00', '2026-09-12T21:00:00')],
+      })
+    );
+
+    await expect(genererParcours(briefSoiree)).resolves.toBeTruthy();
+  });
+
+  it('génération progressive multi-lot inchangée : chaque lot reçoit toujours un jour civil plein', async () => {
+    const brief = BriefSchema.parse({
+      intention: 'un long séjour à Bordeaux',
+      avecQui: 'solo',
+      duree: { valeur: 11, unite: 'jours' },
+      lieux: ['Bordeaux'],
+      dates: { debut: '2026-09-01T00:00:00Z', fin: '2026-09-11T23:59:59Z' },
+    });
+    expect(deriverPlan(brief).lots.length).toBeGreaterThan(1);
+
+    const datesParAppel: { debut: string; fin: string }[] = [];
+    vi.mocked(callAIAvecOutils).mockImplementation(
+      llmParLot(({ ville, dates }) => {
+        if (dates) datesParAppel.push(dates);
+        return { moments: [momentActivite(ville)] };
+      })
+    );
+
+    await genererParcours(brief);
+
+    expect(datesParAppel.length).toBeGreaterThan(0);
+    for (const dates of datesParAppel) {
+      expect(dates.debut.endsWith('T00:00:00.000Z')).toBe(true);
+      expect(dates.fin.endsWith('T23:59:59.999Z')).toBe(true);
+    }
+  });
+});
+
 describe('F5-B — reprise ciblée', () => {
   it('rejoue seulement le lot en 503, sans régénérer les lots déjà validés', async () => {
     let tentativesParis = 0;
