@@ -48,15 +48,21 @@ import type {
 
 const CONCURRENCE_MAX_RESOLUTION_LIENS = 3;
 
-// --- F5-A : plan de génération (dérivé purement, pas encore branché) ---
+// --- F5 : plan de génération dérivé, puis génération progressive par lots ---
 //
-// Le plan découpe un parcours en lots par ville et par blocs de jours. F5-A le
-// dérive et le teste ; F5-B l'utilisera pour générer lot par lot avec reprise.
-// Ici, la génération reste un unique appel IA : `deriverPlan` n'oriente encore
-// aucun appel. On construit le nouveau avant de basculer, sans faire cohabiter
-// deux pipelines.
+// Le plan (F5-A) découpe un parcours en lots par ville et par blocs de jours.
+// F5-B le branche réellement : chaque lot est généré par son propre appel IA,
+// restreint à sa ville et à sa plage, validé et namespacé, avant assemblage.
+// L'ancien appel IA unique a disparu — le cas mono-lot emprunte exactement le
+// même pipeline progressif.
 
 const JOURS_MAX_PAR_LOT = 5;
+
+// Un lot techniquement indisponible (503) est rejoué seul, sans toucher aux
+// lots déjà validés. Au-delà de cette borne, la génération échoue sans exposer
+// de parcours partiel. Un refus métier (422) ou une sortie inexploitable (502)
+// ne se rejoue pas : ce ne sont pas des indisponibilités techniques.
+const TENTATIVES_MAX_PAR_LOT = 2;
 
 const PlageJoursSchema = z
   .object({ debut: z.iso.date(), fin: z.iso.date() })
@@ -896,48 +902,62 @@ function ajouterLiensRechercheHebergement(parcours: Parcours): Parcours {
   };
 }
 
-export async function genererParcours(
-  briefRecu: Brief,
-  preferences: PreferencesParcours | null = null
-): Promise<Parcours> {
-  const resultatBrief = BriefSchema.safeParse(briefRecu);
-  if (!resultatBrief.success) {
-    throw new AppError('Le brief fourni est invalide.', 400);
-  }
-  // Une fin de journée posée à minuit exclurait tout le dernier jour : on la
-  // ramène au sens courant (« du 4 au 6 » comprend le 6 en entier). Fait ici
-  // aussi, et pas seulement à l'intake, car un brief peut arriver directement
-  // par l'API sans être passé par le dialogue.
-  const brief = normaliserDatesBrief(resultatBrief.data);
-  // Un refus métier local précède tout appel à l'IA ou à un fournisseur :
-  // une occupation manquante n'est jamais une panne technique (503).
-  validerDonneesHotelieresEssentielles(brief);
-  const demandeTransport = validerDonneesTransportEssentielles(brief);
+type LotPrevu = PlanGeneration['lots'][number];
 
-  // Mémoire simple (sprint R5) : les préférences orientent, le brief prime.
-  const blocPreferences = preferences
-    ? `\nPréférences connues de l'utilisateur (souples — le brief prime toujours) :
-${JSON.stringify(preferences, null, 2)}`
-    : '';
-  const prompt = `Construis un parcours pour ce brief :
-${JSON.stringify(brief, null, 2)}${blocPreferences}`;
+/**
+ * Le brief remis au modèle pour UN lot : restreint à sa ville et à sa plage de
+ * jours. Le transport est retiré (il est synthétisé de façon déterministe après
+ * assemblage, jamais par le LLM) et l'hébergement n'est transmis que pour les
+ * séjours de cette ville. La durée globale est masquée dès qu'une plage précise
+ * la remplace, pour ne pas inviter le modèle à couvrir tout le parcours.
+ */
+function briefPourLot(brief: Brief, lot: LotPrevu): Record<string, unknown> {
+  const lieux = lot.ville ? [lot.ville] : brief.lieux;
+  const dates = lot.plage
+    ? { debut: `${lot.plage.debut}T00:00:00.000Z`, fin: `${lot.plage.fin}T23:59:59.999Z` }
+    : brief.dates;
 
-  // Une boîte par génération : le journal des lieux trouvés appartient à CE
-  // parcours (le cache des appels, lui, est partagé — cf. lib/cacheMemoire).
-  const boite = creerBoiteAOutils({ villesAutorisees: brief.lieux });
+  const sejoursDuLot =
+    brief.hebergement?.necessaire === true && lot.ville
+      ? brief.hebergement.sejours.filter(
+          (sejour) => cleTexte(sejour.ville) === cleTexte(lot.ville as string)
+        )
+      : [];
+  const hebergement =
+    brief.hebergement?.necessaire === true && sejoursDuLot.length > 0
+      ? { ...brief.hebergement, sejours: sejoursDuLot }
+      : undefined;
+
+  return {
+    intention: brief.intention,
+    avecQui: brief.avecQui,
+    ...(lot.plage ? {} : { duree: brief.duree }),
+    ...(dates ? { dates } : {}),
+    lieux,
+    ...(brief.budgetTotal === undefined ? {} : { budgetTotal: brief.budgetTotal }),
+    ...(brief.ambiance ? { ambiance: brief.ambiance } : {}),
+    contraintes: brief.contraintes,
+    ...(hebergement ? { hebergement } : {}),
+  };
+}
+
+/**
+ * Génère un lot : un appel IA outillé, puis la même frontière de méfiance que
+ * l'ancien appel unique. Rend les moments bruts validés, ou lève une AppError
+ * dont le code porte la politique d'erreur existante (503 technique rejouable,
+ * 422 refus métier, 502 sortie inexploitable).
+ */
+async function genererLot(
+  prompt: string,
+  boite: BoiteAOutils
+): Promise<z.infer<typeof SortieGenerationSchema>> {
   const brut = await callAIAvecOutils(prompt, SYSTEM_GENERATION, boite, 'pack');
-  // Un modèle outillé peut conclure en prose ou tronquer son JSON : c'est une
-  // sortie inexploitable, pas une panne du serveur.
   let contenu: unknown;
   try {
     contenu = parseJSON(brut);
   } catch {
     throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
   }
-  // Aucun fournisseur d'IA n'a répondu (clé à sec, quotas, panne) : le mode
-  // secours renvoie ce signal explicite. On le distingue d'un vrai « charabia »
-  // — ici réessayer tout de suite ne sert à rien, d'où un 503 (service
-  // indisponible) et un message honnête, plutôt qu'un 502 « réessaie ».
   if (
     typeof contenu === 'object' &&
     contenu !== null &&
@@ -972,8 +992,181 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
   if (!sortie.success) {
     throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
   }
+  return sortie.data;
+}
+
+/**
+ * Namespace les refs d'un lot pour qu'elles ne puissent jamais entrer en
+ * collision avec celles d'un autre lot, et réécrit simultanément tous les
+ * `dependDe`. Un `dependDe` qui ne cible pas une ref du même lot fait échouer le
+ * lot (jamais supprimé silencieusement) : une dépendance inter-lots ou inconnue
+ * révèle une sortie incohérente, pas un manque à combler discrètement.
+ */
+function namespacerLot(lot: LotPrevu, moments: MomentGenere[]): MomentGenere[] {
+  const prefixe = `${lot.id}:`;
+  const refs = moments.flatMap((moment) =>
+    moment.elements.map((element) => element.ref)
+  );
+  const refsDuLot = new Set(refs);
+  if (refsDuLot.size !== refs.length) {
+    throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+  }
+  for (const moment of moments) {
+    for (const element of moment.elements) {
+      for (const dependance of element.dependDe) {
+        if (!refsDuLot.has(dependance)) {
+          throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+        }
+      }
+    }
+  }
+  return moments.map((moment) => ({
+    ...moment,
+    elements: moment.elements.map((element) => ({
+      ...element,
+      ref: prefixe + element.ref,
+      dependDe: element.dependDe.map((dependance) => prefixe + dependance),
+    })),
+  }));
+}
+
+/**
+ * Un marqueur de position, sans contenu, injecté à chaque changement de ville
+ * lors de l'assemblage. `nettoyerMomentsTransport` y consomme un tronçon dans
+ * l'ordre, exactement comme un placeholder LLM : le transport reste ainsi entre
+ * les villes, jamais relégué en fin de parcours. Son contenu est toujours
+ * remplacé par le tronçon synthétisé, ou écarté s'il n'y a plus de tronçon.
+ */
+function momentDeTransition(index: number): MomentGenere {
+  return {
+    titre: 'Transition',
+    elements: [
+      {
+        ref: `__transition-${index}`,
+        type: 'transport' as const,
+        nom: 'Transition',
+        justification: 'Transition entre deux villes du parcours.',
+        dependDe: [],
+        estAncre: false,
+      },
+    ],
+  };
+}
+
+/**
+ * Génère chaque lot dans l'ordre du plan, avec reprise ciblée sur la seule
+ * indisponibilité technique (503) et sans jamais régénérer un lot déjà validé.
+ * Assemble ensuite les moments namespacés, en marquant chaque changement de
+ * ville pour un transport déterministe correctement placé.
+ */
+async function genererEtAssemblerLots(
+  brief: Brief,
+  boite: BoiteAOutils,
+  blocPreferences: string,
+  demandeTransport: DemandeTransport | undefined
+): Promise<{ moments: MomentGenere[]; ambiance?: string }> {
+  const plan = deriverPlan(brief);
+  const momentsParLot: MomentGenere[][] = [];
+  let ambiance: string | undefined;
+
+  for (let index = 0; index < plan.lots.length; index += 1) {
+    const lot = plan.lots[index];
+    const prompt = `Construis un parcours pour ce brief :
+${JSON.stringify(briefPourLot(brief, lot), null, 2)}${blocPreferences}`;
+
+    let tentative = 0;
+    for (;;) {
+      const debut = Date.now();
+      try {
+        const sortie = await genererLot(prompt, boite);
+        const moments = namespacerLot(lot, sortie.moments);
+        // La première ambiance proposée par le modèle habille l'ensemble ; à
+        // défaut, celle du brief prend le relais plus loin.
+        ambiance ??= sortie.ambiance;
+        console.info(
+          `[génération] lot ${index + 1}/${plan.lots.length} ` +
+            `(${lot.ville ?? 'sans ville'}${lot.plage ? ` ${lot.plage.debut}→${lot.plage.fin}` : ''}) ` +
+            `— ${moments.length} moment(s), ${Date.now() - debut} ms, tentative ${tentative + 1}`
+        );
+        momentsParLot.push(moments);
+        break;
+      } catch (erreur) {
+        const rejouable =
+          erreur instanceof AppError &&
+          erreur.statusCode === 503 &&
+          tentative < TENTATIVES_MAX_PAR_LOT;
+        if (!rejouable) throw erreur;
+        tentative += 1;
+        console.warn(
+          `[génération] lot ${index + 1}/${plan.lots.length} indisponible, ` +
+            `nouvelle tentative ${tentative + 1}/${TENTATIVES_MAX_PAR_LOT + 1}.`
+        );
+      }
+    }
+  }
+
+  const momentsAssembles: MomentGenere[] = [];
+  for (let index = 0; index < plan.lots.length; index += 1) {
+    momentsAssembles.push(...momentsParLot[index]);
+    const suivant = plan.lots[index + 1];
+    const villeCourante = plan.lots[index].ville;
+    if (
+      demandeTransport &&
+      suivant?.ville &&
+      villeCourante &&
+      cleTexte(villeCourante) !== cleTexte(suivant.ville)
+    ) {
+      momentsAssembles.push(momentDeTransition(index));
+    }
+  }
+  return { moments: momentsAssembles, ambiance };
+}
+
+export async function genererParcours(
+  briefRecu: Brief,
+  preferences: PreferencesParcours | null = null
+): Promise<Parcours> {
+  const resultatBrief = BriefSchema.safeParse(briefRecu);
+  if (!resultatBrief.success) {
+    throw new AppError('Le brief fourni est invalide.', 400);
+  }
+  // Une fin de journée posée à minuit exclurait tout le dernier jour : on la
+  // ramène au sens courant (« du 4 au 6 » comprend le 6 en entier). Fait ici
+  // aussi, et pas seulement à l'intake, car un brief peut arriver directement
+  // par l'API sans être passé par le dialogue.
+  const brief = normaliserDatesBrief(resultatBrief.data);
+  // Un refus métier local précède tout appel à l'IA ou à un fournisseur :
+  // une occupation manquante n'est jamais une panne technique (503).
+  validerDonneesHotelieresEssentielles(brief);
+  const demandeTransport = validerDonneesTransportEssentielles(brief);
+
+  // Mémoire simple (sprint R5) : les préférences orientent, le brief prime.
+  const blocPreferences = preferences
+    ? `\nPréférences connues de l'utilisateur (souples — le brief prime toujours) :
+${JSON.stringify(preferences, null, 2)}`
+    : '';
+
+  // Une boîte par génération, partagée par tous les lots : le journal des lieux
+  // trouvés appartient à CE parcours et alimente la résolution des liens sur
+  // l'agrégat (le cache des appels, lui, est partagé — cf. lib/cacheMemoire).
+  // La restriction d'un lot à sa seule ville passe par son brief : le modèle
+  // n'y voit qu'une ville et sa plage, tandis que les villes autorisées de la
+  // boîte gardent le garde-fou à l'échelle du brief entier.
+  const boite = creerBoiteAOutils({ villesAutorisees: brief.lieux });
+
+  // Génération progressive : un appel IA par lot du plan, reprise ciblée sur la
+  // seule indisponibilité technique, puis assemblage dans l'ordre du plan. La
+  // suite (transport déterministe, ids, liens, enrichissements, validation) ne
+  // s'exécute qu'une fois, sur l'agrégat, comme avant.
+  const { moments: momentsAssembles, ambiance: ambianceGeneree } =
+    await genererEtAssemblerLots(
+      brief,
+      boite,
+      blocPreferences,
+      demandeTransport
+    );
   const momentsNettoyes = nettoyerMomentsTransport(
-    sortie.data.moments,
+    momentsAssembles,
     demandeTransport
   );
 
@@ -1016,7 +1209,7 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
     },
     participants: [{ id: randomUUID(), nom: 'Organisateur', role: 'organisateur' }],
     budget: { mode: 'individuel', montantTotal: brief.budgetTotal },
-    ambiance: sortie.data.ambiance ?? brief.ambiance,
+    ambiance: ambianceGeneree ?? brief.ambiance,
     timeline: preparation.moments.map(({ moment, ville, elements }) => {
       return {
         id: randomUUID(),

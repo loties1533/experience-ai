@@ -283,6 +283,41 @@ function tourRefus(
   ];
 }
 
+/**
+ * F5-B — génération progressive : un appel outillé par lot. Le prompt d'un lot
+ * ne nomme qu'une ville ; on rend d'abord sa recherche, puis sa conclusion dès
+ * qu'un résultat d'outil est présent. Sert à scénariser un parcours multi-ville
+ * généré lot par lot.
+ */
+function outilsParVille(
+  villes: string[],
+  reponses: (ville: string) => {
+    recherche?: BlocReponse[];
+    conclusion: BlocReponse[];
+  }
+) {
+  return async (
+    _systeme: string,
+    messages: Parameters<typeof callClaudeOutils>[1],
+    outils: Parameters<typeof callClaudeOutils>[2]
+  ): Promise<BlocReponse[]> => {
+    // Le brief d'un lot restreint `lieux` à sa seule ville : on la lit là,
+    // jamais dans l'intention (qui peut nommer plusieurs villes).
+    const prompt = String(messages[0]?.content ?? '');
+    const villeDuLot = prompt.match(/"lieux":\s*\[\s*"([^"]+)"/)?.[1];
+    const ville = villeDuLot ?? villes[0];
+    const aResultat = messages.some(
+      (message) =>
+        Array.isArray(message.content) &&
+        message.content.some(
+          (bloc) => (bloc as { type?: string }).type === 'tool_result'
+        )
+    );
+    const { recherche, conclusion } = reponses(ville);
+    return outils && recherche && !aResultat ? recherche : conclusion;
+  };
+}
+
 beforeEach(() => {
   vi.mocked(callClaude).mockReset();
   vi.mocked(callClaudeOutils).mockReset();
@@ -355,31 +390,38 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
         },
       },
     });
-    vi.mocked(callClaudeOutils).mockResolvedValueOnce([
-      {
-        type: 'text',
-        text: JSON.stringify({
-          moments: [
-            {
-              titre: 'TGV 8421 à 09:42',
-              elements: [
+    // Deux villes, aucune date : le plan produit un lot par ville. Chaque lot
+    // conclut directement (aucune recherche) avec un placeholder transport
+    // halluciné, que la synthèse déterministe remplacera.
+    vi.mocked(callClaudeOutils).mockImplementation(
+      outilsParVille(['Bordeaux', 'Paris'], () => ({
+        conclusion: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              moments: [
                 {
-                  ref: 'train',
-                  type: 'transport',
-                  nom: 'TGV 8421',
-                  lieu: 'Gare Montparnasse',
-                  plage: {
-                    debut: '2026-09-10T09:42:00Z',
-                    fin: '2026-09-10T11:18:00Z',
-                  },
-                  justification: 'Train disponible',
+                  titre: 'TGV 8421 à 09:42',
+                  elements: [
+                    {
+                      ref: 'train',
+                      type: 'transport',
+                      nom: 'TGV 8421',
+                      lieu: 'Gare Montparnasse',
+                      plage: {
+                        debut: '2026-09-10T09:42:00Z',
+                        fin: '2026-09-10T11:18:00Z',
+                      },
+                      justification: 'Train disponible',
+                    },
+                  ],
                 },
               ],
-            },
-          ],
-        }),
-      },
-    ]);
+            }),
+          },
+        ],
+      }))
+    );
 
     const parcours = await genererParcours(briefTransport);
 
@@ -1590,62 +1632,43 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
         recupereLe: DATE_RECUPERATION,
       })
     );
-    vi.mocked(callClaudeOutils)
-      .mockResolvedValueOnce([
-        ...tourOutil(
+    // Un lot par ville : chaque lot cherche son hôtel puis conclut sur sa
+    // propre étape hôtelière.
+    vi.mocked(callClaudeOutils).mockImplementation(
+      outilsParVille(['Bordeaux', 'Lyon'], (ville) => ({
+        recherche: tourOutil(
           'chercher_lieux',
-          {
-            ville: 'Bordeaux',
-            requete: 'hôtel',
-            typeMetierRecherche: 'hebergement',
-          },
-          'hotel-bordeaux'
+          { ville, requete: 'hôtel', typeMetierRecherche: 'hebergement' },
+          `hotel-${ville}`
         ),
-        ...tourOutil(
-          'chercher_lieux',
+        conclusion: [
           {
-            ville: 'Lyon',
-            requete: 'hôtel',
-            typeMetierRecherche: 'hebergement',
+            type: 'text',
+            text: JSON.stringify({
+              moments: [
+                {
+                  titre: ville === 'Bordeaux' ? 'Nuit bordelaise' : 'Nuit lyonnaise',
+                  ville,
+                  elements: [
+                    {
+                      ref: `hotel-${ville}`,
+                      type: 'hebergement',
+                      identifiantExterne:
+                        ville === 'Bordeaux'
+                          ? 'fsq-hotel-bordeaux'
+                          : 'fsq-hotel-lyon',
+                      nom: ville === 'Bordeaux' ? 'Hôtel Bordeaux' : 'Hôtel Lyon',
+                      justification:
+                        ville === 'Bordeaux' ? 'première étape' : 'seconde étape',
+                    },
+                  ],
+                },
+              ],
+            }),
           },
-          'hotel-lyon'
-        ),
-      ])
-      .mockResolvedValueOnce([
-        {
-          type: 'text',
-          text: JSON.stringify({
-            moments: [
-              {
-                titre: 'Nuit bordelaise',
-                ville: 'Bordeaux',
-                elements: [
-                  {
-                    ref: 'hotel-bordeaux',
-                    type: 'hebergement',
-                    identifiantExterne: 'fsq-hotel-bordeaux',
-                    nom: 'Hôtel Bordeaux',
-                    justification: 'première étape',
-                  },
-                ],
-              },
-              {
-                titre: 'Nuit lyonnaise',
-                ville: 'Lyon',
-                elements: [
-                  {
-                    ref: 'hotel-lyon',
-                    type: 'hebergement',
-                    identifiantExterne: 'fsq-hotel-lyon',
-                    nom: 'Hôtel Lyon',
-                    justification: 'seconde étape',
-                  },
-                ],
-              },
-            ],
-          }),
-        },
-      ]);
+        ],
+      }))
+    );
 
     const parcours = await genererParcours(briefMultiVille);
 
@@ -2389,62 +2412,43 @@ describe('la génération — ville et catégorie du candidat', () => {
         };
       }
     );
-    vi.mocked(callClaudeOutils)
-      .mockResolvedValueOnce([
-        ...tourOutil(
+    // Un lot par ville : chaque lot cherche puis conclut sur son restaurant.
+    vi.mocked(callClaudeOutils).mockImplementation(
+      outilsParVille(['Bordeaux', 'Lyon'], (ville) => ({
+        recherche: tourOutil(
           'chercher_lieux',
-          {
-            ville: 'Bordeaux',
-            requete: 'restaurant',
-            typeMetierRecherche: 'restaurant',
-          },
-          'outil-bordeaux'
+          { ville, requete: 'restaurant', typeMetierRecherche: 'restaurant' },
+          `outil-${ville}`
         ),
-        ...tourOutil(
-          'chercher_lieux',
+        conclusion: [
           {
-            ville: 'Lyon',
-            requete: 'restaurant',
-            typeMetierRecherche: 'restaurant',
+            type: 'text',
+            text: JSON.stringify({
+              moments: [
+                {
+                  titre:
+                    ville === 'Bordeaux' ? 'Étape bordelaise' : 'Étape lyonnaise',
+                  ville,
+                  elements: [
+                    {
+                      ref: `restaurant-${ville}`,
+                      type: 'restaurant',
+                      identifiantExterne:
+                        ville === 'Bordeaux'
+                          ? 'fsq-central-bordeaux'
+                          : 'fsq-central-lyon',
+                      nom: 'Le Central',
+                      justification:
+                        ville === 'Bordeaux' ? 'première étape' : 'seconde étape',
+                    },
+                  ],
+                },
+              ],
+            }),
           },
-          'outil-lyon'
-        ),
-      ])
-      .mockResolvedValueOnce([
-        {
-          type: 'text',
-          text: JSON.stringify({
-            moments: [
-              {
-                titre: 'Étape bordelaise',
-                ville: 'Bordeaux',
-                elements: [
-                  {
-                    ref: 'restaurant-bordeaux',
-                    type: 'restaurant',
-                    identifiantExterne: 'fsq-central-bordeaux',
-                    nom: 'Le Central',
-                    justification: 'première étape',
-                  },
-                ],
-              },
-              {
-                titre: 'Étape lyonnaise',
-                ville: 'Lyon',
-                elements: [
-                  {
-                    ref: 'restaurant-lyon',
-                    type: 'restaurant',
-                    identifiantExterne: 'fsq-central-lyon',
-                    nom: 'Le Central',
-                    justification: 'seconde étape',
-                  },
-                ],
-              },
-            ],
-          }),
-        },
-      ]);
+        ],
+      }))
+    );
 
     const parcours = await genererParcours(briefMultiVille);
 

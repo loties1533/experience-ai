@@ -415,7 +415,38 @@ modification, l'OpenAPI et le front.
 **F5 — Génération progressive** *(en cours)*
 
 - [x] **F5-A** — plan dérivé pur et transport déterministe
-- [ ] **F5-B** — génération lot par lot, assemblage et reprise du lot en échec
+- [x] **F5-B** — génération lot par lot, assemblage et reprise du lot en échec
+
+### Revue F5-B — génération progressive par lots (31/07)
+
+> Livré par la PR (lien à compléter à l'ouverture).
+
+- **Le plan est branché.** `genererParcours` appelle `deriverPlan`, puis génère
+  chaque lot par son propre appel `callAIAvecOutils`, restreint à sa ville et à
+  sa plage via un brief de lot (le transport est retiré, l'hébergement limité
+  aux séjours de la ville). L'ancien appel IA unique a disparu : le cas mono-lot
+  emprunte exactement le même pipeline, sans cohabitation de deux modèles.
+- **Refs namespacées, dépendances contrôlées.** Chaque lot voit ses refs
+  préfixées et ses `dependDe` réécrits simultanément ; une dépendance qui ne
+  cible pas une ref du même lot fait échouer le lot plutôt que d'être supprimée
+  en silence. Deux lots peuvent donc réutiliser la même ref sans collision d'id.
+- **Assemblage puis queue unique.** Les lots validés sont assemblés dans l'ordre
+  du plan, avec un marqueur de transition à chaque changement de ville ; la suite
+  (transport déterministe, ids, résolution des liens, enrichissements hébergement
+  et transport, validation finale) s'exécute **une seule fois sur l'agrégat**.
+  Aucun `resoudreLiensReels`. Les transports sont synthétisés entre les villes,
+  jamais relégués en fin de parcours.
+- **Reprise ciblée et bornée.** Une indisponibilité technique (503) rejoue le
+  seul lot concerné, au plus `TENTATIVES_MAX_PAR_LOT` fois, sans régénérer les
+  lots déjà validés ; au-delà, la génération échoue **sans exposer de parcours
+  partiel**. Un refus métier (422) ou une sortie inexploitable (502) échoue sans
+  relancer les autres lots. Durée et volume de chaque lot sont journalisés, sans
+  secret ni donnée personnelle.
+- Tests ajoutés (`tests/unit/generationProgressive.test.ts` : mono/multi-lots,
+  ville longue, namespacing, reprise 503, échec persistant, 422, transport et
+  scénario trois semaines) et adaptés (`generationOutillee`, `agents`) à la
+  génération par lots. 1611 verts sur toute la suite, typecheck OK, lint sans
+  nouvelle erreur, aucun appel réseau réel.
 
 ### Revue F5-A — un plan dérivé, un transport aligné sur la demande (31/07)
 

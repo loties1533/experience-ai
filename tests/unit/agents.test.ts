@@ -1013,14 +1013,14 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
             type: 'restaurant',
             nom: 'Diner de quartier',
             justification: 'l’ambiance d’avant-match',
-            dependDe: ['hotel-boston', 'ref-inventee'],
+            dependDe: ['hotel-boston'],
           },
         ],
       },
     ],
   };
 
-  it('construit un parcours valide, remappe les refs en ids et écarte les refs inventées', async () => {
+  it('construit un parcours valide et remappe les refs intra-lot en ids', async () => {
     vi.mocked(callAIAvecOutils).mockResolvedValue(JSON.stringify(sortieLLM));
     const parcours = await genererParcours(briefComplet);
 
@@ -1029,6 +1029,30 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
     const [hotel, resto] = parcours.timeline[0].elements;
     expect(hotel.id).not.toBe('hotel-boston');
     expect(resto.dependDe).toEqual([hotel.id]);
+  });
+
+  it('refuse un lot dont un dependDe ne cible aucune ref du même lot', async () => {
+    // F5-B : une dépendance inconnue n'est plus supprimée en silence — elle
+    // révèle une sortie incohérente et fait échouer la génération.
+    vi.mocked(callAIAvecOutils).mockResolvedValue(
+      JSON.stringify({
+        moments: [
+          {
+            titre: 'Soirée match à Boston',
+            elements: [
+              {
+                ref: 'resto-avant-match',
+                type: 'restaurant',
+                nom: 'Diner de quartier',
+                justification: 'l’ambiance d’avant-match',
+                dependDe: ['ref-inventee'],
+              },
+            ],
+          },
+        ],
+      })
+    );
+    await expect(genererParcours(briefComplet)).rejects.toThrow('inexploitable');
   });
 
   it('rejette une sortie inexploitable avec une erreur actionnable', async () => {
