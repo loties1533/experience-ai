@@ -425,7 +425,7 @@ modification, l'OpenAPI et le front.
 
 ### Revue F6-C — sous-code interne des échecs de génération, sans contenu brut (31/07)
 
-> Livré par la PR (lien à ajouter après ouverture).
+> Livré par la [PR #50](https://github.com/loties1533/experience-ai/pull/50).
 
 - **Un même 502 masquait six causes distinctes.** `categoriserEchec` ne lisait
   que le `statusCode` de l'`AppError` : JSON invalide, schéma de sortie
