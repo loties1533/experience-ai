@@ -28,6 +28,13 @@ const { BriefSchema } = await import('../../server/agents/brief.js');
 
 type Brief = import('../../server/agents/brief.js').Brief;
 
+// Numéro de jour civil, réplique locale de la logique interne (cf.
+// planGeneration.test.ts) pour vérifier une plage sans dépendre de l'heure.
+function numeroDeJour(dateCivile: string): number {
+  const [annee, mois, jour] = dateCivile.split('-').map(Number);
+  return Math.floor(Date.UTC(annee, mois - 1, jour) / 86_400_000);
+}
+
 /** Lit le brief JSON qu'un prompt de lot embarque, pour répondre par ville. */
 function briefDuPrompt(prompt: string): {
   lieux?: string[];
@@ -279,6 +286,75 @@ describe('F5-B — assemblage et namespacing', () => {
     );
 
     await expect(genererParcours(briefMulti)).rejects.toThrow('inexploitable');
+  });
+});
+
+describe('F5-B — validation technique du scope d’un lot', () => {
+  it('refuse un lot dont un moment déclare une ville différente de celle du lot', async () => {
+    vi.mocked(callAIAvecOutils).mockImplementation(async (prompt) => {
+      const ville = briefDuPrompt(prompt as string).lieux?.[0];
+      // Le lot Bordeaux déclare pourtant un moment à Paris : ni le prompt ni
+      // la restriction des outils ne suffisent seuls, la sortie elle-même
+      // doit être vérifiée avant d'être assemblée.
+      const villeDeclaree = ville === 'Bordeaux' ? 'Paris' : ville;
+      return JSON.stringify({ moments: [momentActivite(villeDeclaree)] });
+    });
+
+    await expect(genererParcours(briefMulti)).rejects.toThrow('inexploitable');
+  });
+
+  it('refuse un lot dont un élément porte une plage hors de la plage du lot', async () => {
+    const brief = BriefSchema.parse({
+      intention: 'un séjour à Bordeaux',
+      avecQui: 'solo',
+      duree: { valeur: 11, unite: 'jours' },
+      lieux: ['Bordeaux'],
+      dates: { debut: '2026-09-01T00:00:00Z', fin: '2026-09-11T23:59:59Z' },
+    });
+    const lots = deriverPlan(brief).lots;
+    expect(lots.length).toBeGreaterThan(1);
+    // Le premier lot couvre le début du séjour (jours 1 à ~4) : une plage au
+    // 10 septembre y est nécessairement hors bornes.
+    expect(numeroDeJour(lots[0].plage!.fin) < numeroDeJour('2026-09-10')).toBe(
+      true
+    );
+
+    let appel = 0;
+    vi.mocked(callAIAvecOutils).mockImplementation(async () => {
+      appel += 1;
+      if (appel === 1) {
+        return JSON.stringify({
+          moments: [
+            {
+              titre: 'Hors plage',
+              elements: [
+                {
+                  ref: 'r',
+                  type: 'activite',
+                  nom: 'Activité',
+                  justification: 'étape',
+                  plage: {
+                    debut: '2026-09-10T09:00:00Z',
+                    fin: '2026-09-10T11:00:00Z',
+                  },
+                },
+              ],
+            },
+          ],
+        });
+      }
+      return JSON.stringify({ moments: [momentActivite('Bordeaux')] });
+    });
+
+    await expect(genererParcours(brief)).rejects.toThrow('inexploitable');
+  });
+
+  it('n’applique aucune restriction de scope au lot sans ville ni plage (mono-lot)', async () => {
+    vi.mocked(callAIAvecOutils).mockImplementation(
+      llmParLot(({ ville }) => ({ moments: [momentActivite(ville)] }))
+    );
+
+    await expect(genererParcours(briefMono)).resolves.toBeTruthy();
   });
 });
 

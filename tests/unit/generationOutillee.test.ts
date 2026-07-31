@@ -513,6 +513,118 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
   });
 });
 
+describe('F5-B — isolation technique des lots', () => {
+  it('refuse techniquement une recherche hors ville du lot, même si l’autre ville appartient au brief global', async () => {
+    const briefMultiVille = BriefSchema.parse({
+      intention: 'découvrir Bordeaux et Lyon',
+      avecQui: 'amis',
+      duree: { valeur: 4, unite: 'jours' },
+      lieux: ['Bordeaux', 'Lyon'],
+      transport: { necessaire: false },
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockImplementation(async (villeDemandee) => ({
+      statut: 'ok',
+      resultats: [
+        candidatLieu({
+          identifiantExterne: `fsq-${villeDemandee}`,
+          nom: 'Le Central',
+          villeDemandee,
+          typeMetierRecherche: 'restaurant',
+        }),
+      ],
+      recupereLe: DATE_RECUPERATION,
+    }));
+    vi.mocked(callClaudeOutils).mockImplementation(
+      outilsParVille(['Bordeaux', 'Lyon'], (ville) => ({
+        // Le lot Bordeaux tente malgré tout de chercher à Lyon : la boîte de
+        // CE lot n'autorise que Bordeaux, la recherche doit être refusée
+        // avant tout appel au connecteur Foursquare.
+        recherche: tourOutil(
+          'chercher_lieux',
+          {
+            ville: ville === 'Bordeaux' ? 'Lyon' : ville,
+            requete: 'restaurant',
+            typeMetierRecherche: 'restaurant',
+          },
+          `outil-${ville}`
+        ),
+        conclusion: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              moments: [
+                {
+                  titre: `Étape à ${ville}`,
+                  ville,
+                  elements: [
+                    {
+                      ref: `element-${ville}`,
+                      type: 'restaurant',
+                      nom: 'Le Central',
+                      justification: 'étape du parcours',
+                    },
+                  ],
+                },
+              ],
+            }),
+          },
+        ],
+      }))
+    );
+
+    await genererParcours(briefMultiVille);
+
+    // Une seule recherche Foursquare a réellement porté sur Lyon : celle du
+    // lot Lyon lui-même. La tentative cross-ville du lot Bordeaux a été
+    // bloquée par la restriction technique de SA boîte, avant le connecteur.
+    const appelsLyon = vi
+      .mocked(rechercherLieuxFoursquare)
+      .mock.calls.filter(([ville]) => ville === 'Lyon');
+    expect(appelsLyon).toHaveLength(1);
+  });
+
+  it('repart avec une boîte et un journal neufs après un 503 : aucun candidat de la tentative en échec ne survit', async () => {
+    let tentative = 0;
+    vi.mocked(callClaudeOutils).mockImplementation(async (_systeme, messages) => {
+      const aResultatOutil = messages.some(
+        (message) =>
+          Array.isArray(message.content) &&
+          message.content.some(
+            (bloc) => (bloc as { type?: string }).type === 'tool_result'
+          )
+      );
+      if (tentative === 0) {
+        if (!aResultatOutil) {
+          return tourOutil('chercher_lieux', {
+            ville: 'Bordeaux',
+            requete: 'bar',
+            typeMetierRecherche: 'sortie',
+          });
+        }
+        // La première tentative a bien cherché (et donc rempli SON journal),
+        // mais échoue quand même à conclure : indisponibilité technique.
+        tentative = 1;
+        return [{ type: 'text', text: JSON.stringify({ outilsIndisponibles: true }) }];
+      }
+      // Deuxième tentative (boîte neuve) : le modèle conclut directement, sans
+      // rechercher de nouveau, en réutilisant l'identifiant trouvé par la
+      // PREMIÈRE tentative — que sa propre boîte n'a jamais recherché.
+      return tourReponse('Le Point Rouge', { identifiantExterne: 'fsq-point-rouge' });
+    });
+
+    const parcours = await genererParcours(brief);
+    const [element] = parcours.timeline[0].elements;
+
+    // Sans journal hérité, l'identifiant ne rapproche aucun candidat : le nom
+    // reste une suggestion générique, jamais celui de la tentative en échec.
+    expect(element.confiance).toEqual({ niveau: 'suggestion' });
+    expect(element.nom).not.toBe('Le Point Rouge');
+    // Une seule recherche Foursquare au total : la seconde tentative ne
+    // recherche pas, elle ne fait que réutiliser un identifiant.
+    expect(rechercherLieuxFoursquare).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('la dégradation explicite des données réelles', () => {
   it('reste générique et marque suggestion quand une recherche exécutée ne rend rien', async () => {
     vi.mocked(rechercherLieuxFoursquare).mockResolvedValue({

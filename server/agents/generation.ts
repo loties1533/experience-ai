@@ -1054,32 +1054,95 @@ function momentDeTransition(index: number): MomentGenere {
 }
 
 /**
+ * Frontière technique, pas seulement textuelle : un moment qui déclare une
+ * ville hors du lot, ou un élément dont la plage déborde de celle du lot, fait
+ * échouer le lot. Peu importe que ce débordement vienne d'une recherche
+ * cross-ville laissée passer ou d'une pure invention du modèle — ni le prompt
+ * ni la restriction des outils ne suffisent seuls à le garantir.
+ */
+function villeHorsLot(ville: string | undefined, lot: LotPrevu): boolean {
+  return (
+    lot.ville !== undefined &&
+    ville !== undefined &&
+    cleTexte(ville) !== cleTexte(lot.ville)
+  );
+}
+
+function plageHorsLot(
+  plage: { debut: string; fin: string } | undefined,
+  lot: LotPrevu
+): boolean {
+  if (!lot.plage || !plage) return false;
+  const jourDebut = numeroDeJour(plage.debut.slice(0, 10));
+  const jourFin = numeroDeJour(plage.fin.slice(0, 10));
+  return (
+    jourDebut < numeroDeJour(lot.plage.debut) ||
+    jourFin > numeroDeJour(lot.plage.fin)
+  );
+}
+
+function validerScopeLot(lot: LotPrevu, moments: MomentGenere[]): void {
+  for (const moment of moments) {
+    // Un moment exclusivement transport est un placeholder synthétique dont
+    // seule la POSITION compte : `nettoyerMomentsTransport` jette ensuite son
+    // contenu (ville, plage, nom) pour le remplacer par le tronçon réel de la
+    // demande. Le valider ici rejetterait un lot pour un contenu déjà destiné
+    // à disparaître.
+    const exclusivementTransport =
+      moment.elements.length > 0 &&
+      moment.elements.every((element) => element.type === 'transport');
+    if (exclusivementTransport) continue;
+
+    if (villeHorsLot(moment.ville, lot) || plageHorsLot(moment.plage, lot)) {
+      throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+    }
+    for (const element of moment.elements) {
+      if (element.type === 'transport') continue;
+      if (plageHorsLot(element.plage, lot)) {
+        throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+      }
+    }
+  }
+}
+
+/**
  * Génère chaque lot dans l'ordre du plan, avec reprise ciblée sur la seule
  * indisponibilité technique (503) et sans jamais régénérer un lot déjà validé.
- * Assemble ensuite les moments namespacés, en marquant chaque changement de
- * ville pour un transport déterministe correctement placé.
+ * Chaque TENTATIVE reçoit sa propre boîte à outils, restreinte à la seule
+ * ville du lot (jamais aux autres villes du brief) : ni un échec ni une
+ * réussite précédente ne laissent de journal résiduel fuiter dans la
+ * suivante. Seuls les candidats d'une tentative VALIDÉE rejoignent la boîte
+ * d'agrégat utilisée pour la résolution finale des liens.
  */
 async function genererEtAssemblerLots(
   brief: Brief,
-  boite: BoiteAOutils,
   blocPreferences: string,
   demandeTransport: DemandeTransport | undefined
-): Promise<{ moments: MomentGenere[]; ambiance?: string }> {
+): Promise<{ moments: MomentGenere[]; ambiance?: string; boiteAgregat: BoiteAOutils }> {
   const plan = deriverPlan(brief);
   const momentsParLot: MomentGenere[][] = [];
+  const candidatsValides: CandidatJournal[] = [];
   let ambiance: string | undefined;
 
   for (let index = 0; index < plan.lots.length; index += 1) {
     const lot = plan.lots[index];
     const prompt = `Construis un parcours pour ce brief :
 ${JSON.stringify(briefPourLot(brief, lot), null, 2)}${blocPreferences}`;
+    const villesAutoriseesDuLot = lot.ville ? [lot.ville] : brief.lieux;
 
     let tentative = 0;
     for (;;) {
+      // Boîte neuve à chaque tentative : le journal d'un essai en échec ne
+      // doit jamais réapparaître au suivant, et une recherche du modèle ne
+      // peut techniquement porter que sur la ville de CE lot.
+      const boiteLot = creerBoiteAOutils({
+        villesAutorisees: villesAutoriseesDuLot,
+      });
       const debut = Date.now();
       try {
-        const sortie = await genererLot(prompt, boite);
+        const sortie = await genererLot(prompt, boiteLot);
         const moments = namespacerLot(lot, sortie.moments);
+        validerScopeLot(lot, moments);
         // La première ambiance proposée par le modèle habille l'ensemble ; à
         // défaut, celle du brief prend le relais plus loin.
         ambiance ??= sortie.ambiance;
@@ -1089,6 +1152,8 @@ ${JSON.stringify(briefPourLot(brief, lot), null, 2)}${blocPreferences}`;
             `— ${moments.length} moment(s), ${Date.now() - debut} ms, tentative ${tentative + 1}`
         );
         momentsParLot.push(moments);
+        // Seule une tentative validée alimente la résolution finale des liens.
+        candidatsValides.push(...boiteLot.exporterJournal());
         break;
       } catch (erreur) {
         const rejouable =
@@ -1119,7 +1184,16 @@ ${JSON.stringify(briefPourLot(brief, lot), null, 2)}${blocPreferences}`;
       momentsAssembles.push(momentDeTransition(index));
     }
   }
-  return { moments: momentsAssembles, ambiance };
+
+  // Boîte d'agrégat : les villes autorisées couvrent tout le brief (la
+  // résolution finale travaille sur l'ensemble des moments assemblés), mais
+  // son journal ne contient QUE les candidats de tentatives déjà validées.
+  const boiteAgregat = creerBoiteAOutils({
+    villesAutorisees: brief.lieux,
+    candidatsInitiaux: candidatsValides,
+  });
+
+  return { moments: momentsAssembles, ambiance, boiteAgregat };
 }
 
 export async function genererParcours(
@@ -1146,25 +1220,18 @@ export async function genererParcours(
 ${JSON.stringify(preferences, null, 2)}`
     : '';
 
-  // Une boîte par génération, partagée par tous les lots : le journal des lieux
-  // trouvés appartient à CE parcours et alimente la résolution des liens sur
-  // l'agrégat (le cache des appels, lui, est partagé — cf. lib/cacheMemoire).
-  // La restriction d'un lot à sa seule ville passe par son brief : le modèle
-  // n'y voit qu'une ville et sa plage, tandis que les villes autorisées de la
-  // boîte gardent le garde-fou à l'échelle du brief entier.
-  const boite = creerBoiteAOutils({ villesAutorisees: brief.lieux });
-
-  // Génération progressive : un appel IA par lot du plan, reprise ciblée sur la
-  // seule indisponibilité technique, puis assemblage dans l'ordre du plan. La
-  // suite (transport déterministe, ids, liens, enrichissements, validation) ne
-  // s'exécute qu'une fois, sur l'agrégat, comme avant.
-  const { moments: momentsAssembles, ambiance: ambianceGeneree } =
-    await genererEtAssemblerLots(
-      brief,
-      boite,
-      blocPreferences,
-      demandeTransport
-    );
+  // Génération progressive : un appel IA par lot du plan, chaque tentative
+  // dans sa propre boîte à outils restreinte à sa seule ville (le cache des
+  // appels, lui, reste partagé entre générations — cf. lib/cacheMemoire), avec
+  // reprise ciblée sur la seule indisponibilité technique, puis assemblage
+  // dans l'ordre du plan. La boîte d'agrégat rendue ne porte que les candidats
+  // des tentatives validées ; la suite (transport déterministe, ids, liens,
+  // enrichissements, validation) ne s'exécute qu'une fois, sur l'agrégat.
+  const {
+    moments: momentsAssembles,
+    ambiance: ambianceGeneree,
+    boiteAgregat,
+  } = await genererEtAssemblerLots(brief, blocPreferences, demandeTransport);
   const momentsNettoyes = nettoyerMomentsTransport(
     momentsAssembles,
     demandeTransport
@@ -1183,7 +1250,7 @@ ${JSON.stringify(preferences, null, 2)}`
   // une concurrence bornée ; aucune recherche par nom brut n'est autorisée.
   const preparation = preparerMomentsPourResolution(
     momentsNettoyes,
-    boite,
+    boiteAgregat,
     brief.lieux,
   );
   const resolutionsLien = await resoudreDemandesLien(
