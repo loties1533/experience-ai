@@ -427,6 +427,8 @@ modification, l'OpenAPI et le front.
 
 ### Revue F6-E — refus structuré hors périmètre dans la génération outillée (31/07)
 
+> Livré par la [PR #52](https://github.com/loties1533/experience-ai/pull/52).
+
 - **Constat du retest ciblé (31/07).** `haiku × nba-multi-villes` refusait la
   demande (NBA hors périmètre France) en texte libre au lieu du JSON attendu :
   `parseJSON` échouait et le refus métier légitime retombait en
