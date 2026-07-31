@@ -422,6 +422,37 @@ modification, l'OpenAPI et le front.
 - [x] **F6-A** — instrumentation des appels IA (modèle injectable, métriques)
 - [x] **F6-B** — script de benchmark manuel, reproductible, réseau réel non lancé en CI
 - [x] **F6-C** — sous-code interne pour distinguer les causes du 502 « sortie inexploitable »
+- [x] **F6-D** — ciblage explicite de couples modèle/scénario dans le benchmark
+
+### Revue F6-D — ciblage explicite de couples modèle/scénario (31/07)
+
+- **Problème.** `--modeles` et `--repetitions` ne pilotaient que le produit
+  cartésien modèles × scénarios : impossible de relancer trois couples
+  précis (ex. un modèle en échec sur un seul scénario) sans aussi relancer
+  des combinaisons déjà valides.
+- **`--essais=MODELE:SCENARIO,...`.** Nouvel argument dans
+  `server/benchmark/logique.ts` (`parserEssaisCibles`, aussi lisible via
+  `BENCHMARK_ESSAIS`) : valide chaque couple (modèle non vide, scénario
+  connu), refuse les couples mal formés et les doublons. Prime sur
+  `--modeles` quand fourni ; absent, le comportement historique (produit
+  cartésien complet) est inchangé au bit près.
+- **Exécution ciblée.** La boucle de répétition par couple a été extraite
+  (`executerRepetitions`) et réutilisée par `executerTousLesEssais`
+  (inchangée du point de vue de l'appelant) et par la nouvelle
+  `executerCouplesCibles`, qui n'exécute que les couples demandés.
+  `benchmarker-modeles.ts` choisit l'une ou l'autre selon la présence
+  d'`essaisCibles`.
+- **Clé Anthropic.** `verifierCleAnthropic` reste appelée après
+  `import 'dotenv/config'` dans `main()` — l'absence de la variable dans le
+  shell n'implique donc pas son absence réelle (déjà le cas avant cette
+  mission, non modifié).
+- Tests ajoutés : sélection des trois couples précis de la mission F6-D,
+  absence de combinaison hors liste, rejet scénario inconnu / modèle vide /
+  couple mal formé / doublon, comportement historique inchangé sans
+  `--essais`, répétitions appliquées par couple. Suite complète verte (1691
+  tests), typecheck OK, lint sans nouvelle erreur.
+- **Hors périmètre.** Aucun benchmark réseau lancé ; aucun changement du
+  modèle de production, de `MAX_TOURS_OUTILS` ou de la politique de reprise.
 
 ### Revue F6-C — sous-code interne des échecs de génération, sans contenu brut (31/07)
 

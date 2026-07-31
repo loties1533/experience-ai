@@ -66,14 +66,65 @@ export const SCENARIOS_BENCHMARK: ScenarioBenchmark[] = [
 // ARGUMENTS CLI
 // ---------------------------------------------------------------------------
 
+export interface CoupleCible {
+  modele: string;
+  scenarioId: string;
+}
+
 export interface OptionsBenchmark {
   modeles: string[];
   repetitions: number;
+  /** F6-D — couples explicites modèle/scénario ; prime sur le produit modeles × scénarios. */
+  essaisCibles?: CoupleCible[];
 }
 
 function extraireValeurArgument(argv: string[], nom: string): string | undefined {
   const prefixe = `--${nom}=`;
   return argv.find((argument) => argument.startsWith(prefixe))?.slice(prefixe.length);
+}
+
+/** Séparateur modèle/scénario dans --essais : aucun des deux identifiants ne contient ':'. */
+const SEPARATEUR_COUPLE = ':';
+
+/**
+ * F6-D — parse "MODELE:SCENARIO,MODELE:SCENARIO,..." en couples validés.
+ * Refuse tout couple mal formé, tout scénario inconnu, tout modèle vide et
+ * tout doublon : --essais sert à isoler des combinaisons précises, une
+ * ambiguïté silencieuse romprait cette garantie.
+ */
+export function parserEssaisCibles(brut: string, scenarios: ScenarioBenchmark[]): CoupleCible[] {
+  const idsConnus = scenarios.map((scenario) => scenario.id);
+  const items = brut.split(',').map((item) => item.trim()).filter(Boolean);
+  if (items.length === 0) {
+    throw new Error('--essais ne contient aucun couple exploitable.');
+  }
+
+  const couples: CoupleCible[] = [];
+  const vus = new Set<string>();
+  for (const item of items) {
+    const parties = item.split(SEPARATEUR_COUPLE);
+    if (parties.length !== 2) {
+      throw new Error(
+        `Couple --essais mal formé : "${item}" (attendu MODELE${SEPARATEUR_COUPLE}SCENARIO).`
+      );
+    }
+    const [modele, scenarioId] = parties.map((partie) => partie.trim());
+    if (!modele) {
+      throw new Error(`Couple --essais mal formé : modèle vide dans "${item}".`);
+    }
+    if (!idsConnus.includes(scenarioId)) {
+      throw new Error(
+        `Scénario inconnu dans --essais : "${scenarioId}" (attendu l'un de ${idsConnus.join(', ')}).`
+      );
+    }
+    const cle = `${modele}${SEPARATEUR_COUPLE}${scenarioId}`;
+    if (vus.has(cle)) {
+      throw new Error(`Couple --essais dupliqué : "${cle}".`);
+    }
+    vus.add(cle);
+    couples.push({ modele, scenarioId });
+  }
+  return couples;
 }
 
 /**
@@ -101,7 +152,10 @@ export function parserArguments(
     throw new Error('Le nombre de répétitions doit être un entier positif.');
   }
 
-  return { modeles, repetitions };
+  const essaisBruts = extraireValeurArgument(argv, 'essais') ?? env.BENCHMARK_ESSAIS;
+  const essaisCibles = essaisBruts ? parserEssaisCibles(essaisBruts, SCENARIOS_BENCHMARK) : undefined;
+
+  return { modeles, repetitions, essaisCibles };
 }
 
 export function verifierCleAnthropic(env: Record<string, string | undefined>): string {
@@ -299,11 +353,49 @@ export const CHAMPS_EXECUTION_AUTORISES = [
 ] as const;
 
 /**
- * Boucle d'orchestration : chaque essai est isolé. Si `executerUnEssai`
- * échoue de façon inattendue (il ne le devrait pas — il capture déjà ses
- * propres erreurs), l'essai devient un résultat d'échec au lieu d'arrêter le
- * benchmark pour les scénarios et modèles restants.
+ * Répète un couple (scénario, modèle) `repetitions` fois. Chaque essai est
+ * isolé : si `executerUnEssai` échoue de façon inattendue (il ne le devrait
+ * pas — il capture déjà ses propres erreurs), l'essai devient un résultat
+ * d'échec au lieu d'arrêter les répétitions ou couples restants.
  */
+async function executerRepetitions(
+  scenario: ScenarioBenchmark,
+  modele: string,
+  repetitions: number,
+  executerUnEssai: (
+    scenario: ScenarioBenchmark,
+    modele: string,
+    repetition: number
+  ) => Promise<ResultatExecution>
+): Promise<ResultatExecution[]> {
+  const resultats: ResultatExecution[] = [];
+  for (let repetition = 1; repetition <= repetitions; repetition += 1) {
+    try {
+      resultats.push(await executerUnEssai(scenario, modele, repetition));
+    } catch (erreur) {
+      resultats.push({
+        scenarioId: scenario.id,
+        scenarioNom: scenario.nom,
+        modele,
+        repetition,
+        succes: false,
+        categorieEchec: categoriserEchec(erreur),
+        sousCodeEchec: sousCodeEchec(erreur),
+        dureeMs: 0,
+        tokensEntree: 0,
+        tokensSortie: 0,
+        tours: 0,
+        jsonValide: false,
+        lotsPrevus: 0,
+        lotsGeneres: 0,
+        reprises: 0,
+      });
+    }
+  }
+  return resultats;
+}
+
+/** Comportement historique : produit cartésien modèles × scénarios × répétitions. */
 export async function executerTousLesEssais(
   modeles: string[],
   scenarios: ScenarioBenchmark[],
@@ -317,30 +409,34 @@ export async function executerTousLesEssais(
   const executions: ResultatExecution[] = [];
   for (const modele of modeles) {
     for (const scenario of scenarios) {
-      for (let repetition = 1; repetition <= repetitions; repetition += 1) {
-        try {
-          executions.push(await executerUnEssai(scenario, modele, repetition));
-        } catch (erreur) {
-          executions.push({
-            scenarioId: scenario.id,
-            scenarioNom: scenario.nom,
-            modele,
-            repetition,
-            succes: false,
-            categorieEchec: categoriserEchec(erreur),
-            sousCodeEchec: sousCodeEchec(erreur),
-            dureeMs: 0,
-            tokensEntree: 0,
-            tokensSortie: 0,
-            tours: 0,
-            jsonValide: false,
-            lotsPrevus: 0,
-            lotsGeneres: 0,
-            reprises: 0,
-          });
-        }
-      }
+      executions.push(...(await executerRepetitions(scenario, modele, repetitions, executerUnEssai)));
     }
+  }
+  return executions;
+}
+
+/**
+ * F6-D — n'exécute que les couples modèle/scénario explicitement demandés
+ * (déjà validés par `parserEssaisCibles`), au lieu du produit cartésien
+ * complet. Chaque couple est répété `repetitions` fois.
+ */
+export async function executerCouplesCibles(
+  couples: CoupleCible[],
+  scenarios: ScenarioBenchmark[],
+  repetitions: number,
+  executerUnEssai: (
+    scenario: ScenarioBenchmark,
+    modele: string,
+    repetition: number
+  ) => Promise<ResultatExecution>
+): Promise<ResultatExecution[]> {
+  const executions: ResultatExecution[] = [];
+  for (const couple of couples) {
+    const scenario = scenarios.find((candidat) => candidat.id === couple.scenarioId);
+    if (!scenario) {
+      throw new Error(`Scénario inconnu dans un couple ciblé : "${couple.scenarioId}".`);
+    }
+    executions.push(...(await executerRepetitions(scenario, couple.modele, repetitions, executerUnEssai)));
   }
   return executions;
 }
