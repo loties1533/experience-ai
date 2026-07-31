@@ -424,7 +424,7 @@ modification, l'OpenAPI et le front.
 
 ### Revue F6-B — benchmark manuel des modèles, jamais lancé automatiquement (31/07)
 
-> Livré par la PR feat/f6b-benchmark-modeles (lien à ajouter après ouverture).
+> Livré par la [PR #49](https://github.com/loties1533/experience-ai/pull/49).
 
 - **Un script manuel, jamais réseau en CI.** `server/benchmark/benchmarker-modeles.ts`
   exige `ANTHROPIC_API_KEY`, accepte une liste de modèles (`--modeles=` ou
