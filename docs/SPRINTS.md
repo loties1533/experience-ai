@@ -15,7 +15,7 @@
 | F1 — Vérité des données | Confiance, traçabilité et refus explicite | Terminé |
 | F2 — Lieux et événements | Liens fiables par ville et établissement | Terminé |
 | F3 — Hébergements | Existence vérifiée et recherche Booking correcte | Terminé |
-| F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | En cours (jusqu'à F4-C2 ; C3 à venir) |
+| F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | En cours (interne jusqu'à F4-D1 ; intégration F4-D2 à venir) |
 | F5 — Génération progressive | Plan global puis lots validés | À faire |
 | F6 — Benchmark modèles | Choix mesuré du modèle de production | À faire |
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | À faire |
@@ -160,7 +160,10 @@ correspond à aucune branche ni PR dédiée.
     (`unique`, `ambigu`, `vide`, `indisponible`), sans branchement actif
   - [x] **F4-C3c** — trajets ferroviaires internes via `/journeys`, à heures
     locales, sans branchement actif
-- [ ] **F4-D1** — liens de recherche transport : à faire
+- [x] **F4-D1** — liens de recherche transport (`lib/liensTransport.ts`) :
+  construction déterministe de liens de **recherche** vers Google Flights
+  (vols, codes IATA) et Google Maps (gares et transport local, API « Maps
+  URLs »), sans branchement actif
 - [ ] **F4-D2** — intégration des candidats transport dans la génération
   active : à faire
 - [ ] **F4-E** — modifications, API et front pour le transport : à faire
@@ -301,6 +304,36 @@ F4 reste donc **en cours** : B1, B2, C1, C2 et C3 (a, b, c) sont terminés
   branchement dans la génération, les routes, l'OpenAPI, le front ou la
   persistance. Prochaine étape : **F4-D1** (liens de recherche transport) puis
   **F4-D2** (intégration des candidats dans la génération active).
+
+### Revue F4-D1 — des liens de recherche, jamais des billets (31/07)
+
+- **Un lien est une recherche, rien de plus.** Le contrat
+  `LienRechercheTransport` ne porte que `type`, `fournisseur`, `url`, `libelle`
+  et `genereLe` — aucun prix, billet, disponibilité ni réservation n'y existe.
+  Le type (`recherche_vol`, `recherche_train`, `recherche_transport_local`) et
+  le libellé rendent la confusion impossible.
+- **Deux fournisseurs, choisis pour leur robustesse.** Les vols passent par une
+  recherche **Google Flights** en texte libre construite depuis des codes IATA
+  confirmés et des dates ISO — on évite volontairement le deep link `tfs`
+  encodé, non documenté et fragile. Les gares et le transport local passent par
+  l'**API officielle « Maps URLs »** de Google Maps (itinéraire `dir` entre deux
+  lieux, `travelmode=transit` pour le ferroviaire).
+- **Aucune ville promue en aéroport ou gare.** Un vol exige deux codes IATA
+  valides et distincts, sinon aucun lien. Les gares sont désignées par leur
+  **nom observé**, jamais par un identifiant Navitia ou un code UIC que Maps
+  n'interprète pas. Aucune date n'est injectée dans l'URL Maps, qui ne la
+  supporte pas.
+- **Refus prudent.** Identité essentielle absente, données contradictoires
+  (origine = destination, retour avant l'aller), nom vide ou tentative d'URL en
+  guise de lieu : le résultat est `null`, pas une erreur ni un faux lien.
+- **Construction déterministe et sûre.** `URL`/`URLSearchParams` pour tout
+  encodage, domaine et chemin verrouillés puis revalidés par le contrat, aucun
+  appel réseau, aucun secret, aucune horloge implicite (`genereLe` injectable).
+- **Aucun branchement actif.** Le module `lib/liensTransport.ts` n'est importé
+  ni par la génération, ni par les routes, ni par le front — un test
+  d'architecture le garantit. L'intégration réelle relève de **F4-D2**.
+- 36 tests ajoutés (`tests/unit/liensTransport.test.ts`), 1534 verts sur toute
+  la suite, typecheck OK, lint sans erreur, aucun appel réseau.
 
 ## Refonte Experience AI — plan de build
 

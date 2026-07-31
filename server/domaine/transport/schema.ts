@@ -776,6 +776,249 @@ export const PreuveTrajetSchema = z
   })
   .strict();
 
+// ────────────────────────────────────────────────────────────────────────
+// F4-D1 — Liens de recherche transport.
+//
+// Un lien produit ici est seulement un raccourci vers une recherche publique,
+// jamais un billet, une réservation, une offre observée, un prix ni une
+// disponibilité. Le type, le fournisseur et le libellé rendent cette confusion
+// impossible ; aucun champ commercial n'existe dans le contrat.
+// ────────────────────────────────────────────────────────────────────────
+
+export const TypeLienRechercheTransportSchema = z.enum([
+  'recherche_vol',
+  'recherche_train',
+  'recherche_transport_local',
+]);
+
+export const FournisseurLienRechercheTransportSchema = z.enum([
+  'Google Flights',
+  'Google Maps',
+]);
+
+// Pages de recherche publiques retenues. Google Flights sert de recherche de
+// vols en texte libre (aucun deep link `tfs` fragile) ; Google Maps s'appuie
+// sur l'API officielle « Maps URLs » pour un itinéraire entre deux lieux.
+export const URL_RECHERCHE_VOLS_GOOGLE =
+  'https://www.google.com/travel/flights';
+export const URL_ITINERAIRE_GOOGLE_MAPS =
+  'https://www.google.com/maps/dir/';
+
+const HOTE_LIENS_TRANSPORT = 'www.google.com';
+const CHEMIN_VOLS_GOOGLE = '/travel/flights';
+const CHEMIN_ITINERAIRE_MAPS = '/maps/dir/';
+
+function analyserUrlLienTransport(valeur: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(valeur);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:') return null;
+  if (url.hostname !== HOTE_LIENS_TRANSPORT) return null;
+  if (
+    url.pathname !== CHEMIN_VOLS_GOOGLE &&
+    url.pathname !== CHEMIN_ITINERAIRE_MAPS
+  ) {
+    return null;
+  }
+  return url;
+}
+
+function cheminAttenduFournisseur(
+  fournisseur: z.infer<typeof FournisseurLienRechercheTransportSchema>
+): string {
+  return fournisseur === 'Google Flights'
+    ? CHEMIN_VOLS_GOOGLE
+    : CHEMIN_ITINERAIRE_MAPS;
+}
+
+/**
+ * Raccourci vers une recherche préremplie, jamais une réservation ni une preuve
+ * de disponibilité. Le domaine, le chemin et le fournisseur sont verrouillés :
+ * seules les données de recherche vivent dans les paramètres encodés.
+ */
+export const LienRechercheTransportSchema = z
+  .object({
+    type: TypeLienRechercheTransportSchema,
+    fournisseur: FournisseurLienRechercheTransportSchema,
+    url: z
+      .string()
+      .refine(
+        (valeur) => analyserUrlLienTransport(valeur) !== null,
+        'le lien doit cibler une page de recherche HTTPS autorisée'
+      ),
+    libelle: TexteCourtSchema,
+    genereLe: DateHeureAvecDecalageSchema,
+  })
+  .strict()
+  .superRefine((lien, contexte) => {
+    const url = analyserUrlLienTransport(lien.url);
+    if (url === null) return;
+    if (url.pathname !== cheminAttenduFournisseur(lien.fournisseur)) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['url'],
+        message: 'le chemin de l’URL doit correspondre au fournisseur',
+      });
+    }
+    const fournisseurAttendu =
+      lien.type === 'recherche_vol' ? 'Google Flights' : 'Google Maps';
+    if (lien.fournisseur !== fournisseurAttendu) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['fournisseur'],
+        message: 'le fournisseur doit correspondre au type de recherche',
+      });
+    }
+  });
+
+// Terme de recherche saisissable dans un champ « lieu » : jamais une URL, un
+// identifiant fournisseur ni un caractère de contrôle. Réutilise les mêmes
+// garde-fous que la recherche de lieu aérien ou de gare.
+const LibelleLieuLienTransportSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(LONGUEUR_MAX_VILLE)
+  .refine(
+    (valeur) => !contientCaractereControle(valeur),
+    'le lieu contient un caractère de contrôle'
+  )
+  .refine(
+    (valeur) => /[\p{L}\p{N}]/u.test(valeur),
+    'le lieu doit contenir au moins une lettre ou un chiffre'
+  )
+  .refine(
+    (valeur) => /^[\p{L}\p{M}\p{N} ./,:;'’()"-]+$/u.test(valeur),
+    'le lieu contient un caractère interdit'
+  )
+  .refine(
+    (valeur) =>
+      !/\b(?:[a-z][a-z0-9+.-]*:\/\/|(?:javascript|data|mailto):|www\.)/iu.test(
+        valeur
+      ),
+    'une URL ne peut pas servir de lieu de recherche'
+  );
+
+const LieuLienTransportSchema = z
+  .object({
+    nom: LibelleLieuLienTransportSchema,
+    ville: VilleSchema.optional(),
+  })
+  .strict();
+
+/**
+ * Demande interne de lien de recherche de vols : uniquement des codes IATA
+ * confirmés et des dates civiles valides. Une ville sans aéroport confirmé
+ * n'a pas sa place ici — la promotion ville → aéroport est refusée en amont.
+ */
+export const DemandeLienRechercheVolSchema = z
+  .object({
+    origineIata: CodeIataLieuAerienSchema,
+    destinationIata: CodeIataLieuAerienSchema,
+    dateDepart: z.iso.date(),
+    dateRetour: z.iso.date().optional(),
+    adultes: NombreAdultesTransportSchema.optional(),
+    enfants: NombreEnfantsTransportSchema.optional(),
+  })
+  .strict()
+  .superRefine((demande, contexte) => {
+    if (demande.origineIata === demande.destinationIata) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['destinationIata'],
+        message: 'les codes IATA de départ et d’arrivée doivent différer',
+      });
+    }
+    if (
+      demande.dateRetour !== undefined &&
+      comparerDatesCiviles(demande.dateRetour, demande.dateDepart) < 0
+    ) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['dateRetour'],
+        message: 'la date de retour ne peut pas précéder celle de départ',
+      });
+    }
+    if (demande.enfants !== undefined && demande.adultes === undefined) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['adultes'],
+        message:
+          'un nombre d’enfants ne peut être compté sans nombre d’adultes',
+      });
+    }
+  });
+
+/**
+ * Demande de lien de recherche ferroviaire à partir de deux gares observées.
+ *
+ * Aucune date : l'API « Maps URLs » n'accepte pas d'heure de départ pour un
+ * itinéraire — on ne fabrique donc pas un paramètre non supporté. Les gares
+ * sont désignées par leur nom observé, jamais par un identifiant Navitia ou un
+ * code UIC, que ce fournisseur n'interprète pas.
+ */
+export const DemandeLienRechercheTrainSchema = z
+  .object({
+    origine: LieuLienTransportSchema,
+    destination: LieuLienTransportSchema,
+  })
+  .strict()
+  .superRefine((demande, contexte) => {
+    if (
+      memeLieuLienTransport(demande.origine, demande.destination)
+    ) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['destination'],
+        message: 'l’origine et la destination doivent être différentes',
+      });
+    }
+  });
+
+/**
+ * Demande de lien de transport local : un itinéraire cartographique générique
+ * entre deux lieux suffisamment identifiés. Aucune durée ni disponibilité n'est
+ * promise ; l'utilisateur consulte lui-même les options réelles.
+ */
+export const DemandeLienRechercheTransportLocalSchema = z
+  .object({
+    origine: LieuLienTransportSchema,
+    destination: LieuLienTransportSchema,
+  })
+  .strict()
+  .superRefine((demande, contexte) => {
+    if (
+      memeLieuLienTransport(demande.origine, demande.destination)
+    ) {
+      contexte.addIssue({
+        code: 'custom',
+        path: ['destination'],
+        message: 'l’origine et la destination doivent être différentes',
+      });
+    }
+  });
+
+function normaliserLieuPourComparaison(
+  lieu: z.infer<typeof LieuLienTransportSchema>
+): string {
+  return [lieu.nom, lieu.ville ?? '']
+    .map((valeur) => normaliserVillePourComparaison(valeur))
+    .join('|');
+}
+
+function memeLieuLienTransport(
+  premier: z.infer<typeof LieuLienTransportSchema>,
+  second: z.infer<typeof LieuLienTransportSchema>
+): boolean {
+  return (
+    normaliserLieuPourComparaison(premier) ===
+    normaliserLieuPourComparaison(second)
+  );
+}
+
 export type ModeTransport = z.infer<typeof ModeTransportSchema>;
 export type TypePreferenceLieuTransport = z.infer<
   typeof TypePreferenceLieuTransportSchema
@@ -845,3 +1088,21 @@ export type CandidatTrajetExterne = z.infer<
 >;
 export type ChampVerifieTrajet = z.infer<typeof ChampVerifieTrajetSchema>;
 export type PreuveTrajet = z.infer<typeof PreuveTrajetSchema>;
+export type TypeLienRechercheTransport = z.infer<
+  typeof TypeLienRechercheTransportSchema
+>;
+export type FournisseurLienRechercheTransport = z.infer<
+  typeof FournisseurLienRechercheTransportSchema
+>;
+export type LienRechercheTransport = z.infer<
+  typeof LienRechercheTransportSchema
+>;
+export type DemandeLienRechercheVol = z.infer<
+  typeof DemandeLienRechercheVolSchema
+>;
+export type DemandeLienRechercheTrain = z.infer<
+  typeof DemandeLienRechercheTrainSchema
+>;
+export type DemandeLienRechercheTransportLocal = z.infer<
+  typeof DemandeLienRechercheTransportLocalSchema
+>;
