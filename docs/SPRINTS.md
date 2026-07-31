@@ -421,6 +421,46 @@ modification, l'OpenAPI et le front.
 
 - [x] **F6-A** — instrumentation des appels IA (modèle injectable, métriques)
 - [x] **F6-B** — script de benchmark manuel, reproductible, réseau réel non lancé en CI
+- [x] **F6-C** — sous-code interne pour distinguer les causes du 502 « sortie inexploitable »
+
+### Revue F6-C — sous-code interne des échecs de génération, sans contenu brut (31/07)
+
+> Livré par la PR (lien à ajouter après ouverture).
+
+- **Un même 502 masquait six causes distinctes.** `categoriserEchec` ne lisait
+  que le `statusCode` de l'`AppError` : JSON invalide, schéma de sortie
+  invalide, ref dupliquée, `dependDe` hors lot, ville hors lot, plage hors
+  lot et parcours final incohérent retombaient tous sur la même catégorie
+  `sortie_inexploitable`, sans que le benchmark F6-B puisse les distinguer
+  (cf. diagnostic du 31/07 sur `benchmark-2026-07-31T21-00-13-181Z.json`).
+- **Sous-code stable porté par `AppError`.** `server/lib/AppError.ts` expose
+  un type `CodeInterneEchec` (`json_invalide`, `schema_generation_invalide`,
+  `ref_dupliquee`, `dependance_hors_lot`, `ville_hors_lot`, `plage_hors_lot`,
+  `validation_parcours_invalide`, `autre_sortie_inexploitable`) et un 3ᵉ
+  paramètre optionnel au constructeur. Jamais exposé au client :
+  `gestionnairreErreurGlobal` ne le lit pas ; statusCode et message publics
+  inchangés partout.
+  Les sept points de `throw` 502 dans `genererLot`/`namespacerLot`/
+  `validerScopeLot`/`genererParcours` (`server/agents/generation.ts`) posent
+  chacun leur sous-code ; le contrôle groupé ville/plage de `validerScopeLot`
+  a été scindé en deux conditions pour distinguer les deux causes.
+- **Remonté jusqu'au benchmark, sans contenu brut.** `server/benchmark/logique.ts`
+  ajoute `sousCodeEchec(erreur)` (undefined hors 502, `autre_sortie_inexploitable`
+  si un 502 n'en porte pas), un champ optionnel `sousCodeEchec` sur
+  `ResultatExecution` (ajouté à `CHAMPS_EXECUTION_AUTORISES`) et
+  `repartitionSousCodesEchecs` dans `StatistiquesEnsemble`. Un ancien rapport
+  sans ce champ reste lisible : le champ est optionnel, simplement absent du
+  décompte. `benchmarker-modeles.ts` calcule et affiche ce sous-code sans
+  changer le modèle de production, `MAX_TOURS_OUTILS` ni la politique de
+  reprise.
+- Tests ajoutés/étendus : `sousCodeEchec` pour les huit valeurs (pur, sans
+  réseau), répartition des sous-codes dans les statistiques, et un test par
+  point de refus (`json_invalide`, `schema_generation_invalide`,
+  `ref_dupliquee`, `dependance_hors_lot`, `ville_hors_lot`, `plage_hors_lot`)
+  vérifiant `statusCode: 502` et le `codeInterne` attendu. Suite complète
+  verte (1679 tests), typecheck OK, lint sans nouvelle erreur.
+- **Hors périmètre.** Aucun benchmark réseau relancé ; aucun changement de
+  route, de front, de modèle ou de politique de retry.
 
 ### Revue F6-B — benchmark manuel des modèles, jamais lancé automatiquement (31/07)
 

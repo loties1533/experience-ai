@@ -685,6 +685,24 @@ describe('la dégradation explicite des données réelles', () => {
     await expect(genererParcours(brief)).rejects.toThrow('inexploitable');
   });
 
+  it('F6-C : porte le sous-code json_invalide quand la sortie n’est pas un JSON exploitable', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValue([{ type: 'text', text: 'Je ne peux pas construire ce parcours.' }]);
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'json_invalide',
+    });
+  });
+
+  it('F6-C : porte le sous-code schema_generation_invalide quand le JSON ne respecte pas le contrat de sortie', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValue([
+      { type: 'text', text: JSON.stringify({ pasDeChampsMoments: true }) },
+    ]);
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'schema_generation_invalide',
+    });
+  });
+
   it('signale un service indisponible (503) quand la boucle outillée ne répond plus', async () => {
     vi.mocked(callClaudeOutils).mockRejectedValue(new Error('quota dépassé'));
     await expect(genererParcours(brief)).rejects.toMatchObject({ statusCode: 503 });

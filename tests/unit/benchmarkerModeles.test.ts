@@ -18,6 +18,7 @@ import {
   moyenne,
   parserArguments,
   parserTarifs,
+  sousCodeEchec,
   variance,
   verifierCleAnthropic,
   villesAttenduesPresentes,
@@ -155,6 +156,31 @@ describe('categoriserEchec', () => {
   });
 });
 
+describe('sousCodeEchec — F6-C', () => {
+  it.each([
+    'json_invalide',
+    'schema_generation_invalide',
+    'ref_dupliquee',
+    'dependance_hors_lot',
+    'ville_hors_lot',
+    'plage_hors_lot',
+    'validation_parcours_invalide',
+  ] as const)('reprend le sous-code posé sur une AppError 502 (%s)', (code) => {
+    expect(sousCodeEchec(new AppError('message', 502, code))).toBe(code);
+  });
+
+  it('retombe sur autre_sortie_inexploitable pour un 502 sans sous-code', () => {
+    expect(sousCodeEchec(new AppError('message', 502))).toBe('autre_sortie_inexploitable');
+  });
+
+  it('ne rend aucun sous-code hors du statut 502', () => {
+    expect(sousCodeEchec(new AppError('message', 422))).toBeUndefined();
+    expect(sousCodeEchec(new AppError('message', 503))).toBeUndefined();
+    expect(sousCodeEchec(new Error('boom'))).toBeUndefined();
+    expect(sousCodeEchec('pas une erreur')).toBeUndefined();
+  });
+});
+
 describe('villesAttenduesPresentes', () => {
   const brief = { lieux: ['Bordeaux', 'Lyon'] } as Brief;
 
@@ -253,6 +279,18 @@ describe('construireStatistiquesEnsemble / agregerParModele', () => {
     expect(stats.tauxSucces).toBeCloseTo(1 / 3);
     expect(stats.duree.mediane).toBe(200);
     expect(stats.repartitionEchecs).toEqual({ refus_metier: 2 });
+  });
+
+  it('F6-C : répartit les sous-codes uniquement parmi les échecs 502, et ignore leur absence', () => {
+    const executions = [
+      resultat({ scenarioId: 's1', modele: 'm1', succes: false, categorieEchec: 'sortie_inexploitable', sousCodeEchec: 'json_invalide' }),
+      resultat({ scenarioId: 's1', modele: 'm1', succes: false, categorieEchec: 'sortie_inexploitable', sousCodeEchec: 'json_invalide' }),
+      resultat({ scenarioId: 's1', modele: 'm1', succes: false, categorieEchec: 'sortie_inexploitable', sousCodeEchec: 'ville_hors_lot' }),
+      // Résultat historique sans sous-code (ancien rapport) : reste lisible, simplement absent du décompte.
+      resultat({ scenarioId: 's1', modele: 'm1', succes: false, categorieEchec: 'service_indisponible' }),
+    ];
+    const stats = construireStatistiquesEnsemble(executions);
+    expect(stats.repartitionSousCodesEchecs).toEqual({ json_invalide: 2, ville_hors_lot: 1 });
   });
 
   it('agrège séparément par modèle puis par scénario', () => {

@@ -287,6 +287,55 @@ describe('F5-B — assemblage et namespacing', () => {
 
     await expect(genererParcours(briefMulti)).rejects.toThrow('inexploitable');
   });
+
+  it('F6-C : porte le sous-code dependance_hors_lot', async () => {
+    vi.mocked(callAIAvecOutils).mockImplementation(
+      llmParLot(({ ville }) => ({
+        moments: [
+          {
+            titre: `Étape à ${ville}`,
+            ville,
+            elements: [
+              {
+                ref: 'local',
+                type: 'activite',
+                nom: `Activité ${ville}`,
+                justification: 'étape',
+                dependDe: ['resto-1'],
+              },
+            ],
+          },
+        ],
+      }))
+    );
+
+    await expect(genererParcours(briefMulti)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'dependance_hors_lot',
+    });
+  });
+
+  it('F6-C : porte le sous-code ref_dupliquee quand un lot répète deux fois la même ref', async () => {
+    vi.mocked(callAIAvecOutils).mockImplementation(
+      llmParLot(({ ville }) => ({
+        moments: [
+          {
+            titre: `Étape à ${ville}`,
+            ville,
+            elements: [
+              { ref: 'dup', type: 'activite', nom: `Activité ${ville}`, justification: 'étape' },
+              { ref: 'dup', type: 'restaurant', nom: `Table ${ville}`, justification: 'étape' },
+            ],
+          },
+        ],
+      }))
+    );
+
+    await expect(genererParcours(briefMono)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'ref_dupliquee',
+    });
+  });
 });
 
 describe('F5-B — validation technique du scope d’un lot', () => {
@@ -301,6 +350,19 @@ describe('F5-B — validation technique du scope d’un lot', () => {
     });
 
     await expect(genererParcours(briefMulti)).rejects.toThrow('inexploitable');
+  });
+
+  it('F6-C : porte le sous-code ville_hors_lot', async () => {
+    vi.mocked(callAIAvecOutils).mockImplementation(async (prompt) => {
+      const ville = briefDuPrompt(prompt as string).lieux?.[0];
+      const villeDeclaree = ville === 'Bordeaux' ? 'Paris' : ville;
+      return JSON.stringify({ moments: [momentActivite(villeDeclaree)] });
+    });
+
+    await expect(genererParcours(briefMulti)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'ville_hors_lot',
+    });
   });
 
   it('refuse un lot dont un élément porte une plage hors de la plage du lot', async () => {
@@ -346,7 +408,10 @@ describe('F5-B — validation technique du scope d’un lot', () => {
       return JSON.stringify({ moments: [momentActivite('Bordeaux')] });
     });
 
-    await expect(genererParcours(brief)).rejects.toThrow('inexploitable');
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'plage_hors_lot',
+    });
   });
 
   it('n’applique aucune restriction de scope au lot sans ville ni plage (mono-lot)', async () => {

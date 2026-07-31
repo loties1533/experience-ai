@@ -971,7 +971,7 @@ async function genererLot(
   try {
     contenu = parseJSON(brut);
   } catch {
-    throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+    throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502, 'json_invalide');
   }
   if (
     typeof contenu === 'object' &&
@@ -1005,7 +1005,7 @@ async function genererLot(
   }
   const sortie = SortieGenerationSchema.safeParse(contenu);
   if (!sortie.success) {
-    throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+    throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502, 'schema_generation_invalide');
   }
   return sortie.data;
 }
@@ -1024,13 +1024,13 @@ function namespacerLot(lot: LotPrevu, moments: MomentGenere[]): MomentGenere[] {
   );
   const refsDuLot = new Set(refs);
   if (refsDuLot.size !== refs.length) {
-    throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+    throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502, 'ref_dupliquee');
   }
   for (const moment of moments) {
     for (const element of moment.elements) {
       for (const dependance of element.dependDe) {
         if (!refsDuLot.has(dependance)) {
-          throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+          throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502, 'dependance_hors_lot');
         }
       }
     }
@@ -1108,13 +1108,16 @@ function validerScopeLot(lot: LotPrevu, moments: MomentGenere[]): void {
       moment.elements.every((element) => element.type === 'transport');
     if (exclusivementTransport) continue;
 
-    if (villeHorsLot(moment.ville, lot) || plageHorsLot(moment.plage, lot)) {
-      throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+    if (villeHorsLot(moment.ville, lot)) {
+      throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502, 'ville_hors_lot');
+    }
+    if (plageHorsLot(moment.plage, lot)) {
+      throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502, 'plage_hors_lot');
     }
     for (const element of moment.elements) {
       if (element.type === 'transport') continue;
       if (plageHorsLot(element.plage, lot)) {
-        throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502);
+        throw new AppError('La génération a produit un résultat inexploitable, réessaie', 502, 'plage_hors_lot');
       }
     }
   }
@@ -1351,7 +1354,7 @@ ${JSON.stringify(preferences, null, 2)}`
   const parcours = ParcoursSchema.parse(parcoursEnrichi);
   const erreurs = validerParcours(parcours);
   if (erreurs.length > 0) {
-    throw new AppError('La génération a produit un parcours incohérent, réessaie', 502);
+    throw new AppError('La génération a produit un parcours incohérent, réessaie', 502, 'validation_parcours_invalide');
   }
   return parcours;
 }
