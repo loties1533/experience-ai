@@ -1,15 +1,33 @@
 import type { Request, Response, NextFunction } from 'express';
 
+/**
+ * F6-C — sous-code interne stable pour l'observabilité (benchmark inclus).
+ * Jamais exposé au client : `gestionnairreErreurGlobal` ne le lit pas, il ne
+ * sert qu'à distinguer, en interne, les causes aujourd'hui regroupées sous un
+ * même statusCode 502 « sortie inexploitable ».
+ */
+export type CodeInterneEchec =
+  | 'json_invalide'
+  | 'schema_generation_invalide'
+  | 'ref_dupliquee'
+  | 'dependance_hors_lot'
+  | 'ville_hors_lot'
+  | 'plage_hors_lot'
+  | 'validation_parcours_invalide'
+  | 'autre_sortie_inexploitable';
+
 export class AppError extends Error {
   statusCode: number;
   status: string;
   isOperational: boolean;
+  codeInterne?: CodeInterneEchec;
 
-  constructor(message: string, statusCode: number) {
+  constructor(message: string, statusCode: number, codeInterne?: CodeInterneEchec) {
     super(message);
     this.statusCode = statusCode;
     this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
     this.isOperational = true;
+    this.codeInterne = codeInterne;
 
     Error.captureStackTrace(this, this.constructor);
   }

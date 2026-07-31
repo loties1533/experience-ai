@@ -26,6 +26,7 @@ import {
   executerTousLesEssais,
   parserArguments,
   parserTarifs,
+  sousCodeEchec,
   verifierCleAnthropic,
   villesAttenduesPresentes,
   type RapportBenchmark,
@@ -81,6 +82,7 @@ async function executerUnEssai(
       ...base,
       succes: false,
       categorieEchec: categoriserEchec(erreur),
+      sousCodeEchec: sousCodeEchec(erreur),
       dureeMs: Date.now() - debut,
       tokensEntree: evenements.reduce((somme, e) => somme + e.tokensEntree, 0),
       tokensSortie: evenements.reduce((somme, e) => somme + e.tokensSortie, 0),
@@ -107,6 +109,10 @@ function afficherLigneStatistiques(nom: string, stats: StatistiquesEnsemble): vo
   const echecs = Object.entries(stats.repartitionEchecs);
   if (echecs.length > 0) {
     console.log(`      échecs : ${echecs.map(([cle, n]) => `${cle}=${n}`).join(', ')}`);
+  }
+  const sousCodes = Object.entries(stats.repartitionSousCodesEchecs);
+  if (sousCodes.length > 0) {
+    console.log(`      sous-codes : ${sousCodes.map(([cle, n]) => `${cle}=${n}`).join(', ')}`);
   }
 }
 
@@ -154,7 +160,7 @@ async function main(): Promise<void> {
       console.log(
         resultat.succes
           ? `  OK — ${resultat.dureeMs} ms, ${resultat.tokensEntree}+${resultat.tokensSortie} tokens`
-          : `  ÉCHEC (${resultat.categorieEchec}) — ${resultat.dureeMs} ms`
+          : `  ÉCHEC (${resultat.categorieEchec}${resultat.sousCodeEchec ? `/${resultat.sousCodeEchec}` : ''}) — ${resultat.dureeMs} ms`
       );
       return resultat;
     }

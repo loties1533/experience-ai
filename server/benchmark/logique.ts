@@ -5,7 +5,7 @@
 // construction du rapport JSON. La seule partie qui parle au réseau vit dans
 // benchmarker-modeles.ts, jamais importée par les tests.
 
-import { AppError } from '../lib/AppError.js';
+import { AppError, type CodeInterneEchec } from '../lib/AppError.js';
 import { MODELE_CLAUDE } from '../services/providers.js';
 import type { Brief } from '../agents/brief.js';
 import type { Parcours } from '../domaine/parcours/index.js';
@@ -181,6 +181,19 @@ export function categoriserEchec(erreur: unknown): CategorieEchec {
   return 'erreur_inattendue';
 }
 
+/**
+ * F6-C — sous-code interne, uniquement pour une « sortie_inexploitable »
+ * (502) : cette seule catégorie regroupait jusqu'ici plusieurs causes
+ * distinctes (JSON invalide, schéma invalide, scope de lot violé, parcours
+ * incohérent...). Un 502 posé sans sous-code (autre point du pipeline, hors
+ * périmètre de cette mission) retombe sur `autre_sortie_inexploitable` plutôt
+ * que de disparaître silencieusement.
+ */
+export function sousCodeEchec(erreur: unknown): CodeInterneEchec | undefined {
+  if (!(erreur instanceof AppError) || erreur.statusCode !== 502) return undefined;
+  return erreur.codeInterne ?? 'autre_sortie_inexploitable';
+}
+
 // ---------------------------------------------------------------------------
 // ÉVALUATION DÉTERMINISTE D'UN PARCOURS PRODUIT
 //
@@ -251,6 +264,7 @@ export interface ResultatExecution {
   repetition: number;
   succes: boolean;
   categorieEchec?: CategorieEchec;
+  sousCodeEchec?: CodeInterneEchec;
   dureeMs: number;
   tokensEntree: number;
   tokensSortie: number;
@@ -271,6 +285,7 @@ export const CHAMPS_EXECUTION_AUTORISES = [
   'repetition',
   'succes',
   'categorieEchec',
+  'sousCodeEchec',
   'dureeMs',
   'tokensEntree',
   'tokensSortie',
@@ -313,6 +328,7 @@ export async function executerTousLesEssais(
             repetition,
             succes: false,
             categorieEchec: categoriserEchec(erreur),
+            sousCodeEchec: sousCodeEchec(erreur),
             dureeMs: 0,
             tokensEntree: 0,
             tokensSortie: 0,
@@ -364,16 +380,23 @@ export interface StatistiquesEnsemble {
   tokensSortieMoyen: number;
   toursMoyen: number;
   repartitionEchecs: Record<string, number>;
+  /** F6-C — répartition des sous-codes, uniquement parmi les échecs 502. */
+  repartitionSousCodesEchecs: Record<string, number>;
 }
 
 export function construireStatistiquesEnsemble(executions: ResultatExecution[]): StatistiquesEnsemble {
   const durees = executions.map((execution) => execution.dureeMs);
   const succes = executions.filter((execution) => execution.succes);
   const repartitionEchecs: Record<string, number> = {};
+  const repartitionSousCodesEchecs: Record<string, number> = {};
   for (const execution of executions) {
     if (execution.succes) continue;
     const cle = execution.categorieEchec ?? 'erreur_inattendue';
     repartitionEchecs[cle] = (repartitionEchecs[cle] ?? 0) + 1;
+    if (execution.sousCodeEchec) {
+      repartitionSousCodesEchecs[execution.sousCodeEchec] =
+        (repartitionSousCodesEchecs[execution.sousCodeEchec] ?? 0) + 1;
+    }
   }
   const { min, max } = minMax(durees);
   return {
@@ -384,6 +407,7 @@ export function construireStatistiquesEnsemble(executions: ResultatExecution[]):
     tokensSortieMoyen: moyenne(executions.map((execution) => execution.tokensSortie)),
     toursMoyen: moyenne(executions.map((execution) => execution.tours)),
     repartitionEchecs,
+    repartitionSousCodesEchecs,
   };
 }
 
