@@ -426,6 +426,8 @@ modification, l'OpenAPI et le front.
 
 ### Revue F6-D — ciblage explicite de couples modèle/scénario (31/07)
 
+> Livré par la [PR #51](https://github.com/loties1533/experience-ai/pull/51).
+
 - **Problème.** `--modeles` et `--repetitions` ne pilotaient que le produit
   cartésien modèles × scénarios : impossible de relancer trois couples
   précis (ex. un modèle en échec sur un seul scénario) sans aussi relancer
