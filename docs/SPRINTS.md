@@ -425,6 +425,43 @@ modification, l'OpenAPI et le front.
 - [x] **F6-D** — ciblage explicite de couples modèle/scénario dans le benchmark
 - [x] **F6-E** — refus structuré hors périmètre dans la génération outillée
 - [x] **F6-F** — correction de `plage_hors_lot` sur un lot mono-bloc (soirée courte)
+- [x] **F6-G** — correction de `schema_generation_invalide` (`identifiantExterne` vide)
+
+### Revue F6-G — correction de `schema_generation_invalide` (01/08)
+
+> PR à ouvrir sur la branche `feat/f6g-correction-schema-generation`.
+
+- **Constat du retest ciblé (01/08).** `sonnet × evg-deux-jours` (mono-ville,
+  mono-lot) échouait de façon récurrente en
+  `sortie_inexploitable/schema_generation_invalide`, systématiquement après
+  une erreur Foursquare HTTP 400 encaissée pendant la recherche de lieux.
+- **Chemin Zod exact.** `moments[0].elements[0].identifiantExterne`, code
+  `too_small` (« expected string to have >=1 characters ») — le modèle
+  écrivait `identifiantExterne: ""` plutôt que d'omettre la clé lorsqu'aucun
+  candidat d'outil ne confirmait l'élément, notamment quand la recherche
+  Foursquare correspondante était restée en échec (400) ou sans résultat.
+- **Cause racine, pas les erreurs Foursquare elles-mêmes.** Les 400
+  Foursquare sont déjà gérées sans invention de données ailleurs dans le
+  pipeline (`rapprocherCandidat` traite toute chaîne fausse comme une absence
+  de candidat) ; seule la frontière `ElementGenereSchema` refusait
+  l'encodage `""` au lieu de le traiter comme un champ absent — un défaut de
+  contrat, pas une fuite de panne technique.
+- **Correction minimale, sur ce seul champ.** `identifiantExterne` passe par
+  un `z.preprocess` qui normalise une chaîne vide/blanche en `undefined`
+  avant la validation `min(1).optional()` existante. Aucun autre champ,
+  aucune autre variante du schéma, aucune règle de validation retirée : un
+  type incorrect (nombre, booléen…) reste rejeté.
+- Tests ajoutés dans `describe('génération (IA orchestrateur)…')` de
+  `tests/unit/agents.test.ts` : reproduction du chemin Zod exact avec
+  `identifiantExterne: ""` (accepté, aucun nom inventé conservé — confiance
+  `suggestion`), un `identifiantExterne` de type incorrect toujours rejeté
+  (`schema_generation_invalide` inchangé). Parcours valide existant, refus
+  structuré et génération progressive : suite complète inchangée et verte
+  (1707 tests), typecheck OK, lint sans nouvelle erreur.
+- **Hors périmètre.** `SYSTEM_GENERATION`, `SortieGenerationSchema` (au-delà
+  de ce seul champ), le scénario de benchmark, le modèle de production et la
+  gestion des erreurs Foursquare n'ont pas été modifiés ; aucun benchmark
+  réseau relancé pendant l'implémentation.
 
 ### Revue F6-F — correction de `plage_hors_lot` sur un lot mono-bloc (01/08)
 

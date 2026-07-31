@@ -247,10 +247,20 @@ Une donnée facultative absente ne justifie jamais un refus : reste générique 
 - Si le brief donne des dates, TOUTES les plages horaires doivent tomber entre ces dates.
 - Reste dans le budget si fourni. Jamais de lien de réservation.`;
 
+// Sans candidat d'outil, le modèle écrit parfois une chaîne vide plutôt que
+// d'omettre la clé — un encodage inoffensif du même « aucun identifiant » :
+// `rapprocherCandidat` (services/claude/outils.ts) traite déjà toute valeur
+// fausse comme absente. Le schéma ne fait qu'aligner sa lecture sur ce
+// comportement d'exécution déjà en place, sans accepter un type différent.
+const identifiantExterneOptionnel = z.preprocess(
+  (valeur) => (typeof valeur === 'string' && valeur.trim() === '' ? undefined : valeur),
+  z.string().min(1).optional()
+);
+
 const ElementGenereSchema = z.object({
   ref: z.string().min(1),
   type: TypeElementSchema,
-  identifiantExterne: z.string().min(1).optional(),
+  identifiantExterne: identifiantExterneOptionnel,
   nom: z.string().min(1),
   lieu: z.string().optional(),
   plage: PlageHoraireSchema.optional(),
