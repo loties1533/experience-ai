@@ -16,7 +16,9 @@ function fetchAvecTimeout(url: string, options: OptionsFetch, timeoutMs = TIMEOU
 }
 
 const URL_ANTHROPIC = 'https://api.anthropic.com/v1/messages';
-const MODELE_CLAUDE = 'claude-haiku-4-5-20251001';
+// Exporté pour rester la valeur par défaut explicite côté appelant (F6-A :
+// modèle injectable pour le futur benchmark, sans changer ce défaut).
+export const MODELE_CLAUDE = 'claude-haiku-4-5-20251001';
 
 function entetesAnthropic(): Record<string, string> {
   return {
@@ -76,20 +78,37 @@ export interface MessageLLM {
 
 interface ReponseAnthropicOutils {
   content?: BlocReponse[];
+  usage?: { input_tokens: number; output_tokens: number };
   error?: { message: string };
+}
+
+/** Tokens consommés par un seul aller-retour, rendus au tour par tour à l'appelant. */
+export interface UsageAppelIA {
+  modele: string;
+  tokensEntree: number;
+  tokensSortie: number;
+}
+
+export interface OptionsCallClaudeOutils {
+  /** Modèle Anthropic à interroger. Par défaut, MODELE_CLAUDE (comportement inchangé). */
+  modele?: string;
+  /** Reçoit l'usage réel du tour, sans jamais transmettre prompt ni réponse. */
+  onUsage?: (usage: UsageAppelIA) => void;
 }
 
 /** Un aller-retour avec Claude, outils fournis (ou non : au dernier tour, il doit conclure). */
 export async function callClaudeOutils(
   systemPrompt: string,
   messages: MessageLLM[],
-  outils?: OutilLLM[]
+  outils?: OutilLLM[],
+  options: OptionsCallClaudeOutils = {}
 ): Promise<BlocReponse[]> {
+  const modele = options.modele ?? MODELE_CLAUDE;
   const res = await fetchAvecTimeout(URL_ANTHROPIC, {
     method: 'POST',
     headers: entetesAnthropic(),
     body: JSON.stringify({
-      model:      MODELE_CLAUDE,
+      model:      modele,
       // Un parcours long (plusieurs semaines, plusieurs villes) dépasse vite
       // 4000 tokens en sortie : le modèle tronque alors son JSON en plein
       // milieu d'une valeur, ce qui rend la génération inexploitable.
@@ -101,6 +120,13 @@ export async function callClaudeOutils(
   });
   const data = (await res.json()) as ReponseAnthropicOutils;
   if (!res.ok) throw new Error(`Claude error: ${JSON.stringify(data.error)}`);
+  if (data.usage) {
+    options.onUsage?.({
+      modele,
+      tokensEntree: data.usage.input_tokens,
+      tokensSortie: data.usage.output_tokens,
+    });
+  }
   return data.content ?? [];
 }
 

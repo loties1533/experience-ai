@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { callClaude, callClaudeOutils, callOpenRouter, callGemini, callOllama } from '../providers.js';
+import { callClaude, callClaudeOutils, callOpenRouter, callGemini, callOllama, MODELE_CLAUDE } from '../providers.js';
 import type { BlocOutil, BlocReponse, MessageLLM, OutilLLM } from '../providers.js';
 import { CLE_ANTHROPIC, CLE_OPENROUTER } from '../../lib/keys.js';
 
@@ -165,17 +165,73 @@ function texteDe(contenu: BlocReponse[]): string {
     .join('\n');
 }
 
+/**
+ * Mesures d'un appel outillé complet, préparées pour F6-B (benchmark de
+ * modèles) : jamais de prompt, de réponse ou d'intention utilisateur dedans,
+ * uniquement des grandeurs. `succes` porte sur la boucle elle-même (a-t-elle
+ * pu conclure ?), pas sur la validité métier de sa sortie — ce que classe
+ * déjà genererLot en 422/502/503 reste inchangé et hors de cette fonction.
+ */
+export interface MetriquesAppelOutils {
+  modele: string;
+  tokensEntree: number;
+  tokensSortie: number;
+  dureeMs: number;
+  tours: number;
+  succes: boolean;
+  typeEchec?: 'cle_absente' | 'boucle_interrompue';
+}
+
+export interface OptionsAppelOutils {
+  /** Modèle Anthropic à interroger. Par défaut MODELE_CLAUDE (comportement inchangé). */
+  modele?: string;
+  /** Reçoit les métriques une fois l'appel terminé (succès ou échec). */
+  onMetriques?: (metriques: MetriquesAppelOutils) => void;
+}
+
 export async function callAIAvecOutils(
   userPrompt: string,
   systemPrompt: string,
   boite: BoiteAOutilsLLM,
-  _context: ContexteIA = 'pack'
+  _context: ContexteIA = 'pack',
+  options: OptionsAppelOutils = {}
 ): Promise<string> {
+  const modele = options.modele ?? MODELE_CLAUDE;
+  const debut = Date.now();
+  let tokensEntree = 0;
+  let tokensSortie = 0;
+  let tours = 0;
+
+  const enregistrerUsage = (usage: { tokensEntree: number; tokensSortie: number }): void => {
+    tokensEntree += usage.tokensEntree;
+    tokensSortie += usage.tokensSortie;
+  };
+  // Construite une seule fois, hors de tout try/catch métier : une erreur du
+  // callback appelant (onMetriques) ne doit jamais être confondue avec un
+  // échec de la boucle d'outils, ni écraser le résultat déjà obtenu.
+  const emettreMetriques = (succes: boolean, typeEchec?: MetriquesAppelOutils['typeEchec']): void => {
+    if (!options.onMetriques) return;
+    try {
+      options.onMetriques({
+        modele,
+        tokensEntree,
+        tokensSortie,
+        dureeMs: Date.now() - debut,
+        tours,
+        succes,
+        ...(typeEchec ? { typeEchec } : {}),
+      });
+    } catch (erreurMetriques) {
+      console.error('onMetriques a échoué :', (erreurMetriques as Error).message);
+    }
+  };
+
   // La boucle d'outils est propre à l'API Anthropic. Un fournisseur sans outils
   // peut reformuler ou interpréter, mais il ne peut pas garantir les lieux d'un
   // parcours. Depuis F1 on signale l'indisponibilité au lieu d'abaisser
   // silencieusement la confiance des données.
   if (!CLE_ANTHROPIC) {
+    emettreMetriques(false, 'cle_absente');
     return JSON.stringify({
       outilsIndisponibles: true,
       message: 'Les sources de vérification sont momentanément indisponibles.',
@@ -183,15 +239,23 @@ export async function callAIAvecOutils(
   }
 
   const messages: MessageLLM[] = [{ role: 'user', content: userPrompt }];
+  let resultat: string | undefined;
 
   try {
     for (let tour = 0; tour <= MAX_TOURS_OUTILS; tour++) {
       // Au dernier tour, on retire les outils : le modèle n'a plus qu'à écrire.
       const outils = tour < MAX_TOURS_OUTILS ? boite.definitions : undefined;
-      const contenu = await callClaudeOutils(systemPrompt, messages, outils);
+      const contenu = await callClaudeOutils(systemPrompt, messages, outils, {
+        modele: options.modele,
+        onUsage: enregistrerUsage,
+      });
+      tours += 1;
 
       const demandes = contenu.filter((bloc): bloc is BlocOutil => bloc.type === 'tool_use');
-      if (demandes.length === 0) return texteDe(contenu);
+      if (demandes.length === 0) {
+        resultat = texteDe(contenu);
+        break;
+      }
 
       messages.push({ role: 'assistant', content: contenu });
       // Les recherches d'un même tour partent ensemble : le modèle demande
@@ -209,9 +273,15 @@ export async function callAIAvecOutils(
     console.error('Boucle d’outils interrompue :', (erreur as Error).message);
   }
 
+  if (resultat !== undefined) {
+    emettreMetriques(true);
+    return resultat;
+  }
+
   // La boucle elle-même n'a pas pu terminer : aucune preuve n'existe que les
   // recherches nécessaires ont été exécutées. On ne masque plus cet échec
   // derrière une génération simple.
+  emettreMetriques(false, 'boucle_interrompue');
   return JSON.stringify({
     outilsIndisponibles: true,
     message: 'Les sources de vérification sont momentanément indisponibles.',
