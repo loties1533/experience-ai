@@ -229,13 +229,16 @@ AVANT D'ÉCRIRE, CHERCHE. Tu disposes d'outils qui rendent de vrais lieux, de vr
 - Utilise uniquement les tronçons, dates civiles, créneaux symboliques, modes souhaités et occupants explicitement déclarés dans le brief transport. Ne transforme jamais un créneau en heure exacte.
 - N'écris jamais d'URL : les liens sont ajoutés après toi.
 
-Puis réponds UNIQUEMENT avec l'une de ces deux formes JSON :
+Puis réponds UNIQUEMENT avec l'une de ces trois formes JSON :
 1. Parcours possible : {"ambiance": string, "moments": [...]}.
 2. Donnée ESSENTIELLE introuvable (par exemple l'événement daté qui constitue le motif même du parcours) :
    - pour un lieu : {"refus":{"code":"donnees_essentielles_insuffisantes","message":string,"besoinEssentiel":{"typeMetierRecherche":"restaurant"|"activite"|"sortie","villeDemandee":string,"requete":string}}}
    - pour un événement : {"refus":{"code":"donnees_essentielles_insuffisantes","message":string,"besoinEssentiel":{"typeMetierRecherche":"evenement","villeDemandee":string,"dateDebut":"AAAA-MM-JJ","dateFin":"AAAA-MM-JJ"}}}
-Le besoin essentiel doit reprendre exactement la recherche qui n'a pas permis de confirmer la donnée.
-Une donnée facultative absente ne justifie jamais un refus : reste générique DANS le parcours. N'écris JAMAIS de phrase d'explication hors du JSON.
+   Le besoin essentiel doit reprendre exactement la recherche qui n'a pas permis de confirmer la donnée.
+3. Demande hors du périmètre du produit ou impossible à réaliser avec tes outils (par exemple un lieu hors de portée de tes recherches) :
+   {"refus":{"code":"hors_perimetre_produit"}}
+   Ce code seul suffit : le serveur choisit lui-même le message public associé. N'ajoute AUCUN champ ni AUCUNE explication à cet objet.
+Une donnée facultative absente ne justifie jamais un refus : reste générique DANS le parcours. N'écris JAMAIS de phrase d'explication hors du JSON — un refus est TOUJOURS l'une de ces deux formes structurées, jamais du texte libre.
 - Chaque moment : {"titre": string, "ville": string, "elements": [...]}. "ville" doit reprendre exactement une ville du brief, surtout pour un parcours multi-ville.
 - Chaque élément : {"ref": string (identifiant court unique, ex "resto-soir-1"), "type": "activite"|"restaurant"|"sortie"|"transport"|"hebergement"|"evenement"|"temps_libre", "identifiantExterne": string (à recopier lorsqu'un outil l'a fourni), "nom": string, "lieu": string, "plage": {"debut": ISO, "fin": ISO} (optionnel), "prix": number en euros (optionnel), "justification": string (POURQUOI cet élément sert l'intention — obligatoire), "dependDe": [refs] (optionnel), "estAncre": boolean (optionnel).
 - "sortie" = ce qui se vit le soir (bar, club, tournée, apéro). Ne JAMAIS le ranger en "temps_libre".
@@ -285,13 +288,38 @@ const BesoinEssentielSchema = z.union([
   }),
 ]);
 
-const RefusGenerationSchema = z.object({
-  refus: z.object({
+// Deux motifs de refus, jamais mélangés : une recherche essentielle restée
+// vide (besoin précis, vérifiable via `statutRechercheEssentielle`, message
+// public porté par le modèle) contre une demande hors périmètre produit,
+// constatée sans recherche associée. Pour ce second motif, le contrat IA est
+// volontairement réduit au seul code : aucun champ libre du modèle ne doit
+// pouvoir devenir un message public. Un éventuel "message" ajouté quand même
+// par le modèle est silencieusement retiré par le parsing Zod (`z.object`
+// sans `.strict()` ignore les champs inconnus) — jamais lu, jamais renvoyé,
+// jamais persisté.
+const RefusDonneesEssentiellesSchema = z
+  .object({
     code: z.literal('donnees_essentielles_insuffisantes'),
     message: z.string().min(1),
     besoinEssentiel: BesoinEssentielSchema.optional(),
-  }),
+  })
+  .strict();
+
+const RefusHorsPerimetreSchema = z.object({
+  code: z.literal('hors_perimetre_produit'),
 });
+
+const RefusGenerationSchema = z.object({
+  refus: z.discriminatedUnion('code', [
+    RefusDonneesEssentiellesSchema,
+    RefusHorsPerimetreSchema,
+  ]),
+});
+
+// Seul message public jamais associé au refus hors périmètre : fixe, choisi
+// par le serveur, sans dépendance à un texte produit par le modèle.
+const MESSAGE_PUBLIC_REFUS_HORS_PERIMETRE =
+  'Cette demande dépasse le périmètre du produit et ne peut pas être transformée en parcours.';
 
 type ElementGenere = z.infer<typeof ElementGenereSchema>;
 type MomentGenere = z.infer<
@@ -992,8 +1020,19 @@ async function genererLot(
   }
   const refus = RefusGenerationSchema.safeParse(contenu);
   if (refus.success) {
-    const statutRecherche = refus.data.refus.besoinEssentiel
-      ? boite.statutRechercheEssentielle(refus.data.refus.besoinEssentiel)
+    const { refus: donneesRefus } = refus.data;
+    // Refus hors périmètre : aucune recherche associée, donc jamais
+    // requalifiable en indisponibilité technique. Le message public est fixe
+    // et choisi par le serveur — le contrat ne laisse même pas le modèle
+    // fournir de champ "message" pour ce code (cf. RefusHorsPerimetreSchema).
+    if (donneesRefus.code === 'hors_perimetre_produit') {
+      throw new AppError(MESSAGE_PUBLIC_REFUS_HORS_PERIMETRE, 422);
+    }
+    // Donnée essentielle introuvable : une recherche vérifiable existe, une
+    // panne technique déguisée en refus reste distinguée ici. Comportement
+    // inchangé — le message public reste celui fourni par le modèle.
+    const statutRecherche = donneesRefus.besoinEssentiel
+      ? boite.statutRechercheEssentielle(donneesRefus.besoinEssentiel)
       : undefined;
     if (statutRecherche === 'indisponible') {
       throw new AppError(
@@ -1001,7 +1040,7 @@ async function genererLot(
         503
       );
     }
-    throw new AppError(refus.data.refus.message, 422);
+    throw new AppError(donneesRefus.message, 422);
   }
   const sortie = SortieGenerationSchema.safeParse(contenu);
   if (!sortie.success) {

@@ -423,6 +423,53 @@ modification, l'OpenAPI et le front.
 - [x] **F6-B** — script de benchmark manuel, reproductible, réseau réel non lancé en CI
 - [x] **F6-C** — sous-code interne pour distinguer les causes du 502 « sortie inexploitable »
 - [x] **F6-D** — ciblage explicite de couples modèle/scénario dans le benchmark
+- [x] **F6-E** — refus structuré hors périmètre dans la génération outillée
+
+### Revue F6-E — refus structuré hors périmètre dans la génération outillée (31/07)
+
+> Livré par la [PR #52](https://github.com/loties1533/experience-ai/pull/52).
+
+- **Constat du retest ciblé (31/07).** `haiku × nba-multi-villes` refusait la
+  demande (NBA hors périmètre France) en texte libre au lieu du JSON attendu :
+  `parseJSON` échouait et le refus métier légitime retombait en
+  `sortie_inexploitable/json_invalide` (502), pas en refus (422).
+- **Deuxième variante de refus, jamais confondue avec la première.** Le
+  contrat IA de `server/agents/generation.ts` distinguait déjà un refus pour
+  donnée essentielle introuvable (`donnees_essentielles_insuffisantes`, avec
+  `besoinEssentiel` vérifiable via `statutRechercheEssentielle`, message
+  public porté par le modèle — comportement inchangé). S'y ajoute
+  `hors_perimetre_produit`, sans recherche associée — jamais requalifiable en
+  indisponibilité technique (503).
+- **Revue finale ciblée (PR #52) : le message IA ne devient jamais public.**
+  Le premier contrat de `hors_perimetre_produit` acceptait un champ
+  `message` du modèle et le renvoyait tel quel comme message d'erreur
+  public — un texte libre de l'IA pouvait donc fuiter (justification,
+  mention d'outils ou d'instructions internes). Corrigé : le contrat de cette
+  variante est réduit au seul `code` (`{"refus":{"code":"hors_perimetre_produit"}}`,
+  `RefusHorsPerimetreSchema` sans `.strict()`, donc tout champ `message`
+  ajouté quand même par le modèle est silencieusement supprimé par le
+  parsing Zod — jamais lu, jamais renvoyé, jamais persisté). Le serveur
+  associe ce code à un message public fixe et maîtrisé
+  (`MESSAGE_PUBLIC_REFUS_HORS_PERIMETRE`). `donnees_essentielles_insuffisantes`
+  reste inchangé (message porté par le modèle, hors périmètre de cette
+  correction).
+- **`SYSTEM_GENERATION` documente les trois sorties possibles** (parcours,
+  refus pour donnée essentielle, refus hors périmètre) et précise que le
+  refus hors périmètre est réduit au seul code, choisi par le modèle — jamais
+  de champ ni de justification libre.
+- **502 conservé pour toute sortie réellement inexploitable** : texte libre
+  (`json_invalide`), code de refus inconnu ou refus sans code
+  (`schema_generation_invalide`, car ni refus valide ni parcours valide).
+- Tests ajoutés dans `tests/unit/generationOutillee.test.ts` : refus hors
+  périmètre structuré (422, message public fixe, aucune recherche
+  déclenchée), un `message` ajouté quand même par le modèle n'apparaît
+  jamais dans la réponse publique, code de refus inconnu rejeté (502), refus
+  sans code rejeté (502), refus en texte libre toujours `json_invalide`
+  (502, jamais un 422 déguisé), parcours valide inchangé. Suite complète
+  verte (1697 tests), typecheck OK, lint sans nouvelle erreur.
+- **Hors périmètre.** Aucun benchmark réseau lancé ; aucun changement du
+  périmètre géographique produit, du modèle de production, de
+  `MAX_TOURS_OUTILS` ni de la politique de reprise.
 
 ### Revue F6-D — ciblage explicite de couples modèle/scénario (31/07)
 

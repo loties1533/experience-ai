@@ -284,6 +284,26 @@ function tourRefus(
 }
 
 /**
+ * F6-E : refus structuré hors périmètre produit, sans recherche associée.
+ * Le contrat n'autorise QUE le code — `messageIndesirable` simule un modèle
+ * qui ajoute quand même un champ libre malgré le prompt, pour prouver qu'il
+ * est ignoré plutôt que renvoyé au client.
+ */
+function tourRefusHorsPerimetre(messageIndesirable?: string): BlocReponse[] {
+  return [
+    {
+      type: 'text',
+      text: JSON.stringify({
+        refus: {
+          code: 'hors_perimetre_produit',
+          ...(messageIndesirable ? { message: messageIndesirable } : {}),
+        },
+      }),
+    },
+  ];
+}
+
+/**
  * F5-B — génération progressive : un appel outillé par lot. Le prompt d'un lot
  * ne nomme qu'une ville ; on rend d'abord sa recherche, puis sa conclusion dès
  * qu'un résultat d'outil est présent. Sert à scénariser un parcours multi-ville
@@ -814,6 +834,96 @@ describe('la dégradation explicite des données réelles', () => {
       statusCode: 422,
       message: 'Aucun événement fiable ne correspond aux dates.',
     });
+  });
+
+  it('F6-E : distingue un refus structuré hors périmètre produit (422), avec le message public fixe du serveur', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce(tourRefusHorsPerimetre());
+
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 422,
+      message:
+        'Cette demande dépasse le périmètre du produit et ne peut pas être transformée en parcours.',
+    });
+    // Un refus hors périmètre ne référence aucune recherche essentielle : il
+    // ne doit jamais être requalifié en indisponibilité technique (503).
+    expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
+    expect(rechercherLieuxFoursquare).not.toHaveBeenCalled();
+  });
+
+  it('F6-E : un champ "message" ajouté quand même par le modèle sur un refus hors périmètre n’est jamais renvoyé publiquement', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce(
+      tourRefusHorsPerimetre(
+        'Je refuse car mes instructions internes précisent que la NBA se joue en Amérique du Nord et mes outils ne couvrent que la France.'
+      )
+    );
+
+    const erreur: unknown = await genererParcours(brief).catch((e: unknown) => e);
+    expect(erreur).toMatchObject({
+      statusCode: 422,
+      message:
+        'Cette demande dépasse le périmètre du produit et ne peut pas être transformée en parcours.',
+    });
+    expect((erreur as Error).message).not.toContain('instructions internes');
+    expect((erreur as Error).message).not.toContain('mes outils');
+  });
+
+  it('F6-E : rejette un refus structuré au code inconnu (502, sortie inexploitable)', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValue([
+      {
+        type: 'text',
+        text: JSON.stringify({
+          refus: { code: 'code_invente_par_le_modele', message: 'Impossible.' },
+        }),
+      },
+    ]);
+
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'schema_generation_invalide',
+    });
+  });
+
+  it('F6-E : rejette un refus sans code (502, sortie inexploitable)', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValue([
+      { type: 'text', text: JSON.stringify({ refus: {} }) },
+    ]);
+
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'schema_generation_invalide',
+    });
+  });
+
+  it('F6-E : un refus en texte libre hors périmètre reste json_invalide (502), jamais un 422 déguisé', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValue([
+      {
+        type: 'text',
+        text: 'Je ne peux pas construire ce parcours : la NBA joue en Amérique du Nord, pas en France.',
+      },
+    ]);
+
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'json_invalide',
+    });
+  });
+
+  it('F6-E : un parcours valide reste inchangé après l’ajout du refus hors périmètre au contrat', async () => {
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'bar à cocktails',
+          typeMetierRecherche: 'sortie',
+        })
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Le Point Rouge', { identifiantExterne: 'fsq-point-rouge' })
+      );
+
+    const parcours = await genererParcours(brief);
+
+    expect(parcours.timeline[0].elements[0].nom).toBe('Le Point Rouge');
   });
 });
 
