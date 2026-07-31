@@ -283,6 +283,16 @@ function tourRefus(
   ];
 }
 
+/** F6-E : refus structuré hors périmètre produit, sans recherche associée. */
+function tourRefusHorsPerimetre(message: string): BlocReponse[] {
+  return [
+    {
+      type: 'text',
+      text: JSON.stringify({ refus: { code: 'hors_perimetre_produit', message } }),
+    },
+  ];
+}
+
 /**
  * F5-B — génération progressive : un appel outillé par lot. Le prompt d'un lot
  * ne nomme qu'une ville ; on rend d'abord sa recherche, puis sa conclusion dès
@@ -814,6 +824,83 @@ describe('la dégradation explicite des données réelles', () => {
       statusCode: 422,
       message: 'Aucun événement fiable ne correspond aux dates.',
     });
+  });
+
+  it('F6-E : distingue un refus structuré hors périmètre produit (422), sans recherche associée', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce(
+      tourRefusHorsPerimetre(
+        'La NBA se joue en Amérique du Nord : ce parcours dépasse le périmètre du produit.'
+      )
+    );
+
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 422,
+      message:
+        'La NBA se joue en Amérique du Nord : ce parcours dépasse le périmètre du produit.',
+    });
+    // Un refus hors périmètre ne référence aucune recherche essentielle : il
+    // ne doit jamais être requalifié en indisponibilité technique (503).
+    expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
+    expect(rechercherLieuxFoursquare).not.toHaveBeenCalled();
+  });
+
+  it('F6-E : rejette un refus structuré au code inconnu (502, sortie inexploitable)', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValue([
+      {
+        type: 'text',
+        text: JSON.stringify({
+          refus: { code: 'code_invente_par_le_modele', message: 'Impossible.' },
+        }),
+      },
+    ]);
+
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'schema_generation_invalide',
+    });
+  });
+
+  it('F6-E : rejette un refus hors périmètre incomplet, sans message public (502)', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValue([
+      { type: 'text', text: JSON.stringify({ refus: { code: 'hors_perimetre_produit' } }) },
+    ]);
+
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'schema_generation_invalide',
+    });
+  });
+
+  it('F6-E : un refus en texte libre hors périmètre reste json_invalide (502), jamais un 422 déguisé', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValue([
+      {
+        type: 'text',
+        text: 'Je ne peux pas construire ce parcours : la NBA joue en Amérique du Nord, pas en France.',
+      },
+    ]);
+
+    await expect(genererParcours(brief)).rejects.toMatchObject({
+      statusCode: 502,
+      codeInterne: 'json_invalide',
+    });
+  });
+
+  it('F6-E : un parcours valide reste inchangé après l’ajout du refus hors périmètre au contrat', async () => {
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_lieux', {
+          ville: 'Bordeaux',
+          requete: 'bar à cocktails',
+          typeMetierRecherche: 'sortie',
+        })
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Le Point Rouge', { identifiantExterne: 'fsq-point-rouge' })
+      );
+
+    const parcours = await genererParcours(brief);
+
+    expect(parcours.timeline[0].elements[0].nom).toBe('Le Point Rouge');
   });
 });
 
