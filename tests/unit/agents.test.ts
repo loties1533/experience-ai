@@ -1220,10 +1220,12 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
       justification:
         'Prévoir un transport entre Bordeaux et Paris selon les dates et préférences déclarées.',
       confiance: { niveau: 'suggestion' },
-      prix: 145,
-      prixEstime: true,
+      prixEstime: false,
       estAncre: false,
     });
+    // Le prix observé du placeholder (145 €) est un fait inventé par le LLM :
+    // le transport est synthétisé depuis la seule demande, sans prix.
+    expect(element).not.toHaveProperty('prix');
     expect(element).not.toHaveProperty('lieu');
     expect(element).not.toHaveProperty('plage');
     expect(element).not.toHaveProperty('reservation');

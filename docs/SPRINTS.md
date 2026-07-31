@@ -16,7 +16,7 @@
 | F2 — Lieux et événements | Liens fiables par ville et établissement | Terminé |
 | F3 — Hébergements | Existence vérifiée et recherche Booking correcte | Terminé |
 | F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | Terminé |
-| F5 — Génération progressive | Plan global puis lots validés | À faire |
+| F5 — Génération progressive | Plan global puis lots validés | En cours |
 | F6 — Benchmark modèles | Choix mesuré du modèle de production | À faire |
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | À faire |
 | F8 — Modification complète | Régénération atomique des seuls dépendants | À faire |
@@ -411,6 +411,41 @@ modification, l'OpenAPI et le front.
   (`modifications.test.ts`, `transportActif.test.ts`), OpenAPI resynchronisée,
   1568 verts sur toute la suite, typecheck OK, lint sans nouvelle erreur, aucun
   appel réseau. F4 est terminé.
+
+**F5 — Génération progressive** *(en cours)*
+
+- [x] **F5-A** — plan dérivé pur et transport déterministe
+- [ ] **F5-B** — génération lot par lot, assemblage et reprise du lot en échec
+
+### Revue F5-A — un plan dérivé, un transport aligné sur la demande (31/07)
+
+- **Un plan dérivé, pas encore branché.** `deriverPlan` (et les contrats
+  internes `PlanGeneration` / `LotPrevu`) découpe un parcours en lots par ville
+  et par blocs de jours, à partir du seul brief : aucun appel IA, aucun réseau,
+  aucune horloge. La génération reste **un unique appel IA** — on construit le
+  nouveau avant de basculer, sans faire cohabiter deux pipelines. F5-B
+  l'utilisera pour générer lot par lot avec reprise.
+- **Découpage déterministe et borné.** Blocs de 2 à 5 jours, répartition la plus
+  égale possible : aucun lot de plus de cinq jours, aucun lot orphelin d'un jour
+  (un seul jour disponible reste un cas légitime), couverture exacte sans trou
+  ni chevauchement. Sans dates : un lot par ville. Plusieurs villes datées :
+  répartition contiguë des jours, sauf si chaque ville ne peut recevoir deux
+  jours — on renonce alors aux plages plutôt que d'inventer un déséquilibre.
+- **Transport synthétisé depuis la seule demande.** `nettoyerMomentsTransport`
+  ne dépend plus des placeholders du LLM : il produit **exactement un transport
+  par tronçon, dans l'ordre de la demande**, quel que soit ce que le modèle a
+  émis (zéro, un ou cinq). Ni la référence, ni le prix du placeholder ne
+  survivent : un prix absent de la demande reste absent plutôt qu'inventé. Le
+  contrat positionnel tronçon ↔ élément réutilisé par l'enrichissement F4-D2 en
+  sort renforcé, puisque le nombre et l'ordre ne varient plus avec le LLM.
+- **Garanties F4 inchangées.** Niveau `suggestion`, absence de lieu, d'horaire,
+  de réservation et de preuve : les invariants transport restent tenus. Aucun
+  parcours partiel n'est introduit — le chemin de génération est identique, à la
+  synthèse transport près.
+- Tests ajoutés (`tests/unit/planGeneration.test.ts`, découpages 1 à 16 jours,
+  mono-ville, multi-villes et dates absentes) et adaptés (`transportActif`,
+  `agents`) au transport déterministe. 1596 verts sur toute la suite, typecheck
+  OK, lint sans nouvelle erreur, aucun appel réseau. Prochain sous-lot : **F5-B**.
 
 ## Refonte Experience AI — plan de build
 

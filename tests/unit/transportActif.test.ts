@@ -315,7 +315,7 @@ describe('nettoyage fail-closed des sorties transport', () => {
     expect(resultat[0].elements[0].dependDe).toEqual([]);
   });
 
-  it('reconstruit entièrement un transport demandé depuis le contrat validé', () => {
+  it('synthétise le transport depuis la demande sans reprendre le placeholder', () => {
     const [moment] = nettoyerMomentsTransport(
       [hallucination],
       DEMANDE_TRANSPORT
@@ -326,35 +326,23 @@ describe('nettoyage fail-closed des sorties transport', () => {
       'Transport à organiser de Bordeaux vers Paris'
     );
     expect(moment).not.toHaveProperty('plage');
+    // Ni la référence, ni le prix (145) du placeholder LLM ne survivent : le
+    // transport est intégralement dérivé de la demande. Un prix absent de la
+    // demande reste absent plutôt que d'être inventé.
     expect(element).toEqual({
-      ref: 'vol-1',
+      ref: 'transport-troncon-0',
       type: 'transport',
       nom: 'Transport à organiser de Bordeaux vers Paris',
-      prix: 145,
       justification:
         'Prévoir un transport entre Bordeaux et Paris selon les dates et préférences déclarées.',
       dependDe: [],
       estAncre: false,
     });
+    expect(element).not.toHaveProperty('prix');
     const serialise = JSON.stringify(moment);
     expect(serialise).not.toMatch(
       /Air France|AF123|CDG|09:42|11:18|Billet|example\.test/
     );
-  });
-
-  it('n’invente aucun prix lorsqu’il est absent', () => {
-    const sansPrix = {
-      ...hallucination,
-      elements: hallucination.elements.map(
-        ({ prix: _prix, ...element }) => element
-      ),
-    };
-    const [moment] = nettoyerMomentsTransport(
-      [sansPrix],
-      DEMANDE_TRANSPORT
-    );
-
-    expect(moment.elements[0]).not.toHaveProperty('prix');
   });
 
   it('sépare un transport d’un moment mixte sans effacer l’horaire de l’activité', () => {
@@ -424,7 +412,7 @@ describe('nettoyage fail-closed des sorties transport', () => {
     expect(momentActivite.titre).not.toMatch(/AF123|09:42/);
   });
 
-  it('borne les suggestions au nombre de tronçons et conserve leur ordre', () => {
+  it('produit exactement un transport par tronçon, dans l’ordre, quel que soit le placeholder', () => {
     const demande = {
       troncons: [
         {
@@ -473,12 +461,19 @@ describe('nettoyage fail-closed des sorties transport', () => {
         DEMANDE_TRANSPORT
       ).flatMap((moment) => moment.elements)
     ).toHaveLength(1);
-    expect(nettoyerMomentsTransport([], demande)).toEqual([]);
+    // Le nombre de transports suit les tronçons, jamais les placeholders :
+    // aucun placeholder (moments vides) ou un seul produisent malgré tout un
+    // transport par tronçon de la demande.
+    expect(
+      nettoyerMomentsTransport([], demande).flatMap(
+        (moment) => moment.elements
+      )
+    ).toHaveLength(3);
     expect(
       nettoyerMomentsTransport([hallucination], demande).flatMap(
         (moment) => moment.elements
       )
-    ).toHaveLength(1);
+    ).toHaveLength(3);
   });
 
   it('ne mute profondément ni les moments ni la demande reçus', () => {
