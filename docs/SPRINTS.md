@@ -420,6 +420,59 @@ modification, l'OpenAPI et le front.
 **F6 — Benchmark des modèles** *(en cours)*
 
 - [x] **F6-A** — instrumentation des appels IA (modèle injectable, métriques)
+- [x] **F6-B** — script de benchmark manuel, reproductible, réseau réel non lancé en CI
+
+### Revue F6-B — benchmark manuel des modèles, jamais lancé automatiquement (31/07)
+
+> Livré par la [PR #49](https://github.com/loties1533/experience-ai/pull/49).
+
+- **Un script manuel, jamais réseau en CI.** `server/benchmark/benchmarker-modeles.ts`
+  exige `ANTHROPIC_API_KEY`, accepte une liste de modèles (`--modeles=` ou
+  `BENCHMARK_MODELES`) avec `MODELE_CLAUDE` comme défaut pour une exécution
+  volontaire, et un nombre de répétitions réglable (`--repetitions=` ou
+  `BENCHMARK_REPETITIONS`). Lancé uniquement via `npm run benchmark:modeles` ;
+  jamais importé par Vitest. La logique pure (scénarios, parsing, évaluation,
+  agrégation) vit dans `server/benchmark/logique.ts`, sans aucun import réseau,
+  pour rester testable sans clé.
+  Placé sous `server/benchmark/` plutôt que `scripts/` : ce dernier (et tout
+  dossier nommé `scripts`) est exclu du dépôt par `.gitignore`.
+- **Mêmes scénarios, mêmes outils, pour chaque modèle.** Trois briefs fictifs
+  fixes — soirée à Bordeaux, EVG de deux jours à Bordeaux, parcours NBA
+  multi-villes (New York, Los Angeles, Chicago) de trois semaines — passent
+  tous par `genererParcours` inchangé (mêmes prompt système, outils, plan de
+  lots). Seul le modèle Anthropic varie, via l'injection posée par F6-A ; le
+  paramètre optionnel ajouté à `genererParcours`/`genererEtAssemblerLots`/
+  `genererLot` ne change rien par défaut, aucune route ne le renseigne.
+- **Évaluation déterministe, jamais un LLM juge un LLM.** Un essai réussi
+  reprend gratuitement les garanties déjà posées par `genererParcours`
+  (Zod, `validerParcours`, dépendances, aucun lot partiel) ; le script
+  n'ajoute que ce que le pipeline existant ne vérifie pas : toutes les villes
+  demandées apparaissent dans le parcours produit, et aucun jour civil de la
+  plage datée ne reste sans élément. Aucune note subjective, aucune
+  comparaison sur un seul essai.
+- **Métriques agrégées, jamais de contenu.** Chaque essai capte modèle,
+  scénario, répétition, succès ou catégorie d'échec (reprend les codes 422/
+  502/503 déjà posés par `genererLot`), durée, tokens d'entrée/sortie, tours,
+  lots prévus/générés, reprises — jamais de prompt ni de réponse brute. Le
+  rapport JSON (dossier `server/benchmark/resultats/`, ignoré par Git) et le
+  résumé terminal donnent taux de succès, moyenne/médiane/min/max/variance
+  des durées, moyennes de tokens et de tours, répartition des échecs, le tout
+  par modèle puis par scénario. Aucun tarif hardcodé : un coût n'est affiché
+  que si `BENCHMARK_TARIFS_JSON` le fournit explicitement.
+- **Un essai isolé n'arrête jamais les autres.** La boucle d'orchestration
+  (`executerTousLesEssais`) capture toute erreur d'un essai et la transforme
+  en résultat d'échec plutôt que d'interrompre le benchmark.
+- Tests ajoutés (`tests/unit/benchmarkerModeles.test.ts`, 39 cas) : parsing
+  des arguments et des tarifs, refus sans clé ou sans modèle, moyenne/
+  médiane/min/max/variance, catégorisation des échecs, villes attendues et
+  jours couverts, agrégation par modèle et par scénario, poursuite après un
+  échec isolé, génération du rapport, absence de tout champ de contenu brut
+  dans un résultat — sans aucun appel réseau. 1664 tests verts sur toute la
+  suite, typecheck OK, lint sans nouvelle erreur.
+- **F6 reste en cours.** Le script existe et est reproductible, mais aucun
+  benchmark réseau réel n'a été lancé : le choix du modèle de production
+  (critère de fin du doc 14) suppose une exécution volontaire d'Alexis et
+  une lecture de ses résultats, hors périmètre de ce lot.
 
 ### Revue F6-A — modèle injectable et métriques sans changer le produit (31/07)
 
