@@ -144,7 +144,22 @@ export type OccupationTransportBrief = z.infer<
 >;
 export type TransportBrief = z.infer<typeof TransportBriefSchema>;
 
-const LIBELLES_MANQUANTS: Record<'intention' | 'avecQui' | 'duree' | 'dates', string> = {
+export type ChampBase = 'intention' | 'avecQui' | 'duree' | 'dates';
+
+/**
+ * Ordre stable de collecte des 4 champs de base — jamais laissé au LLM.
+ * Correspond à l'ordre déjà observé dans le dialogue avant F7-B : intention,
+ * puis avec qui, puis durée, puis dates (cf. `LIBELLES_MANQUANTS` ci-dessous,
+ * inchangé).
+ */
+export const ORDRE_CHAMPS_BASE: readonly ChampBase[] = [
+  'intention',
+  'avecQui',
+  'duree',
+  'dates',
+];
+
+const LIBELLES_MANQUANTS: Record<ChampBase, string> = {
   intention: 'l’envie (que voulez-vous vivre ?)',
   avecQui: 'avec qui',
   duree: 'la durée',
@@ -157,6 +172,29 @@ const LIBELLES_MANQUANTS: Record<'intention' | 'avecQui' | 'duree' | 'dates', st
   // demande d'où l'utilisateur part au lieu de quand.
   dates: 'une date de départ, même approximative (à quel moment, pas d’où)',
 };
+
+const LIBELLES_CHAMPS_BASE_COURTS: Record<ChampBase, string> = {
+  intention: 'l’intention',
+  avecQui: 'avec qui il part',
+  duree: 'la durée',
+  dates: 'les dates',
+};
+
+/**
+ * Le prochain champ de base à demander, et un seul au maximum. Une valeur
+ * présente dans le brief est nécessairement valide : `extraireChampsValides`
+ * (intake.ts) ne retient jamais un champ qui n'a pas passé son schéma Zod —
+ * il n'existe donc aucun état « partiel » distinct d'une absence à vérifier
+ * ici, contrairement à l'occupation hébergement/transport.
+ */
+export function prochainChampBase(brief: BriefPartiel): ChampBase | undefined {
+  return ORDRE_CHAMPS_BASE.find((champ) => brief[champ] === undefined);
+}
+
+/** Nom court affichable pour injecter le champ ciblé dans le prompt d'intake. */
+export function libelleChampBase(champ: ChampBase): string {
+  return LIBELLES_CHAMPS_BASE_COURTS[champ];
+}
 
 const LIBELLES_HEBERGEMENT = {
   adultes: 'le nombre d’adultes pour l’hébergement',
@@ -322,7 +360,7 @@ export function calculerDates(
 
 /** Les champs requis encore absents — le dialogue ne pose que ces questions. */
 export function champsManquants(brief: BriefPartiel): string[] {
-  const manquants = (Object.keys(LIBELLES_MANQUANTS) as (keyof typeof LIBELLES_MANQUANTS)[])
+  const manquants = ORDRE_CHAMPS_BASE
     .filter((champ) => brief[champ] === undefined)
     .map((champ) => LIBELLES_MANQUANTS[champ]);
 

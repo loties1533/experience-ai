@@ -34,6 +34,9 @@ import {
   questionHebergement,
   questionTransport,
   prochainChampTransport,
+  prochainChampBase,
+  libelleChampBase,
+  ORDRE_CHAMPS_BASE,
   type ChampHebergement,
   type ChampTransport,
   type HebergementBrief,
@@ -88,6 +91,9 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
 - "reponse" : UNE question courte et chaleureuse en français sur UN champ requis manquant (intention, avecQui, duree,
   une date de départ approximative — jamais "point de départ", qui prête à confusion avec une ville). Jamais deux
   questions. TUTOIE toujours l'utilisateur (« tu », jamais « vous »).
+- Le message précise "Champ de base à demander maintenant" : c'est le SEUL champ de base sur lequel porter "reponse"
+  tant qu'il est indiqué. Ne redemande jamais un champ listé dans "Champs de base déjà validés", même reformulé
+  autrement — sauf si l'utilisateur vient de le corriger explicitement dans son dernier message.
 - N'invente jamais un champ que l'utilisateur n'a pas exprimé.
 - Le message peut contenir un repère temporel ("Repère temporel : ...") et des dates déjà résolues
   ("Dates déjà résolues : ..."). Si des dates déjà résolues sont fournies, reprends-les TELLES QUELLES
@@ -925,9 +931,27 @@ export async function avancerDialogue(
     ? undefined
     : resoudreExpressionRelative(messageUtilisateur, contexteTemporel);
 
+  // État déterministe du dialogue de base (F7-B) : le serveur choisit QUEL
+  // champ de base cibler, jamais le LLM. Celui-ci garde la main sur la
+  // formulation de "reponse", pas sur le choix du champ.
+  const champBaseCible = prochainChampBase(briefActuel);
+  const champsBaseValides = ORDRE_CHAMPS_BASE.filter(
+    (champ) => briefActuel[champ] !== undefined
+  );
+
   const prompt = `Brief déjà établi : ${JSON.stringify(briefActuel)}
 Dernier message de l'utilisateur : "${sanitizeInput(messageUtilisateur)}"
 Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'aucun'}
+Champs de base déjà validés (ne jamais les redemander) : ${
+    champsBaseValides.length > 0
+      ? champsBaseValides.map(libelleChampBase).join(', ')
+      : 'aucun'
+  }
+${
+    champBaseCible
+      ? `Champ de base à demander maintenant, et uniquement celui-ci : ${libelleChampBase(champBaseCible)}.`
+      : 'Tous les champs de base sont déjà validés : ne pose plus aucune question sur intention, avecQui, duree ou dates, sauf correction explicite de l’utilisateur.'
+  }
 Repère temporel : nous sommes le ${dateReferenceLisible(contexteTemporel)} (fuseau ${contexteTemporel.fuseau}).${
     dateRelativeResolue
       ? `
@@ -1037,11 +1061,16 @@ Dates déjà résolues pour l'expression temporelle de ce message : du ${dateRel
       estComplet: true,
     };
   }
+  // Tant qu'un champ de base manque, c'est lui — et lui seul — qui doit être
+  // demandé : l'hébergement et le transport n'entrent en jeu qu'une fois les
+  // 4 champs de base validés.
   return {
     reponse:
-      questionHebergement(brief, extractionHebergement.champInvalide) ??
-      questionTransport(brief, extractionTransport.champInvalide) ??
-      sortie.data.reponse,
+      prochainChampBase(brief) === undefined
+        ? questionHebergement(brief, extractionHebergement.champInvalide) ??
+          questionTransport(brief, extractionTransport.champInvalide) ??
+          sortie.data.reponse
+        : sortie.data.reponse,
     brief,
     estComplet: false,
   };
