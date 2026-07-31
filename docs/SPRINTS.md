@@ -17,7 +17,7 @@
 | F3 — Hébergements | Existence vérifiée et recherche Booking correcte | Terminé |
 | F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | Terminé |
 | F5 — Génération progressive | Plan global puis lots validés | En cours |
-| F6 — Benchmark modèles | Choix mesuré du modèle de production | À faire |
+| F6 — Benchmark modèles | Choix mesuré du modèle de production | En cours |
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | À faire |
 | F8 — Modification complète | Régénération atomique des seuls dépendants | À faire |
 | F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
@@ -416,6 +416,38 @@ modification, l'OpenAPI et le front.
 
 - [x] **F5-A** — plan dérivé pur et transport déterministe
 - [x] **F5-B** — génération lot par lot, assemblage et reprise du lot en échec
+
+**F6 — Benchmark des modèles** *(en cours)*
+
+- [x] **F6-A** — instrumentation des appels IA (modèle injectable, métriques)
+
+### Revue F6-A — modèle injectable et métriques sans changer le produit (31/07)
+
+- **Modèle Anthropic injectable, comportement inchangé.** `callClaudeOutils`
+  et `callAIAvecOutils` acceptent désormais une option `modele` ; sans elle,
+  `MODELE_CLAUDE` (Haiku 4.5) reste utilisé exactement comme avant. Aucun
+  appelant existant (`genererLot`, tests) n'a été modifié : la boîte à outils,
+  le contexte et les mocks historiques restent compatibles tels quels.
+- **Métriques remontées par callback, jamais par retour de valeur.** Une
+  option `onMetriques` rend, à la fin d'un appel outillé complet : modèle,
+  tokens d'entrée et de sortie agrégés sur tous les tours (capturés via
+  `usage` de la réponse Anthropic, jusque-là ignoré), durée, nombre de tours
+  et succès ou type d'échec (`cle_absente`, `boucle_interrompue`). Jamais de
+  prompt, de réponse ou d'intention utilisateur dans ces métriques.
+  La classification métier existante (422 refus, 502 sortie inexploitable,
+  503 indisponibilité) reste entièrement dans `genererLot`, inchangée : cette
+  instrumentation ne porte que sur la boucle d'outils elle-même.
+- **Prépare F6-B sans l'anticiper.** Aucun routage automatique, aucun autre
+  fournisseur, aucun calcul de coût (les tarifs ne sont pas versionnés dans
+  le dépôt) : uniquement les grandeurs nécessaires à un futur script de
+  benchmark comparant les modèles sur les mêmes scénarios.
+- Tests ajoutés (`tests/unit/callAIAvecOutilsMetriques.test.ts`,
+  `tests/unit/callAIAvecOutilsMetriquesSansCle.test.ts`) : modèle par défaut,
+  modèle explicite transmis au provider, agrégation des tokens sur plusieurs
+  tours, durée non négative, classification d'échec sans fuite de contenu,
+  absence de clé, compatibilité avec l'appel historique sans options. 1622
+  verts sur toute la suite, typecheck OK, lint sans nouvelle erreur, aucun
+  appel réseau réel.
 
 ### Revue F5-B — génération progressive par lots (31/07)
 
