@@ -16,7 +16,7 @@
 | F2 — Lieux et événements | Liens fiables par ville et établissement | Terminé |
 | F3 — Hébergements | Existence vérifiée et recherche Booking correcte | Terminé |
 | F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | Terminé |
-| F5 — Génération progressive | Plan global puis lots validés | En cours |
+| F5 — Génération progressive | Plan global puis lots validés | Terminé |
 | F6 — Benchmark modèles | Choix mesuré du modèle de production | Terminé |
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | À faire |
 | F8 — Modification complète | Régénération atomique des seuls dépendants | À faire |
@@ -412,10 +412,20 @@ modification, l'OpenAPI et le front.
   1568 verts sur toute la suite, typecheck OK, lint sans nouvelle erreur, aucun
   appel réseau. F4 est terminé.
 
-**F5 — Génération progressive** *(en cours)*
+**F5 — Génération progressive** *(terminé)*
 
 - [x] **F5-A** — plan dérivé pur et transport déterministe
 - [x] **F5-B** — génération lot par lot, assemblage et reprise du lot en échec
+
+### Clôture F5 (01/08)
+
+Les deux sous-lots (PR [#46](https://github.com/loties1533/experience-ai/pull/46)
+et PR [#47](https://github.com/loties1533/experience-ai/pull/47)) sont fusionnés.
+Le critère de `docs/14-fiabilite-parcours.md` — un parcours multi-villes de trois
+semaines généré sans troncature et sans perdre les lots déjà validés — est
+couvert par `tests/unit/generationProgressive.test.ts` (scénario dédié, 56 tests
+verts sur `generationProgressive` et `planGeneration`). Aucun critère F5 restant
+ouvert. F5 passe à Terminé.
 
 **F6 — Benchmark des modèles** *(terminé)*
 
