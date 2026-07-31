@@ -118,6 +118,46 @@ describe('contrat client — les preuves restent côté serveur', () => {
     ).toBe(false);
   });
 
+  // F4-E — le transport suit l'hébergement : il ne passe plus par le chemin
+  // générique. Sans cette exclusion, un ajout/remplacement transport pourrait
+  // désynchroniser la correspondance positionnelle tronçon ↔ élément sur
+  // laquelle `modifier_demande_transport` s'appuie.
+  it.each([
+    ['ajouter_element', { type: 'ajouter_element', momentId: 'm1' }],
+    ['remplacer_element', { type: 'remplacer_element', elementId: 'transport-0' }],
+  ])('refuse de créer ou remplacer un transport par %s générique', (_type, enveloppe) => {
+    const champ =
+      enveloppe.type === 'ajouter_element' ? 'element' : 'remplacement';
+    expect(
+      DemandeSurElementClientSchema.safeParse({
+        ...enveloppe,
+        [champ]: {
+          type: 'transport',
+          nom: 'Vol forgé BOD-CDG',
+          justification: 'un trajet inventé par le client',
+        },
+      }).success
+    ).toBe(false);
+  });
+
+  it('laisse inchangés les types génériques autorisés', () => {
+    for (const type of [
+      'activite',
+      'restaurant',
+      'sortie',
+      'evenement',
+      'temps_libre',
+    ]) {
+      expect(
+        DemandeSurElementClientSchema.safeParse({
+          type: 'ajouter_element',
+          momentId: 'm1',
+          element: { ...proposition, type },
+        }).success
+      ).toBe(true);
+    }
+  });
+
   it('refuse une preuve injectée dans une intention remplacer_hotel', () => {
     expect(
       DemandeSurElementClientSchema.safeParse({

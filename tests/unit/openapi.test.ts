@@ -24,6 +24,7 @@ describe('OpenAPI F3-D — lecture et modification sont séparées', () => {
     ['confiance'],
     ['reservation'],
     ['lienRechercheHebergement'],
+    ['lienRechercheTransport'],
     ['sejourHebergement'],
   ])('documente Element.%s en lecture seule', (champ) => {
     expect(
@@ -73,7 +74,7 @@ describe('OpenAPI F3-D — lecture et modification sont séparées', () => {
     expect(propriete(demande, 'additionalProperties')).toBe(false);
   });
 
-  it('représente les neuf discriminants Zod sans propriété libre', () => {
+  it('représente les dix discriminants Zod sans propriété libre', () => {
     const variantes = chemin(
       'components',
       'schemas',
@@ -82,7 +83,7 @@ describe('OpenAPI F3-D — lecture et modification sont séparées', () => {
     );
     expect(variantes).toBeInstanceOf(Array);
     const liste = variantes as unknown[];
-    expect(liste).toHaveLength(9);
+    expect(liste).toHaveLength(10);
     expect(
       liste.map((variante) => {
         expect(
@@ -107,6 +108,7 @@ describe('OpenAPI F3-D — lecture et modification sont séparées', () => {
       'modifier_sejour_hebergement',
       'modifier_occupation_hebergement',
       'remplacer_hotel',
+      'modifier_demande_transport',
     ]);
   });
 

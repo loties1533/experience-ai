@@ -20,6 +20,7 @@ import { avancerDialogue } from '../agents/intake.js';
 import { genererParcours } from '../agents/generation.js';
 import { interpreterDemande } from '../agents/modification.js';
 import { appliquerModificationHotel } from '../services/modificationHotel.js';
+import { appliquerModificationTransport } from '../services/modificationTransport.js';
 import {
   DemandeSurElementClientSchema,
   type DemandeDePartage,
@@ -27,6 +28,7 @@ import {
   VisibiliteSchema,
   appliquerModification,
   estDemandeModificationHotelClient,
+  estDemandeModificationTransportClient,
   participantsPartageables,
   preparerDemandeSurElementClient,
   type Parcours,
@@ -177,6 +179,12 @@ router.post(
       };
       const resultat = estDemandeModificationHotelClient(demandeClient)
         ? await appliquerModificationHotel(
+            parcours,
+            demandeClient,
+            contexteModification
+          )
+        : estDemandeModificationTransportClient(demandeClient)
+        ? await appliquerModificationTransport(
             parcours,
             demandeClient,
             contexteModification

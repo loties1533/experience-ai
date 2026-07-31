@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   AvisSchema,
+  DemandeTransportParcoursSchema,
   ElementSchema,
   OccupationHebergementDeclareeSchema,
   ParticipantSchema,
@@ -19,10 +20,6 @@ import {
   verifierResponsabilite,
   type ActionParcours,
 } from './invariants.js';
-import {
-  JUSTIFICATION_TRANSPORT_GENERIQUE,
-  LIBELLE_TRANSPORT_GENERIQUE,
-} from '../transport/index.js';
 
 // Le cœur du produit (invariant 3 + ADR-0004) : modifier un élément sans tout
 // refaire. Logique pure et immuable — le parcours d'origine n'est jamais touché.
@@ -38,12 +35,18 @@ import {
  * jamais un élément persistant complet. Les preuves, identifiants externes,
  * liens, statuts de confiance et dérivés restent donc impossibles à exprimer.
  *
- * L'hébergement est volontairement exclu de ce chemin générique : son identité
- * doit passer par `remplacer_hotel`, donc par Foursquare côté serveur.
+ * L'hébergement et le transport sont volontairement exclus de ce chemin
+ * générique : leur identité doit passer par un contrat dédié — `remplacer_hotel`
+ * (Foursquare) pour l'hébergement, `modifier_demande_transport` (F4-E) pour le
+ * transport — plutôt que par un libellé libre que le client pourrait forger.
+ * Sans cette exclusion, un `ajouter_element`/`remplacer_element` de type
+ * `transport` pourrait désynchroniser la correspondance positionnelle entre
+ * tronçons de la demande et éléments transport de la timeline, sur laquelle
+ * `modifier_demande_transport` s'appuie.
  */
 export const PropositionElementClientSchema = z
   .object({
-    type: TypeElementSchema.exclude(['hebergement']),
+    type: TypeElementSchema.exclude(['hebergement', 'transport']),
     nom: z.string().trim().min(1).max(200),
     lieu: z.string().trim().min(1).max(300).optional(),
     plage: PlageHoraireSchema.strict().optional(),
@@ -51,24 +54,6 @@ export const PropositionElementClientSchema = z
     justification: z.string().trim().min(1).max(1000),
   })
   .strict();
-
-type PropositionElementClient = z.infer<
-  typeof PropositionElementClientSchema
->;
-
-function neutraliserPropositionTransport(
-  proposition: PropositionElementClient
-): PropositionElementClient {
-  if (proposition.type !== 'transport') return proposition;
-  return {
-    type: 'transport',
-    nom: LIBELLE_TRANSPORT_GENERIQUE,
-    justification: JUSTIFICATION_TRANSPORT_GENERIQUE,
-    ...(proposition.prix === undefined
-      ? {}
-      : { prix: proposition.prix }),
-  };
-}
 
 export const DemandeModificationHotelClientSchema = z.discriminatedUnion(
   'type',
@@ -114,6 +99,21 @@ export const DemandeModificationHotelClientSchema = z.discriminatedUnion(
       }),
   ]
 );
+
+/**
+ * Frontière HTTP transport : le client ne peut décrire qu'une intention de
+ * trajet — villes, dates civiles, modes souhaités et occupation déclarée. Le
+ * schéma persistant refuse déjà toute gare, aéroport, terminal ou code
+ * fournisseur (villes prudentes uniquement) : aucune identité IATA ou UIC ne
+ * peut donc être forgée côté client. La reconstruction des liens reste au
+ * serveur, via la résolution prudente Amadeus/Navitia (F4-D2).
+ */
+export const DemandeModificationTransportClientSchema = z
+  .object({
+    type: z.literal('modifier_demande_transport'),
+    demandeTransport: DemandeTransportParcoursSchema,
+  })
+  .strict();
 
 const DemandeSurElementClientPureSchema = z.discriminatedUnion('type', [
   z
@@ -163,6 +163,7 @@ const DemandeSurElementClientPureSchema = z.discriminatedUnion('type', [
 export const DemandeSurElementClientSchema = z.discriminatedUnion('type', [
   ...DemandeSurElementClientPureSchema.options,
   ...DemandeModificationHotelClientSchema.options,
+  DemandeModificationTransportClientSchema,
 ]);
 
 // Un remplacement ne porte pas d'id : il hérite de celui de l'élément remplacé.
@@ -241,6 +242,9 @@ export type DemandeSurElementClient = z.infer<
 export type DemandeModificationHotelClient = z.infer<
   typeof DemandeModificationHotelClientSchema
 >;
+export type DemandeModificationTransportClient = z.infer<
+  typeof DemandeModificationTransportClientSchema
+>;
 export type DemandeDePartage = z.infer<typeof DemandeDePartageSchema>;
 export type DemandeModification = z.infer<typeof DemandeModificationSchema>;
 
@@ -254,6 +258,12 @@ export function estDemandeModificationHotelClient(
   );
 }
 
+export function estDemandeModificationTransportClient(
+  demande: DemandeSurElementClient
+): demande is DemandeModificationTransportClient {
+  return demande.type === 'modifier_demande_transport';
+}
+
 /**
  * Transforme l'intention client déjà validée en commande interne. C'est ici,
  * côté serveur, que l'id d'un ajout et les valeurs de confiance minimales sont
@@ -262,15 +272,13 @@ export function estDemandeModificationHotelClient(
 export function preparerDemandeSurElementClient(
   demande: Exclude<
     DemandeSurElementClient,
-    DemandeModificationHotelClient
+    DemandeModificationHotelClient | DemandeModificationTransportClient
   >,
   creerId: () => string
 ): DemandeSurElement {
   switch (demande.type) {
     case 'ajouter_element': {
-      const proposition = neutraliserPropositionTransport(
-        demande.element
-      );
+      const proposition = demande.element;
       return {
         ...demande,
         element: ElementSchema.parse({
@@ -282,9 +290,7 @@ export function preparerDemandeSurElementClient(
       };
     }
     case 'remplacer_element': {
-      const proposition = neutraliserPropositionTransport(
-        demande.remplacement
-      );
+      const proposition = demande.remplacement;
       const element = ElementSchema.parse({
         id: 'remplacement-interne',
         ...proposition,

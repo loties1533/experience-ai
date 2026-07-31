@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
 import AvisGroupe from '../components/AvisGroupe'
-import { BadgeConfiance, LibelleLien, libelleLien } from '../components/ConfianceElement'
+import { BadgeConfiance, LibelleLien, libelleLien, LienRechercheTransport } from '../components/ConfianceElement'
 import PanneauPartage from '../components/PanneauPartage'
 import {
   chargerParcours, modifierParcours,
@@ -148,6 +148,7 @@ export default function ParcoursDetail() {
                           <LibelleLien element={element} />
                         </a>
                       )}
+                      <LienRechercheTransport element={element} />
                       {/* La justification : la cohérence visible (Constitution #4) */}
                       <p className="text-sm text-encre-light mt-2 italic">« {element.justification} »</p>
                       {/* Ce que le groupe en pense — ça éclaire, ça ne décide pas */}
