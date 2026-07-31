@@ -206,16 +206,24 @@ export async function callAIAvecOutils(
     tokensEntree += usage.tokensEntree;
     tokensSortie += usage.tokensSortie;
   };
-  const metriques = (succes: boolean, typeEchec?: MetriquesAppelOutils['typeEchec']): void => {
-    options.onMetriques?.({
-      modele,
-      tokensEntree,
-      tokensSortie,
-      dureeMs: Date.now() - debut,
-      tours,
-      succes,
-      ...(typeEchec ? { typeEchec } : {}),
-    });
+  // Construite une seule fois, hors de tout try/catch métier : une erreur du
+  // callback appelant (onMetriques) ne doit jamais être confondue avec un
+  // échec de la boucle d'outils, ni écraser le résultat déjà obtenu.
+  const emettreMetriques = (succes: boolean, typeEchec?: MetriquesAppelOutils['typeEchec']): void => {
+    if (!options.onMetriques) return;
+    try {
+      options.onMetriques({
+        modele,
+        tokensEntree,
+        tokensSortie,
+        dureeMs: Date.now() - debut,
+        tours,
+        succes,
+        ...(typeEchec ? { typeEchec } : {}),
+      });
+    } catch (erreurMetriques) {
+      console.error('onMetriques a échoué :', (erreurMetriques as Error).message);
+    }
   };
 
   // La boucle d'outils est propre à l'API Anthropic. Un fournisseur sans outils
@@ -223,7 +231,7 @@ export async function callAIAvecOutils(
   // parcours. Depuis F1 on signale l'indisponibilité au lieu d'abaisser
   // silencieusement la confiance des données.
   if (!CLE_ANTHROPIC) {
-    metriques(false, 'cle_absente');
+    emettreMetriques(false, 'cle_absente');
     return JSON.stringify({
       outilsIndisponibles: true,
       message: 'Les sources de vérification sont momentanément indisponibles.',
@@ -231,6 +239,7 @@ export async function callAIAvecOutils(
   }
 
   const messages: MessageLLM[] = [{ role: 'user', content: userPrompt }];
+  let resultat: string | undefined;
 
   try {
     for (let tour = 0; tour <= MAX_TOURS_OUTILS; tour++) {
@@ -244,8 +253,8 @@ export async function callAIAvecOutils(
 
       const demandes = contenu.filter((bloc): bloc is BlocOutil => bloc.type === 'tool_use');
       if (demandes.length === 0) {
-        metriques(true);
-        return texteDe(contenu);
+        resultat = texteDe(contenu);
+        break;
       }
 
       messages.push({ role: 'assistant', content: contenu });
@@ -264,10 +273,15 @@ export async function callAIAvecOutils(
     console.error('Boucle d’outils interrompue :', (erreur as Error).message);
   }
 
+  if (resultat !== undefined) {
+    emettreMetriques(true);
+    return resultat;
+  }
+
   // La boucle elle-même n'a pas pu terminer : aucune preuve n'existe que les
   // recherches nécessaires ont été exécutées. On ne masque plus cet échec
   // derrière une génération simple.
-  metriques(false, 'boucle_interrompue');
+  emettreMetriques(false, 'boucle_interrompue');
   return JSON.stringify({
     outilsIndisponibles: true,
     message: 'Les sources de vérification sont momentanément indisponibles.',

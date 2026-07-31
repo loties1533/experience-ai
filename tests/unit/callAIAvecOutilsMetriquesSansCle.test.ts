@@ -25,4 +25,17 @@ describe('callAIAvecOutils — absence de clé Anthropic (F6-A)', () => {
     expect(recues).toMatchObject({ succes: false, typeEchec: 'cle_absente', tours: 0 });
     expect(callClaudeOutils).not.toHaveBeenCalled();
   });
+
+  it('conserve le comportement principal quand onMetriques lève sans clé', async () => {
+    const boite: BoiteAOutilsLLM = { definitions: [], executer: vi.fn() };
+    const onMetriques = vi.fn(() => { throw new Error('callback en échec'); });
+
+    const sortie = await callAIAvecOutils('demande', 'system', boite, 'pack', { onMetriques });
+
+    expect(sortie).toContain('indisponibles');
+    expect(onMetriques).toHaveBeenCalledTimes(1);
+    expect(onMetriques).toHaveBeenCalledWith(
+      expect.objectContaining({ succes: false, typeEchec: 'cle_absente' })
+    );
+  });
 });

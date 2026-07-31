@@ -119,4 +119,28 @@ describe('callAIAvecOutils — modèle injectable et métriques (F6-A)', () => {
 
     expect(sortie).toBe('{"parcours":true}');
   });
+
+  it('conserve le résultat IA quand onMetriques lève en cas de succès', async () => {
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce(tourReponse('{"parcours":true}'));
+    const onMetriques = vi.fn(() => { throw new Error('callback en échec'); });
+
+    const sortie = await callAIAvecOutils('demande', 'system', boiteVide(), 'pack', { onMetriques });
+
+    expect(sortie).toBe('{"parcours":true}');
+    expect(onMetriques).toHaveBeenCalledTimes(1);
+    expect(onMetriques).toHaveBeenCalledWith(expect.objectContaining({ succes: true }));
+  });
+
+  it('conserve le résultat d’erreur quand onMetriques lève en cas d’échec outils', async () => {
+    vi.mocked(callClaudeOutils).mockRejectedValue(new Error('quota dépassé'));
+    const onMetriques = vi.fn(() => { throw new Error('callback en échec'); });
+
+    const sortie = await callAIAvecOutils('demande', 'system', boiteVide(), 'pack', { onMetriques });
+
+    expect(sortie).toContain('indisponibles');
+    expect(onMetriques).toHaveBeenCalledTimes(1);
+    expect(onMetriques).toHaveBeenCalledWith(
+      expect.objectContaining({ succes: false, typeEchec: 'boucle_interrompue' })
+    );
+  });
 });
