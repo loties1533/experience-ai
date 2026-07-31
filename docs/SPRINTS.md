@@ -419,7 +419,7 @@ modification, l'OpenAPI et le front.
 
 ### Revue F5-B — génération progressive par lots (31/07)
 
-> Livré par la PR (lien à compléter à l'ouverture).
+> Livré par la [PR #47](https://github.com/loties1533/experience-ai/pull/47).
 
 - **Le plan est branché.** `genererParcours` appelle `deriverPlan`, puis génère
   chaque lot par son propre appel `callAIAvecOutils`, restreint à sa ville et à
