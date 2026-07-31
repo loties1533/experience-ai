@@ -88,6 +88,12 @@ export interface BoiteAOutils extends BoiteAOutilsLLM {
   ): RechercheTracee['statut'] | undefined;
   /** Compatibilité temporaire : ne rend un candidat que si le nom exact est unique. */
   trouverLieuReel(nom: string): CandidatJournal | undefined;
+  /**
+   * Les candidats retenus par CETTE boîte, pour les fusionner explicitement
+   * dans une boîte d'agrégat (F5-B : une boîte fraîche par tentative de lot,
+   * dont seul le journal d'une tentative validée survit à la résolution finale).
+   */
+  exporterJournal(): CandidatJournal[];
 }
 
 const EntreeLieuxSchema = z.object({
@@ -201,7 +207,16 @@ function jour(date: string): string {
  * de `memoriser`.
  */
 export function creerBoiteAOutils(
-  options: { villesAutorisees?: string[] } = {}
+  options: {
+    villesAutorisees?: string[];
+    /**
+     * F5-B : les candidats déjà validés d'une tentative de lot précédente,
+     * fusionnés explicitement dans la boîte d'agrégat utilisée pour la
+     * résolution finale des liens. Une tentative en échec n'y contribue
+     * jamais — seul l'appelant décide quels journaux fusionner.
+     */
+    candidatsInitiaux?: CandidatJournal[];
+  } = {}
 ): BoiteAOutils {
   const journal = new Map<string, CandidatJournal>();
   const recherchesTracees: RechercheTracee[] = [];
@@ -235,6 +250,8 @@ export function creerBoiteAOutils(
     }
     journal.set(cleCandidat(candidat), candidat);
   }
+
+  for (const candidat of options.candidatsInitiaux ?? []) retenir(candidat);
 
   function estVilleAutorisee(ville: string): boolean {
     return villesAutorisees.size === 0 || villesAutorisees.has(cleNom(ville));
@@ -483,6 +500,10 @@ export function creerBoiteAOutils(
         (candidat) => cleNom(candidat.nom) === cle
       );
       return candidats.length === 1 ? candidats[0] : undefined;
+    },
+
+    exporterJournal(): CandidatJournal[] {
+      return [...journal.values()];
     },
   };
 }

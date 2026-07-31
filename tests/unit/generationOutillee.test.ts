@@ -283,6 +283,41 @@ function tourRefus(
   ];
 }
 
+/**
+ * F5-B — génération progressive : un appel outillé par lot. Le prompt d'un lot
+ * ne nomme qu'une ville ; on rend d'abord sa recherche, puis sa conclusion dès
+ * qu'un résultat d'outil est présent. Sert à scénariser un parcours multi-ville
+ * généré lot par lot.
+ */
+function outilsParVille(
+  villes: string[],
+  reponses: (ville: string) => {
+    recherche?: BlocReponse[];
+    conclusion: BlocReponse[];
+  }
+) {
+  return async (
+    _systeme: string,
+    messages: Parameters<typeof callClaudeOutils>[1],
+    outils: Parameters<typeof callClaudeOutils>[2]
+  ): Promise<BlocReponse[]> => {
+    // Le brief d'un lot restreint `lieux` à sa seule ville : on la lit là,
+    // jamais dans l'intention (qui peut nommer plusieurs villes).
+    const prompt = String(messages[0]?.content ?? '');
+    const villeDuLot = prompt.match(/"lieux":\s*\[\s*"([^"]+)"/)?.[1];
+    const ville = villeDuLot ?? villes[0];
+    const aResultat = messages.some(
+      (message) =>
+        Array.isArray(message.content) &&
+        message.content.some(
+          (bloc) => (bloc as { type?: string }).type === 'tool_result'
+        )
+    );
+    const { recherche, conclusion } = reponses(ville);
+    return outils && recherche && !aResultat ? recherche : conclusion;
+  };
+}
+
 beforeEach(() => {
   vi.mocked(callClaude).mockReset();
   vi.mocked(callClaudeOutils).mockReset();
@@ -355,31 +390,38 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
         },
       },
     });
-    vi.mocked(callClaudeOutils).mockResolvedValueOnce([
-      {
-        type: 'text',
-        text: JSON.stringify({
-          moments: [
-            {
-              titre: 'TGV 8421 à 09:42',
-              elements: [
+    // Deux villes, aucune date : le plan produit un lot par ville. Chaque lot
+    // conclut directement (aucune recherche) avec un placeholder transport
+    // halluciné, que la synthèse déterministe remplacera.
+    vi.mocked(callClaudeOutils).mockImplementation(
+      outilsParVille(['Bordeaux', 'Paris'], () => ({
+        conclusion: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              moments: [
                 {
-                  ref: 'train',
-                  type: 'transport',
-                  nom: 'TGV 8421',
-                  lieu: 'Gare Montparnasse',
-                  plage: {
-                    debut: '2026-09-10T09:42:00Z',
-                    fin: '2026-09-10T11:18:00Z',
-                  },
-                  justification: 'Train disponible',
+                  titre: 'TGV 8421 à 09:42',
+                  elements: [
+                    {
+                      ref: 'train',
+                      type: 'transport',
+                      nom: 'TGV 8421',
+                      lieu: 'Gare Montparnasse',
+                      plage: {
+                        debut: '2026-09-10T09:42:00Z',
+                        fin: '2026-09-10T11:18:00Z',
+                      },
+                      justification: 'Train disponible',
+                    },
+                  ],
                 },
               ],
-            },
-          ],
-        }),
-      },
-    ]);
+            }),
+          },
+        ],
+      }))
+    );
 
     const parcours = await genererParcours(briefTransport);
 
@@ -468,6 +510,118 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
     // MAX_TOURS_OUTILS tours de recherche, plus le tour de conclusion.
     expect(callClaudeOutils).toHaveBeenCalledTimes(MAX_TOURS_OUTILS + 1);
     expect(vi.mocked(callClaudeOutils).mock.calls.at(-1)?.[2]).toBeUndefined();
+  });
+});
+
+describe('F5-B — isolation technique des lots', () => {
+  it('refuse techniquement une recherche hors ville du lot, même si l’autre ville appartient au brief global', async () => {
+    const briefMultiVille = BriefSchema.parse({
+      intention: 'découvrir Bordeaux et Lyon',
+      avecQui: 'amis',
+      duree: { valeur: 4, unite: 'jours' },
+      lieux: ['Bordeaux', 'Lyon'],
+      transport: { necessaire: false },
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockImplementation(async (villeDemandee) => ({
+      statut: 'ok',
+      resultats: [
+        candidatLieu({
+          identifiantExterne: `fsq-${villeDemandee}`,
+          nom: 'Le Central',
+          villeDemandee,
+          typeMetierRecherche: 'restaurant',
+        }),
+      ],
+      recupereLe: DATE_RECUPERATION,
+    }));
+    vi.mocked(callClaudeOutils).mockImplementation(
+      outilsParVille(['Bordeaux', 'Lyon'], (ville) => ({
+        // Le lot Bordeaux tente malgré tout de chercher à Lyon : la boîte de
+        // CE lot n'autorise que Bordeaux, la recherche doit être refusée
+        // avant tout appel au connecteur Foursquare.
+        recherche: tourOutil(
+          'chercher_lieux',
+          {
+            ville: ville === 'Bordeaux' ? 'Lyon' : ville,
+            requete: 'restaurant',
+            typeMetierRecherche: 'restaurant',
+          },
+          `outil-${ville}`
+        ),
+        conclusion: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              moments: [
+                {
+                  titre: `Étape à ${ville}`,
+                  ville,
+                  elements: [
+                    {
+                      ref: `element-${ville}`,
+                      type: 'restaurant',
+                      nom: 'Le Central',
+                      justification: 'étape du parcours',
+                    },
+                  ],
+                },
+              ],
+            }),
+          },
+        ],
+      }))
+    );
+
+    await genererParcours(briefMultiVille);
+
+    // Une seule recherche Foursquare a réellement porté sur Lyon : celle du
+    // lot Lyon lui-même. La tentative cross-ville du lot Bordeaux a été
+    // bloquée par la restriction technique de SA boîte, avant le connecteur.
+    const appelsLyon = vi
+      .mocked(rechercherLieuxFoursquare)
+      .mock.calls.filter(([ville]) => ville === 'Lyon');
+    expect(appelsLyon).toHaveLength(1);
+  });
+
+  it('repart avec une boîte et un journal neufs après un 503 : aucun candidat de la tentative en échec ne survit', async () => {
+    let tentative = 0;
+    vi.mocked(callClaudeOutils).mockImplementation(async (_systeme, messages) => {
+      const aResultatOutil = messages.some(
+        (message) =>
+          Array.isArray(message.content) &&
+          message.content.some(
+            (bloc) => (bloc as { type?: string }).type === 'tool_result'
+          )
+      );
+      if (tentative === 0) {
+        if (!aResultatOutil) {
+          return tourOutil('chercher_lieux', {
+            ville: 'Bordeaux',
+            requete: 'bar',
+            typeMetierRecherche: 'sortie',
+          });
+        }
+        // La première tentative a bien cherché (et donc rempli SON journal),
+        // mais échoue quand même à conclure : indisponibilité technique.
+        tentative = 1;
+        return [{ type: 'text', text: JSON.stringify({ outilsIndisponibles: true }) }];
+      }
+      // Deuxième tentative (boîte neuve) : le modèle conclut directement, sans
+      // rechercher de nouveau, en réutilisant l'identifiant trouvé par la
+      // PREMIÈRE tentative — que sa propre boîte n'a jamais recherché.
+      return tourReponse('Le Point Rouge', { identifiantExterne: 'fsq-point-rouge' });
+    });
+
+    const parcours = await genererParcours(brief);
+    const [element] = parcours.timeline[0].elements;
+
+    // Sans journal hérité, l'identifiant ne rapproche aucun candidat : le nom
+    // reste une suggestion générique, jamais celui de la tentative en échec.
+    expect(element.confiance).toEqual({ niveau: 'suggestion' });
+    expect(element.nom).not.toBe('Le Point Rouge');
+    // Une seule recherche Foursquare au total : la seconde tentative ne
+    // recherche pas, elle ne fait que réutiliser un identifiant.
+    expect(rechercherLieuxFoursquare).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1590,62 +1744,43 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
         recupereLe: DATE_RECUPERATION,
       })
     );
-    vi.mocked(callClaudeOutils)
-      .mockResolvedValueOnce([
-        ...tourOutil(
+    // Un lot par ville : chaque lot cherche son hôtel puis conclut sur sa
+    // propre étape hôtelière.
+    vi.mocked(callClaudeOutils).mockImplementation(
+      outilsParVille(['Bordeaux', 'Lyon'], (ville) => ({
+        recherche: tourOutil(
           'chercher_lieux',
-          {
-            ville: 'Bordeaux',
-            requete: 'hôtel',
-            typeMetierRecherche: 'hebergement',
-          },
-          'hotel-bordeaux'
+          { ville, requete: 'hôtel', typeMetierRecherche: 'hebergement' },
+          `hotel-${ville}`
         ),
-        ...tourOutil(
-          'chercher_lieux',
+        conclusion: [
           {
-            ville: 'Lyon',
-            requete: 'hôtel',
-            typeMetierRecherche: 'hebergement',
+            type: 'text',
+            text: JSON.stringify({
+              moments: [
+                {
+                  titre: ville === 'Bordeaux' ? 'Nuit bordelaise' : 'Nuit lyonnaise',
+                  ville,
+                  elements: [
+                    {
+                      ref: `hotel-${ville}`,
+                      type: 'hebergement',
+                      identifiantExterne:
+                        ville === 'Bordeaux'
+                          ? 'fsq-hotel-bordeaux'
+                          : 'fsq-hotel-lyon',
+                      nom: ville === 'Bordeaux' ? 'Hôtel Bordeaux' : 'Hôtel Lyon',
+                      justification:
+                        ville === 'Bordeaux' ? 'première étape' : 'seconde étape',
+                    },
+                  ],
+                },
+              ],
+            }),
           },
-          'hotel-lyon'
-        ),
-      ])
-      .mockResolvedValueOnce([
-        {
-          type: 'text',
-          text: JSON.stringify({
-            moments: [
-              {
-                titre: 'Nuit bordelaise',
-                ville: 'Bordeaux',
-                elements: [
-                  {
-                    ref: 'hotel-bordeaux',
-                    type: 'hebergement',
-                    identifiantExterne: 'fsq-hotel-bordeaux',
-                    nom: 'Hôtel Bordeaux',
-                    justification: 'première étape',
-                  },
-                ],
-              },
-              {
-                titre: 'Nuit lyonnaise',
-                ville: 'Lyon',
-                elements: [
-                  {
-                    ref: 'hotel-lyon',
-                    type: 'hebergement',
-                    identifiantExterne: 'fsq-hotel-lyon',
-                    nom: 'Hôtel Lyon',
-                    justification: 'seconde étape',
-                  },
-                ],
-              },
-            ],
-          }),
-        },
-      ]);
+        ],
+      }))
+    );
 
     const parcours = await genererParcours(briefMultiVille);
 
@@ -2389,62 +2524,43 @@ describe('la génération — ville et catégorie du candidat', () => {
         };
       }
     );
-    vi.mocked(callClaudeOutils)
-      .mockResolvedValueOnce([
-        ...tourOutil(
+    // Un lot par ville : chaque lot cherche puis conclut sur son restaurant.
+    vi.mocked(callClaudeOutils).mockImplementation(
+      outilsParVille(['Bordeaux', 'Lyon'], (ville) => ({
+        recherche: tourOutil(
           'chercher_lieux',
-          {
-            ville: 'Bordeaux',
-            requete: 'restaurant',
-            typeMetierRecherche: 'restaurant',
-          },
-          'outil-bordeaux'
+          { ville, requete: 'restaurant', typeMetierRecherche: 'restaurant' },
+          `outil-${ville}`
         ),
-        ...tourOutil(
-          'chercher_lieux',
+        conclusion: [
           {
-            ville: 'Lyon',
-            requete: 'restaurant',
-            typeMetierRecherche: 'restaurant',
+            type: 'text',
+            text: JSON.stringify({
+              moments: [
+                {
+                  titre:
+                    ville === 'Bordeaux' ? 'Étape bordelaise' : 'Étape lyonnaise',
+                  ville,
+                  elements: [
+                    {
+                      ref: `restaurant-${ville}`,
+                      type: 'restaurant',
+                      identifiantExterne:
+                        ville === 'Bordeaux'
+                          ? 'fsq-central-bordeaux'
+                          : 'fsq-central-lyon',
+                      nom: 'Le Central',
+                      justification:
+                        ville === 'Bordeaux' ? 'première étape' : 'seconde étape',
+                    },
+                  ],
+                },
+              ],
+            }),
           },
-          'outil-lyon'
-        ),
-      ])
-      .mockResolvedValueOnce([
-        {
-          type: 'text',
-          text: JSON.stringify({
-            moments: [
-              {
-                titre: 'Étape bordelaise',
-                ville: 'Bordeaux',
-                elements: [
-                  {
-                    ref: 'restaurant-bordeaux',
-                    type: 'restaurant',
-                    identifiantExterne: 'fsq-central-bordeaux',
-                    nom: 'Le Central',
-                    justification: 'première étape',
-                  },
-                ],
-              },
-              {
-                titre: 'Étape lyonnaise',
-                ville: 'Lyon',
-                elements: [
-                  {
-                    ref: 'restaurant-lyon',
-                    type: 'restaurant',
-                    identifiantExterne: 'fsq-central-lyon',
-                    nom: 'Le Central',
-                    justification: 'seconde étape',
-                  },
-                ],
-              },
-            ],
-          }),
-        },
-      ]);
+        ],
+      }))
+    );
 
     const parcours = await genererParcours(briefMultiVille);
 
