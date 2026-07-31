@@ -31,6 +31,7 @@ import {
   type DemandeTransport,
 } from '../domaine/transport/index.js';
 import { creerLienRechercheHebergement } from '../lib/url.js';
+import { ajouterLiensRechercheTransport } from './enrichissementLiensTransport.js';
 import {
   BriefSchema,
   demandeTransportComplete,
@@ -908,11 +909,19 @@ ${JSON.stringify(brief, null, 2)}${blocPreferences}`;
     }),
   });
 
-  // Le lien local est ajouté après une première validation complète, puis le
-  // domaine revalide l'agrégat enrichi avant toute persistance.
-  const parcours = ParcoursSchema.parse(
-    ajouterLiensRechercheHebergement(parcoursSansLiensHotel)
+  // Les liens de recherche (hébergement puis transport) sont ajoutés après une
+  // première validation complète, puis le domaine revalide l'agrégat enrichi
+  // avant toute persistance. L'enrichissement transport est facultatif : une
+  // extrémité non résolue ou une panne fournisseur laisse simplement le
+  // transport sans lien, sans faire échouer la génération.
+  const parcoursAvecHebergement = ajouterLiensRechercheHebergement(
+    parcoursSansLiensHotel
   );
+  const parcoursEnrichi = await ajouterLiensRechercheTransport(
+    parcoursAvecHebergement,
+    demandeTransport
+  );
+  const parcours = ParcoursSchema.parse(parcoursEnrichi);
   const erreurs = validerParcours(parcours);
   if (erreurs.length > 0) {
     throw new AppError('La génération a produit un parcours incohérent, réessaie', 502);

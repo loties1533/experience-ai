@@ -48,24 +48,30 @@ function urlDe(lien: { url: string } | null): URL {
   return new URL((lien as { url: string }).url);
 }
 
-describe('F4-D1 — architecture : aucun branchement prématuré', () => {
+describe('F4-D1 — architecture : constructeurs isolés', () => {
   const racine = fileURLToPath(new URL('../../', import.meta.url));
-  const fichiersActifs = [
-    'server/agents/generation.ts',
+
+  // Depuis F4-D2, la génération branche ces constructeurs via
+  // `server/agents/enrichissementLiensTransport.ts` (couvert par sa propre
+  // suite). Le brief, l'intake et le résolveur de liens F2 restent en revanche
+  // hors de ce chemin : ils ne construisent aucun lien de recherche transport.
+  const fichiersSansBranchement = [
     'server/agents/brief.ts',
     'server/agents/intake.ts',
     'server/services/liens.ts',
   ];
 
-  it.each(fichiersActifs)(
-    'la génération active n’importe pas encore liensTransport (%s)',
+  it.each(fichiersSansBranchement)(
+    '%s ne construit aucun lien de recherche transport',
     (chemin) => {
       const contenu = readFileSync(`${racine}${chemin}`, 'utf-8');
-      expect(contenu).not.toContain('liensTransport');
+      expect(contenu).not.toContain('creerLienRechercheVol');
+      expect(contenu).not.toContain('creerLienRechercheTrain');
+      expect(contenu).not.toContain('creerLienRechercheTransportLocal');
     }
   );
 
-  it('le module ne dépend d’aucune couche service (Navitia/Amadeus)', () => {
+  it('le module de construction ne dépend d’aucune couche service (Navitia/Amadeus)', () => {
     const contenu = readFileSync(
       `${racine}server/lib/liensTransport.ts`,
       'utf-8'

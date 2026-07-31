@@ -532,10 +532,20 @@ describe('F4-C3a — aucun réseau et aucune intégration active', () => {
     }
   });
 
-  it('ne laisse aucune référence directe au module Navitia dans les couches actives contrôlées', () => {
+  // Depuis F4-D2, Navitia possède un unique point de branchement autorisé dans
+  // la génération : l'enrichissement des liens de recherche transport. Toutes
+  // les autres couches actives (routes, dépôts, front, Prisma, autres agents)
+  // doivent rester exemptes de toute référence directe au module Navitia.
+  const FICHIERS_BRANCHEMENT_NAVITIA_AUTORISES = [
+    join(RACINE, 'server/agents/enrichissementLiensTransport.ts'),
+  ];
+
+  it('ne référence Navitia que par le point de branchement F4-D2 autorisé', () => {
     const referencesDirectes = COUCHES_ACTIVES.flatMap((couche) =>
-      fichiersSources(join(RACINE, couche)).filter((chemin) =>
-        readFileSync(chemin, 'utf8').includes('services/navitia')
+      fichiersSources(join(RACINE, couche)).filter(
+        (chemin) =>
+          !FICHIERS_BRANCHEMENT_NAVITIA_AUTORISES.includes(chemin) &&
+          readFileSync(chemin, 'utf8').includes('services/navitia')
       )
     );
 
