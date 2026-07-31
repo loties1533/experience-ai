@@ -429,7 +429,7 @@ modification, l'OpenAPI et le front.
 
 ### Revue F6-G — correction de `schema_generation_invalide` (01/08)
 
-> PR à ouvrir sur la branche `feat/f6g-correction-schema-generation`.
+> Livré par la [PR #54](https://github.com/loties1533/experience-ai/pull/54).
 
 - **Constat du retest ciblé (01/08).** `sonnet × evg-deux-jours` (mono-ville,
   mono-lot) échouait de façon récurrente en
