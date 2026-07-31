@@ -312,27 +312,29 @@ F4 reste donc **en cours** : B1, B2, C1, C2 et C3 (a, b, c) sont terminés
   et `genereLe` — aucun prix, billet, disponibilité ni réservation n'y existe.
   Le type (`recherche_vol`, `recherche_train`, `recherche_transport_local`) et
   le libellé rendent la confusion impossible.
-- **Deux fournisseurs, choisis pour leur robustesse.** Les vols passent par une
-  recherche **Google Flights** en texte libre construite depuis des codes IATA
-  confirmés et des dates ISO — on évite volontairement le deep link `tfs`
-  encodé, non documenté et fragile. Les gares et le transport local passent par
-  l'**API officielle « Maps URLs »** de Google Maps (itinéraire `dir` entre deux
-  lieux, `travelmode=transit` pour le ferroviaire).
+- **Deux fournisseurs, choisis pour leur robustesse.** Les gares et le
+  transport local passent par l'**API officielle « Maps URLs »** de Google Maps
+  (itinéraire `dir` entre deux lieux, `travelmode=transit` pour le
+  ferroviaire). Pour les vols, **aucun paramètre de préremplissage Google
+  Flights n'est officiellement documenté** (ni `?q=`, ni le deep link `tfs`
+  encodé) : le lien renvoie donc vers la page de recherche générique
+  `google.com/travel/flights`, honnête plutôt que fragile — l'IATA et la date
+  restent validés en amont mais n'apparaissent pas dans l'URL.
 - **Aucune ville promue en aéroport ou gare.** Un vol exige deux codes IATA
   valides et distincts, sinon aucun lien. Les gares sont désignées par leur
   **nom observé**, jamais par un identifiant Navitia ou un code UIC que Maps
   n'interprète pas. Aucune date n'est injectée dans l'URL Maps, qui ne la
   supporte pas.
-- **Refus prudent.** Identité essentielle absente, données contradictoires
-  (origine = destination, retour avant l'aller), nom vide ou tentative d'URL en
-  guise de lieu : le résultat est `null`, pas une erreur ni un faux lien.
+- **Refus prudent.** Identité essentielle absente, origine = destination, nom
+  vide ou tentative d'URL en guise de lieu : le résultat est `null`, pas une
+  erreur ni un faux lien.
 - **Construction déterministe et sûre.** `URL`/`URLSearchParams` pour tout
   encodage, domaine et chemin verrouillés puis revalidés par le contrat, aucun
   appel réseau, aucun secret, aucune horloge implicite (`genereLe` injectable).
 - **Aucun branchement actif.** Le module `lib/liensTransport.ts` n'est importé
   ni par la génération, ni par les routes, ni par le front — un test
   d'architecture le garantit. L'intégration réelle relève de **F4-D2**.
-- 36 tests ajoutés (`tests/unit/liensTransport.test.ts`), 1534 verts sur toute
+- 35 tests ajoutés (`tests/unit/liensTransport.test.ts`), 1533 verts sur toute
   la suite, typecheck OK, lint sans erreur, aucun appel réseau.
 
 ## Refonte Experience AI — plan de build

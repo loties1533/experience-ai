@@ -43,35 +43,6 @@ function termeLieu(nom: string, ville?: string): string {
 }
 
 /**
- * Recherche de vols Google Flights en texte libre. On évite volontairement le
- * paramètre `tfs` (deep link encodé, non documenté et fragile) : la requête
- * reste une recherche honnête, construite à partir de codes IATA confirmés et
- * de dates ISO. Elle ne prétend ni prix, ni disponibilité, ni billet.
- */
-function requeteVolGoogle(demande: DemandeLienRechercheVol): string {
-  const parties = [
-    `Flights from ${demande.origineIata} to ${demande.destinationIata}`,
-    `on ${demande.dateDepart}`,
-  ];
-  if (demande.dateRetour !== undefined) {
-    parties.push(`returning ${demande.dateRetour}`);
-  }
-  if (demande.adultes !== undefined) {
-    const voyageurs = demande.adultes + (demande.enfants ?? 0);
-    parties.push(
-      voyageurs > 1 ? `for ${voyageurs} passengers` : 'for 1 passenger'
-    );
-  }
-  return parties.join(' ');
-}
-
-function construireUrlRechercheVol(demande: DemandeLienRechercheVol): string {
-  const url = new URL(URL_RECHERCHE_VOLS_GOOGLE);
-  url.searchParams.set('q', requeteVolGoogle(demande));
-  return url.toString();
-}
-
-/**
  * Itinéraire Google Maps via l'API officielle « Maps URLs ». `travelmode`
  * n'est posé que lorsqu'on veut réellement le contraindre (transit pour le
  * ferroviaire). Origine et destination sont des libellés observés, jamais des
@@ -99,6 +70,15 @@ function finaliserLien(
   return resultat.success ? resultat.data : null;
 }
 
+/**
+ * Google Flights ne documente officiellement aucun paramètre de
+ * préremplissage : ni `?q=` (recherche en texte libre, non documenté) ni
+ * `tfs` (deep link encodé, non documenté et fragile). Le lien produit pointe
+ * donc vers la page de recherche générique — honnête, stable, mais sans
+ * origine, destination ni date injectées dans l'URL. La demande reste
+ * néanmoins validée intégralement (IATA, date) : seule l'absence de paramètre
+ * fiable empêche de la refléter dans l'URL.
+ */
 export function creerLienRechercheVol(
   demandeBrute: DemandeLienRechercheVol,
   genereLe: string = new Date().toISOString()
@@ -108,7 +88,7 @@ export function creerLienRechercheVol(
   return finaliserLien({
     type: 'recherche_vol',
     fournisseur: 'Google Flights',
-    url: construireUrlRechercheVol(demande.data),
+    url: URL_RECHERCHE_VOLS_GOOGLE,
     libelle: LIBELLE_RECHERCHE_VOL,
     genereLe,
   });

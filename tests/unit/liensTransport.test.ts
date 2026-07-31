@@ -75,38 +75,26 @@ describe('F4-D1 — architecture : aucun branchement prématuré', () => {
 });
 
 describe('creerLienRechercheVol', () => {
-  it('construit une recherche Google Flights HTTPS aller simple', () => {
-    const url = urlDe(creerLienRechercheVol(VOL_VALIDE, GENERE_LE));
+  it('renvoie exactement la page de recherche générique Google Flights', () => {
+    const lien = creerLienRechercheVol(VOL_VALIDE, GENERE_LE);
+    expect(lien?.url).toBe('https://www.google.com/travel/flights');
+    const url = urlDe(lien);
     expect(url.protocol).toBe('https:');
-    expect(`${url.origin}${url.pathname}`).toBe(
-      'https://www.google.com/travel/flights'
-    );
-    const requete = url.searchParams.get('q') ?? '';
-    expect(requete).toContain('CDG');
-    expect(requete).toContain('JFK');
-    expect(requete).toContain('2026-08-01');
-    expect(requete).not.toContain('returning');
+    expect(url.search).toBe('');
   });
 
-  it('ajoute la date de retour pour un aller-retour', () => {
-    const url = urlDe(
-      creerLienRechercheVol(
-        { ...VOL_VALIDE, dateRetour: '2026-08-10' },
-        GENERE_LE
-      )
-    );
-    const requete = url.searchParams.get('q') ?? '';
-    expect(requete).toContain('returning 2026-08-10');
+  it('ne dépend pas des données de la demande : IATA et date sans effet sur l’URL', () => {
+    expect(
+      creerLienRechercheVol({ ...VOL_VALIDE, destinationIata: 'LHR' }, GENERE_LE)
+        ?.url
+    ).toBe(creerLienRechercheVol(VOL_VALIDE, GENERE_LE)?.url);
   });
 
-  it('mentionne les voyageurs lorsqu’ils sont déclarés', () => {
-    const url = urlDe(
-      creerLienRechercheVol(
-        { ...VOL_VALIDE, adultes: 2, enfants: 1 },
-        GENERE_LE
-      )
-    );
-    expect(url.searchParams.get('q')).toContain('for 3 passengers');
+  it('ne contient aucun paramètre `q` ni deep link `tfs`', () => {
+    const url = urlDe(creerLienRechercheVol(VOL_VALIDE, GENERE_LE));
+    expect(url.searchParams.has('q')).toBe(false);
+    expect(url.searchParams.has('tfs')).toBe(false);
+    expect(url.search).toBe('');
   });
 
   it('ne produit aucun champ commercial ni de disponibilité', () => {
@@ -132,15 +120,8 @@ describe('creerLienRechercheVol', () => {
       { ...VOL_VALIDE, destinationIata: 'New York' as unknown as string },
     ],
     ['une origine égale à la destination', { ...VOL_VALIDE, destinationIata: 'CDG' }],
-    [
-      'une date de retour antérieure au départ',
-      { ...VOL_VALIDE, dateRetour: '2026-07-20' },
-    ],
     ['une date de départ invalide', { ...VOL_VALIDE, dateDepart: '2026-13-40' }],
-    [
-      'des enfants sans adulte déclaré',
-      { ...VOL_VALIDE, enfants: 1 },
-    ],
+    ['une date de départ manquante', { ...VOL_VALIDE, dateDepart: undefined }],
   ])('refuse prudemment %s', (_cas, demande) => {
     expect(
       creerLienRechercheVol(demande as DemandeLienRechercheVol, GENERE_LE)
@@ -305,7 +286,7 @@ describe('LienRechercheTransportSchema — garde-fous du contrat', () => {
   const lienValide = {
     type: 'recherche_vol' as const,
     fournisseur: 'Google Flights' as const,
-    url: 'https://www.google.com/travel/flights?q=Flights+from+CDG+to+JFK',
+    url: 'https://www.google.com/travel/flights',
     libelle: 'Rechercher des vols sur Google Flights',
     genereLe: GENERE_LE,
   };
@@ -319,11 +300,11 @@ describe('LienRechercheTransportSchema — garde-fous du contrat', () => {
   it.each([
     [
       'un protocole non HTTPS',
-      { ...lienValide, url: 'http://www.google.com/travel/flights?q=CDG' },
+      { ...lienValide, url: 'http://www.google.com/travel/flights' },
     ],
     [
       'un domaine non autorisé',
-      { ...lienValide, url: 'https://evil.example/travel/flights?q=CDG' },
+      { ...lienValide, url: 'https://evil.example/travel/flights' },
     ],
     [
       'un chemin incohérent avec le fournisseur',

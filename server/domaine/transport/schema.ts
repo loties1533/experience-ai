@@ -911,17 +911,21 @@ const LieuLienTransportSchema = z
 
 /**
  * Demande interne de lien de recherche de vols : uniquement des codes IATA
- * confirmés et des dates civiles valides. Une ville sans aéroport confirmé
- * n'a pas sa place ici — la promotion ville → aéroport est refusée en amont.
+ * confirmés et une date civile valide. Une ville sans aéroport confirmé n'a
+ * pas sa place ici — la promotion ville → aéroport est refusée en amont.
+ *
+ * Google Flights ne documente officiellement aucun paramètre de préremplissage
+ * (`?q=` comme `tfs` sont non documentés et fragiles) : le lien produit pointe
+ * donc vers la page de recherche générique, sans injecter ces données dans
+ * l'URL. `dateDepart` reste exigée pour garder une demande honnête — un lien
+ * de vol n'a de sens que rattaché à une date réelle — même si elle n'apparaît
+ * pas dans l'URL.
  */
 export const DemandeLienRechercheVolSchema = z
   .object({
     origineIata: CodeIataLieuAerienSchema,
     destinationIata: CodeIataLieuAerienSchema,
     dateDepart: z.iso.date(),
-    dateRetour: z.iso.date().optional(),
-    adultes: NombreAdultesTransportSchema.optional(),
-    enfants: NombreEnfantsTransportSchema.optional(),
   })
   .strict()
   .superRefine((demande, contexte) => {
@@ -930,24 +934,6 @@ export const DemandeLienRechercheVolSchema = z
         code: 'custom',
         path: ['destinationIata'],
         message: 'les codes IATA de départ et d’arrivée doivent différer',
-      });
-    }
-    if (
-      demande.dateRetour !== undefined &&
-      comparerDatesCiviles(demande.dateRetour, demande.dateDepart) < 0
-    ) {
-      contexte.addIssue({
-        code: 'custom',
-        path: ['dateRetour'],
-        message: 'la date de retour ne peut pas précéder celle de départ',
-      });
-    }
-    if (demande.enfants !== undefined && demande.adultes === undefined) {
-      contexte.addIssue({
-        code: 'custom',
-        path: ['adultes'],
-        message:
-          'un nombre d’enfants ne peut être compté sans nombre d’adultes',
       });
     }
   });
