@@ -428,6 +428,8 @@ modification, l'OpenAPI et le front.
 
 ### Revue F6-F — correction de `plage_hors_lot` sur un lot mono-bloc (01/08)
 
+> Livré par la [PR #53](https://github.com/loties1533/experience-ai/pull/53).
+
 - **Constat du retest ciblé (31/07).** `sonnet × soiree-bordeaux` (scénario à
   un seul lot, un seul jour) échouait en `sortie_inexploitable/plage_hors_lot`
   — un débordement de plage jamais reproduit par `haiku`, alors que le
