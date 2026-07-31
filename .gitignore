@@ -35,6 +35,9 @@ docs/*
 scripts/
 scripts1/
 
+# F6-B : résultats de benchmark manuel (réseau réel, jamais committés)
+server/benchmark/resultats/
+
 # OS
 Thumbs.db
 

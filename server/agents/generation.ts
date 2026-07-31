@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { callAIAvecOutils, parseJSON } from '../services/claude/core.js';
+import {
+  callAIAvecOutils,
+  parseJSON,
+  type MetriquesAppelOutils,
+} from '../services/claude/core.js';
 import {
   creerBoiteAOutils,
   type BoiteAOutils,
@@ -947,11 +951,22 @@ function briefPourLot(brief: Brief, lot: LotPrevu): Record<string, unknown> {
  * dont le code porte la politique d'erreur existante (503 technique rejouable,
  * 422 refus métier, 502 sortie inexploitable).
  */
+/**
+ * F6-B : point d'injection du modèle Anthropic et de récupération des
+ * métriques d'appel, réservé au benchmark manuel. Absent (comportement des
+ * routes), le modèle par défaut de `callAIAvecOutils` reste inchangé.
+ */
+export interface OptionsGenerationParcours {
+  modele?: string;
+  onMetriques?: (metriques: MetriquesAppelOutils) => void;
+}
+
 async function genererLot(
   prompt: string,
-  boite: BoiteAOutils
+  boite: BoiteAOutils,
+  options: OptionsGenerationParcours = {}
 ): Promise<z.infer<typeof SortieGenerationSchema>> {
-  const brut = await callAIAvecOutils(prompt, SYSTEM_GENERATION, boite, 'pack');
+  const brut = await callAIAvecOutils(prompt, SYSTEM_GENERATION, boite, 'pack', options);
   let contenu: unknown;
   try {
     contenu = parseJSON(brut);
@@ -1117,7 +1132,8 @@ function validerScopeLot(lot: LotPrevu, moments: MomentGenere[]): void {
 async function genererEtAssemblerLots(
   brief: Brief,
   blocPreferences: string,
-  demandeTransport: DemandeTransport | undefined
+  demandeTransport: DemandeTransport | undefined,
+  options: OptionsGenerationParcours = {}
 ): Promise<{ moments: MomentGenere[]; ambiance?: string; boiteAgregat: BoiteAOutils }> {
   const plan = deriverPlan(brief);
   const momentsParLot: MomentGenere[][] = [];
@@ -1140,7 +1156,7 @@ ${JSON.stringify(briefPourLot(brief, lot), null, 2)}${blocPreferences}`;
       });
       const debut = Date.now();
       try {
-        const sortie = await genererLot(prompt, boiteLot);
+        const sortie = await genererLot(prompt, boiteLot, options);
         const moments = namespacerLot(lot, sortie.moments);
         validerScopeLot(lot, moments);
         // La première ambiance proposée par le modèle habille l'ensemble ; à
@@ -1198,7 +1214,8 @@ ${JSON.stringify(briefPourLot(brief, lot), null, 2)}${blocPreferences}`;
 
 export async function genererParcours(
   briefRecu: Brief,
-  preferences: PreferencesParcours | null = null
+  preferences: PreferencesParcours | null = null,
+  options: OptionsGenerationParcours = {}
 ): Promise<Parcours> {
   const resultatBrief = BriefSchema.safeParse(briefRecu);
   if (!resultatBrief.success) {
@@ -1231,7 +1248,7 @@ ${JSON.stringify(preferences, null, 2)}`
     moments: momentsAssembles,
     ambiance: ambianceGeneree,
     boiteAgregat,
-  } = await genererEtAssemblerLots(brief, blocPreferences, demandeTransport);
+  } = await genererEtAssemblerLots(brief, blocPreferences, demandeTransport, options);
   const momentsNettoyes = nettoyerMomentsTransport(
     momentsAssembles,
     demandeTransport

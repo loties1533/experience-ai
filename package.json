@@ -16,6 +16,7 @@
     "prisma:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force",
     "db:seed": "tsx prisma/seed.ts",
+    "benchmark:modeles": "tsx server/benchmark/benchmarker-modeles.ts",
     "client:dev": "cd client-react && npm run dev",
     "build": "cd client-react && npm install --include=dev && npm run build",
     "client:build": "cd client-react && npm run build",
