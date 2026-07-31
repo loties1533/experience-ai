@@ -92,7 +92,11 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
 - Le message peut contenir un repère temporel ("Repère temporel : ...") et des dates déjà résolues
   ("Dates déjà résolues : ..."). Si des dates déjà résolues sont fournies, reprends-les TELLES QUELLES
   dans "dates" — ne les recalcule pas, ne les modifie pas, n'en déduis pas d'autres. Elles ne remplacent
-  jamais des dates explicites différentes que l'utilisateur vient d'exprimer dans le même message.`;
+  jamais des dates explicites différentes que l'utilisateur vient d'exprimer dans le même message.
+- Convention déjà appliquée en amont pour "aujourd'hui", "demain", "après-demain", "dans X jours/semaines",
+  "ce week-end" et "le week-end prochain" (à ne jamais recalculer toi-même, ni contredire dans "reponse") :
+  "ce week-end" couvre samedi et dimanche du week-end courant tant que ce dimanche n'est pas terminé, sinon
+  celui à venir ; "le week-end prochain" est toujours celui qui suit "ce week-end".`;
 
 const SortieIntakeSchema = z.object({
   reponse: z.string().min(1),
