@@ -10,7 +10,7 @@ vi.mock('../../server/services/claude/core.js', async (importOriginal) => {
 });
 
 const { callAI, callAIAvecOutils } = await import('../../server/services/claude/core.js');
-const { champsManquants, reformulerBrief, BriefSchema } = await import('../../server/agents/brief.js');
+const { champsManquants, reformulerBrief, BriefSchema, prochainChampBase } = await import('../../server/agents/brief.js');
 const { avancerDialogue } = await import('../../server/agents/intake.js');
 const { normaliserDatesBrief } = await import('../../server/agents/brief.js');
 const { genererParcours } = await import('../../server/agents/generation.js');
@@ -89,6 +89,58 @@ describe('brief — cadrage (doc 05, étape 3)', () => {
     );
     expect(phrase).toContain('12 juillet 2026');
     expect(phrase).toContain('14 juillet 2026');
+  });
+});
+
+describe('brief F7-B — état déterministe du dialogue de base', () => {
+  it('brief vide : réclame d’abord l’intention', () => {
+    expect(prochainChampBase({})).toBe('intention');
+  });
+
+  it('intention présente : réclame avecQui', () => {
+    expect(prochainChampBase({ intention: 'vivre la NBA' })).toBe('avecQui');
+  });
+
+  it('intention + avecQui : réclame la durée', () => {
+    expect(prochainChampBase({ intention: 'vivre la NBA', avecQui: 'solo' })).toBe('duree');
+  });
+
+  it('intention + avecQui + durée : réclame les dates', () => {
+    expect(
+      prochainChampBase({
+        intention: 'vivre la NBA',
+        avecQui: 'solo',
+        duree: { valeur: 3, unite: 'jours' },
+      })
+    ).toBe('dates');
+  });
+
+  it('les 4 champs présents : aucun champ de base à réclamer', () => {
+    expect(
+      prochainChampBase({
+        ...briefComplet,
+        dates: { debut: '2026-08-15T00:00:00.000Z', fin: '2026-08-29T00:00:00.000Z' },
+      })
+    ).toBeUndefined();
+  });
+
+  it('ordre stable même si les champs sont fournis dans un ordre différent', () => {
+    expect(
+      prochainChampBase({
+        duree: { valeur: 3, unite: 'jours' },
+        avecQui: 'solo',
+      })
+    ).toBe('intention');
+  });
+
+  it('les dates résolues déterministement par F7-A comptent comme dates valides', () => {
+    const brief = normaliserDatesBrief({
+      intention: 'vivre la NBA',
+      avecQui: 'solo' as const,
+      duree: { valeur: 1, unite: 'jours' as const },
+      dates: { debut: '2026-08-15T00:00:00.000Z', fin: '2026-08-15T00:00:00.000Z' },
+    });
+    expect(prochainChampBase(brief)).toBeUndefined();
   });
 });
 
@@ -239,6 +291,137 @@ describe('intake F7-A — résolution déterministe des dates relatives, inject�
     vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
     const etape = await avancerDialogue(briefAvecDates, 'ah non plutôt demain finalement');
     expect(etape.brief.dates).toEqual(briefAvecDates.dates);
+  });
+});
+
+describe('intake F7-B — état déterministe du dialogue de base', () => {
+  it('cible exactement le prochain champ de base manquant, jamais un champ déjà validé', async () => {
+    vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
+    await avancerDialogue({ intention: 'vivre la NBA', avecQui: 'solo' }, 'osef');
+    const prompt = vi.mocked(callAI).mock.calls[0][0];
+    expect(prompt).toContain('Champ de base à demander maintenant, et uniquement celui-ci : la durée.');
+    expect(prompt).toContain('Champs de base déjà validés (ne jamais les redemander) : l’intention, avec qui il part');
+  });
+
+  it('n’indique plus aucun champ de base à cibler une fois les 4 validés', async () => {
+    vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
+    const briefAvecDates = {
+      ...briefComplet,
+      dates: { debut: '2026-08-15T00:00:00.000Z', fin: '2026-08-29T00:00:00.000Z' },
+    };
+    await avancerDialogue(briefAvecDates, 'et pour la suite ?');
+    const prompt = vi.mocked(callAI).mock.calls[0][0];
+    expect(prompt).toContain('Tous les champs de base sont déjà validés');
+    expect(prompt).not.toContain('Champ de base à demander maintenant');
+  });
+
+  it('une réponse donnée une fois n’est jamais redemandée (intention conservée sur les tours suivants)', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({ reponse: 'Avec qui pars-tu ?', brief: { intention: 'vivre la NBA' } })
+    );
+    const premierTour = await avancerDialogue({}, 'je rêve de vivre la NBA');
+    expect(premierTour.brief.intention).toBe('vivre la NBA');
+
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({ reponse: 'Combien de temps ?', brief: { avecQui: 'solo' } })
+    );
+    const deuxiemeTour = await avancerDialogue(premierTour.brief, 'seul');
+    expect(deuxiemeTour.brief.intention).toBe('vivre la NBA');
+    const prompt = vi.mocked(callAI).mock.calls[1][0];
+    expect(prompt).toContain('Champ de base à demander maintenant, et uniquement celui-ci : avec qui il part.');
+    expect(prompt).toContain('Champs de base déjà validés (ne jamais les redemander) : l’intention');
+  });
+
+  it('plusieurs champs de base fournis dans un même message sont tous conservés', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: { intention: 'vivre la NBA', avecQui: 'famille', duree: { valeur: 10, unite: 'jours' } },
+      })
+    );
+    const etape = await avancerDialogue({}, 'On veut vivre la NBA en famille pendant 10 jours');
+    expect(etape.brief.intention).toBe('vivre la NBA');
+    expect(etape.brief.avecQui).toBe('famille');
+    expect(etape.brief.duree).toEqual({ valeur: 10, unite: 'jours' });
+  });
+
+  it('une correction explicite de avecQui remplace l’ancienne valeur', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'ok', brief: { avecQui: 'groupe' } })
+    );
+    const etape = await avancerDialogue(briefComplet, 'finalement on part à 4, en groupe');
+    expect(etape.brief.avecQui).toBe('groupe');
+  });
+
+  it('une correction explicite de la durée remplace l’ancienne valeur', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'ok', brief: { duree: { valeur: 5, unite: 'jours' } } })
+    );
+    const etape = await avancerDialogue(briefComplet, 'plutôt 5 jours');
+    expect(etape.brief.duree).toEqual({ valeur: 5, unite: 'jours' });
+  });
+
+  it('une correction explicite des dates remplace l’ancienne valeur', async () => {
+    const briefAvecDates = {
+      ...briefComplet,
+      dates: { debut: '2026-08-15T00:00:00.000Z', fin: '2026-08-29T00:00:00.000Z' },
+    };
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: { dates: { debut: '2026-08-22T00:00:00Z', fin: '2026-09-05T00:00:00Z' } },
+      })
+    );
+    const etape = await avancerDialogue(briefAvecDates, 'pas demain, le week-end prochain');
+    expect(etape.brief.dates?.debut).toBe('2026-08-22T00:00:00Z');
+  });
+
+  it('un message sans nouvelle information ne supprime aucun champ de base déjà validé', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'Et la durée ?', brief: {} })
+    );
+    const etape = await avancerDialogue(
+      { intention: 'vivre la NBA', avecQui: 'solo' },
+      'je ne sais pas trop'
+    );
+    expect(etape.brief).toEqual({ intention: 'vivre la NBA', avecQui: 'solo' });
+  });
+
+  it('tant qu’un champ de base manque, l’hébergement/transport ne prend jamais la main sur la question', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'Et la durée ?', brief: {} })
+    );
+    const etape = await avancerDialogue(
+      {
+        intention: 'vivre la NBA',
+        avecQui: 'solo',
+        hebergement: {
+          necessaire: true,
+          occupation: { statut: 'a_confirmer' },
+          sejours: [],
+        },
+      },
+      'osef'
+    );
+    expect(etape.reponse).toBe('Et la durée ?');
+    expect(etape.reponse).not.toContain('adultes');
+  });
+
+  it('hébergement et transport restent atteignables une fois les 4 champs de base complets', async () => {
+    vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
+    const etape = await avancerDialogue(
+      {
+        ...briefComplet,
+        dates: { debut: '2026-08-15T00:00:00.000Z', fin: '2026-08-29T00:00:00.000Z' },
+        hebergement: {
+          necessaire: true,
+          occupation: { statut: 'a_confirmer' },
+          sejours: [],
+        },
+      },
+      'oui il nous faut un hôtel'
+    );
+    expect(etape.reponse).toBe('Combien d’adultes séjourneront à l’hôtel ?');
   });
 });
 

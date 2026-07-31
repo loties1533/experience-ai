@@ -441,6 +441,48 @@ ouvert. F5 passe à Terminé.
 **F7 — Dialogue fiable** *(en cours)*
 
 - [x] **F7-A** — résolution déterministe des dates relatives
+- [x] **F7-B** — état déterministe du dialogue de base
+
+### Revue F7-B — état déterministe du dialogue de base (01/08)
+
+- **Fonction pure ajoutée** : `prochainChampBase`
+  ([`server/agents/brief.ts`](../server/agents/brief.ts)), qui rend au plus un
+  champ parmi `intention`, `avecQui`, `duree`, `dates`, selon l'ordre stable
+  `ORDRE_CHAMPS_BASE` (déjà celui de `champsManquants`, désormais dérivé de la
+  même liste). Une valeur présente dans le brief est nécessairement valide —
+  `extraireChampsValides` ne retient jamais un champ hors schéma — donc aucun
+  état « partiel » distinct de l'absence n'existe à vérifier pour ces 4 champs,
+  contrairement à l'occupation hébergement/transport.
+- **Intégration dans `intake.ts`** : le serveur calcule `prochainChampBase`
+  sur le brief avant l'appel au LLM et injecte dans le prompt les champs de
+  base déjà validés et le champ précis à cibler (ou l'indication que les 4
+  sont acquis). `SYSTEM_INTAKE` interdit explicitement de redemander un champ
+  listé comme déjà validé. Le LLM garde la formulation de `reponse` ; le
+  serveur impose seulement la cible. Une fois le brief re-fusionné, tant qu'un
+  champ de base manque encore, la question hébergement/transport
+  (`questionHebergement`/`questionTransport`) ne peut plus prendre la main sur
+  `reponse` — gain réel : avant ce lot, un hébergement déjà déclaré nécessaire
+  pouvait interrompre la collecte des champs de base.
+- **Corrections utilisateur** : comportement inchangé — la fusion reste
+  `{...briefActuel, ...extrait}`, un champ extrait valide du dernier message
+  remplace toujours l'ancienne valeur ; un message sans extraction valide ne
+  supprime rien.
+- **Tests ajoutés** : 7 cas purs de `prochainChampBase`
+  (brief vide → intention ; complétion progressive ; ordre stable
+  indépendamment de l'ordre de saisie ; les 4 présents → aucun ; dates
+  résolues par F7-A comptées comme valides) et 9 cas d'intégration dans
+  `tests/unit/agents.test.ts` (ciblage exact dans le prompt, non-répétition
+  d'un champ déjà validé sur les tours suivants, plusieurs champs de base
+  conservés depuis un seul message, corrections explicites de `avecQui`,
+  `duree` et `dates`, message sans nouvelle information sans perte, gate
+  hébergement/transport avant complétion des champs de base, et accessibilité
+  d'hébergement/transport une fois les 4 champs acquis). Aucun appel réseau
+  réel.
+- **Résultats** : typecheck OK, lint sans nouvelle erreur (avertissements
+  préexistants inchangés), suite complète verte (1744 tests).
+- **PR** : [#57](https://github.com/loties1533/experience-ai/pull/57).
+- **Recommandation** : prêt pour revue humaine avant fusion — aucun blocage
+  identifié côté build.
 
 ### Revue F7-A — résolution déterministe des dates relatives (01/08)
 
