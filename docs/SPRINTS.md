@@ -19,7 +19,7 @@
 | F5 — Génération progressive | Plan global puis lots validés | Terminé |
 | F6 — Benchmark modèles | Choix mesuré du modèle de production | Terminé |
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | Terminé |
-| F8 — Modification complète | Régénération atomique des seuls dépendants | À faire |
+| F8 — Modification complète | Régénération atomique des seuls dépendants | En cours |
 | F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
 
 ### Board — avancement du chantier
@@ -443,6 +443,112 @@ ouvert. F5 passe à Terminé.
 - [x] **F7-A** — résolution déterministe des dates relatives
 - [x] **F7-B** — état déterministe du dialogue de base
 - [x] **F7-C** — intégration du dialogue de bout en bout
+
+**F8 — Modification complète** *(en cours)*
+
+- [x] **F8-A** — audit et contrat de dépendances (`determinerImpactModification`)
+- [ ] **F8-B** — régénération ciblée sur copie de travail
+- [ ] **F8-C** — validation et application atomique
+- [ ] **F8-D** — intégration API/front, si le découpage le confirme nécessaire
+
+### Revue F8-A — contrat de dépendances de modification (01/08)
+
+- **Constat d'audit** : la modification existante (`server/domaine/parcours/modifications.ts`,
+  `server/agents/modification.ts`, `server/services/modificationHotel.ts`,
+  `server/services/modificationTransport.ts`) ne couvre que trois familles —
+  élément unique, hébergement d'un élément, demande de transport globale.
+  Changer les dates, la durée, la composition du groupe ou la destination d'un
+  parcours existant n'a **aucune route ni aucun agent** aujourd'hui : ce n'est
+  pas un oubli de ce lot, c'est un vrai manque produit à couvrir en F8-B/C ou
+  plus tard.
+- **`elementsARegenerer` est déjà calculé** (invariant 3, `elementsDependants`)
+  mais **jamais consommé côté serveur** : la route ne fait que le renvoyer au
+  front, qui affiche un toast (« N élément(s) dépendant(s) à revoir »)
+  — aucune régénération réelle n'existe encore nulle part. F8-A ne fait que
+  rendre ce calcul réutilisable *avant* application, pas déclencher quoi que
+  ce soit de nouveau.
+- **Risque d'atomicité : aucun trouvé sur le périmètre actuel.** Les trois
+  chemins de modification existants calculent l'intégralité du nouveau
+  parcours **en mémoire**, le valident (`validerParcours` / `ParcoursSchema`),
+  puis n'appellent `sauvegarderParcours` (un seul `upsert` Prisma) qu'après un
+  `ok: true`. Aucune écriture partielle n'est possible aujourd'hui. Le risque
+  n'existe pas encore, mais existera dès que F8-B introduira une régénération
+  multi-appels (une recherche par élément dépendant) : cette même discipline
+  — construire une copie de travail, tout régénérer, tout valider, puis un
+  commit unique — devra être reconduite explicitement, elle ne vient plus
+  gratuitement une fois plusieurs appels IA en jeu.
+- **Matrice de dépendances retenue** (voir
+  [`server/agents/impactModification.ts`](../server/agents/impactModification.ts)) :
+  dates et destination touchent toutes les plages/villes sans dépendance
+  ciblée modélisée → impact intégral prudent et documenté ; durée est
+  **conditionnelle** (aucun impact si des dates réelles existent déjà — elles
+  font foi —, impact prudent sinon) ; composition du groupe → impact intégral
+  prudent (le prompt de génération l'utilise pour tout le parcours, aucune
+  dépendance par élément) ; hébergement (séjour/hôtel d'un élément) et
+  transport (demande globale) réutilisent `elementsDependants` sur les
+  éléments concernés, dépendance certaine ; élément unique (remplacer,
+  supprimer, ajouter, statut, justification, alternative) reproduit
+  exactement le calcul déjà fait par `appliquerModification`, en pur, avant
+  application.
+- **Module ajouté** : `server/agents/impactModification.ts` —
+  `determinerImpactModification(modification, parcours, brief?)`, pure,
+  synchrone, sans réseau ni IA, ne mute jamais son entrée ; `combinerImpacts`
+  pour fusionner plusieurs changements simultanés. Réutilise
+  `DemandeSurElementClient` (déjà validé) plutôt que dupliquer un vocabulaire :
+  seules les quatre catégories sans mutation existante (`changer_dates`,
+  `changer_duree`, `changer_composition`, `changer_destination`) sont
+  nouvelles. `brief` est accepté (conformité au contrat demandé) mais non lu :
+  aucune information qu'il porte n'est absente de `parcours.contexte`, et un
+  brief n'est de toute façon pas persisté avec un parcours existant
+  aujourd'hui — point à trancher si F8-B en a besoin.
+- **Tests ajoutés** :
+  [`tests/unit/impactModification.test.ts`](../tests/unit/impactModification.test.ts)
+  (16 cas) — chaque ligne de la matrice demandée, le cas conditionnel
+  durée-avec-dates, le cas sans impact, plusieurs changements simultanés
+  fusionnés, aucune mutation du parcours reçu, aucun appel réseau (fonction
+  synchrone).
+- **Découpage F8 recommandé** : F8-B régénère réellement les éléments listés
+  par `elementsARegenerer` (ou tout, si `regenererIntegralement`) sur une
+  copie de travail, sans toucher au parcours persisté ; F8-C valide la copie
+  complète puis l'applique en un seul commit (le même mécanisme que
+  `sauvegarderParcours` aujourd'hui, étendu à une régénération multi-étapes) ;
+  F8-D branche ce mécanisme sur `/api/parcours/:id/modifications` et le front,
+  seulement si le découpage précédent le confirme nécessaire — dates, durée,
+  composition et destination n'ont aujourd'hui aucune route pour les
+  déclencher.
+- **Résultats** : typecheck OK, lint sans nouvelle erreur (avertissements
+  préexistants inchangés), `git diff --check` propre, suite complète verte
+  (1770 tests, 48 fichiers).
+- **Recommandation** : prêt pour revue humaine avant fusion. F8 reste en
+  cours — F8-B/C non commencés.
+
+#### Correction post-revue (01/08)
+
+Une revue ciblée sur la sémantique du contrat a trouvé un défaut réel et une
+imprécision, corrigés directement :
+
+- **Budget d'un hôtel remplacé** : `remplacer_hotel`/`modifier_sejour_hebergement`
+  marquaient `invaliderBudget: true`, mais `elementHotelRemplace`/`reconstruireLien`
+  (`modificationHotel.ts`) recopient toujours `cible.prix` tel quel — ces deux
+  types n'exposent d'ailleurs aucun champ prix côté client. Le prix ne peut donc
+  jamais changer par ce chemin ; corrigé à `false`, aligné sur
+  `modifier_occupation_hebergement`.
+- **Motif de `changer_duree`** : le texte affirmait que la durée « ne pilote
+  donc plus rien » dès que des dates existent. Faux : `ParcoursDetail.tsx` et
+  `ParcoursPartage.tsx` affichent `contexte.duree` inconditionnellement, même
+  aux côtés de dates réelles. Reformulé : « aucun impact » porte sur la
+  génération et les invariants du domaine, jamais sur l'affichage.
+- **`combinerImpacts`** : un impact intégral peut désormais fusionner avec un
+  impact partiel non vide (ex. suppression d'élément + changement de dates) ;
+  la liste ciblée de la fusion est maintenant toujours vidée dès que
+  `regenererIntegralement` est vrai, pour qu'aucune liste partielle ne semble
+  encore pertinente à côté de lui.
+- Documentation du champ `elementsARegenerer` renforcée : n'inclut jamais la
+  cible de la modification elle-même (comportement hérité, déjà celui
+  d'`appliquerModification`).
+- Un test ajouté par correction : budget hôtel inchangé, fusion intégrale +
+  liste partielle vidée. Suite complète reverifiée : 1771 tests, 48 fichiers,
+  toujours verte ; typecheck et lint inchangés.
 
 ### Revue F7-C — intégration du dialogue de bout en bout (01/08)
 
