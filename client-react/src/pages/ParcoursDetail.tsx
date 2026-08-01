@@ -35,6 +35,7 @@ export default function ParcoursDetail() {
   const [phrase, setPhrase] = useState('')
   const [aRegenerer, setARegenerer] = useState<string[]>([])
   const [erreurModification, setErreurModification] = useState<{ statut: 'refus' | 'indisponible'; message: string } | null>(null)
+  const [derniereModification, setDerniereModification] = useState<string | null>(null)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['parcours', id],
@@ -51,10 +52,8 @@ export default function ParcoursDetail() {
       setARegenerer(reponse.elementsARegenerer)
       setPhrase('')
       setErreurModification(null)
+      setDerniereModification(reponse.description)
       toast.success(reponse.description)
-      if (reponse.elementsARegenerer.length > 0) {
-        toast.info(`${reponse.elementsARegenerer.length} élément(s) dépendant(s) à revoir`)
-      }
     },
     onError: (e) => {
       const statut = statutMetierDepuisErreur(e)
@@ -101,7 +100,7 @@ export default function ParcoursDetail() {
       <Seo title={`${parcours.intention.texte} — Experience AI`} />
 
       {/* En-tête : l'intention d'abord, toujours */}
-      <header className="mb-8">
+      <header className="mb-6">
         <p className="label-champ">Ton parcours</p>
         <h1 className="titre-page mt-1">{parcours.intention.texte}</h1>
         <p className="texte-secondaire mt-2">
@@ -113,9 +112,10 @@ export default function ParcoursDetail() {
           )}
           {parcours.contexte.lieux.length > 0 && <> · {parcours.contexte.lieux.join(', ')}</>}
           {parcours.ambiance && <> · ambiance {parcours.ambiance}</>}
-          {parcours.budget.montantTotal !== undefined && <> · ~{parcours.budget.montantTotal} €</>}
         </p>
       </header>
+
+      <BlocBudget parcours={parcours} />
 
       {/* Timeline des moments */}
       <ol className="space-y-6">
@@ -128,12 +128,19 @@ export default function ParcoursDetail() {
             </div>
 
             <ul className="space-y-3">
-              {moment.elements.map((element) => (
+              {moment.elements.map((element) => {
+                const logistique = element.type === 'transport' || element.type === 'hebergement'
+                return (
                 <li key={element.id}
-                  className={`rounded-xl border p-4 transition-colors ${
-                    aRegenerer.includes(element.id) ? 'border-soleil bg-soleil/5' : 'border-encre/10 bg-white'
+                  className={`rounded-xl border border-l-4 p-4 transition-colors ${
+                    aRegenerer.includes(element.id)
+                      ? 'border-soleil bg-soleil/5'
+                      : logistique
+                        ? 'border-encre/10 border-l-lagon/60 bg-white'
+                        : 'border-encre/10 border-l-soleil/40 bg-white'
                   }`}>
                   <div className="flex flex-wrap items-start gap-2">
+                    {/* Ligne principale : identité + statut de confiance — lisible en un coup d'œil */}
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] font-bold uppercase tracking-wide text-brume">
@@ -148,24 +155,39 @@ export default function ParcoursDetail() {
                       </div>
                       <p className="font-semibold text-encre mt-1">{element.nom}</p>
                       <p className="text-xs text-brume mt-0.5">
-                        {element.lieu}
+                        {element.type === 'hebergement' && element.sejourHebergement ? (
+                          <>{element.sejourHebergement.ville} · du{' '}
+                            {new Date(element.sejourHebergement.arrivee).toLocaleDateString('fr-FR')} au{' '}
+                            {new Date(element.sejourHebergement.depart).toLocaleDateString('fr-FR')}</>
+                        ) : (
+                          element.lieu
+                        )}
                         {element.prix !== undefined && (
                           <> · {element.prix} €{element.prixEstime && ' estimés'}</>
                         )}
                       </p>
-                      {/* Un vrai lieu, trouvé pour ce parcours : on y conduit, on ne vend rien */}
-                      {element.reservation && (
-                        <a href={element.reservation.lienExterne} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
-                          aria-label={`${libelleLien(element)} pour ${element.nom} (nouvel onglet)`}>
-                          <LibelleLien element={element} />
-                        </a>
-                      )}
-                      <LienRechercheTransport element={element} />
-                      {/* La justification : la cohérence visible (Constitution #4) */}
-                      <p className="text-sm text-encre-light mt-2 italic">« {element.justification} »</p>
-                      {/* Ce que le groupe en pense — ça éclaire, ça ne décide pas */}
-                      <AvisGroupe parcours={parcours} element={element} />
+
+                      {/* Détail secondaire, replié par défaut : justification, avis du groupe, liens externes.
+                          Reste ouvert d'office sur un élément à revoir après modification. */}
+                      <details className="mt-2" open={aRegenerer.includes(element.id)}>
+                        <summary className="text-xs text-lagon-dark cursor-pointer select-none w-fit">
+                          Détails
+                        </summary>
+                        <div className="mt-2 space-y-2">
+                          {/* Un vrai lieu, trouvé pour ce parcours : on y conduit, on ne vend rien */}
+                          {element.reservation && (
+                            <a href={element.reservation.lienExterne} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
+                              aria-label={`${libelleLien(element)} pour ${element.nom} (nouvel onglet)`}>
+                              <LibelleLien element={element} />
+                            </a>
+                          )}
+                          <LienRechercheTransport element={element} />
+                          <p className="text-sm text-encre-light italic">« {element.justification} »</p>
+                          {/* Ce que le groupe en pense — ça éclaire, ça ne décide pas */}
+                          <AvisGroupe parcours={parcours} element={element} />
+                        </div>
+                      </details>
                     </div>
 
                     {/* L'utilisateur garde le dernier mot (Constitution #6) */}
@@ -189,11 +211,37 @@ export default function ParcoursDetail() {
                     </div>
                   </div>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           </li>
         ))}
       </ol>
+
+      {/* Ce qui vient d'être modifié — reste affiché tant que l'utilisateur ne l'a pas fermé,
+          contrairement au toast qui disparaît seul. */}
+      {derniereModification && (
+        <div className="carte mt-6 p-4 border-lagon/30 flex items-start justify-between gap-3">
+          <p className="text-sm text-encre">
+            <span className="font-semibold">Dernière modification</span> — {derniereModification}
+            {aRegenerer.length > 0 && (
+              <span className="block text-brume text-xs mt-1">
+                {aRegenerer.length} élément(s) dépendant(s) marqué(s) « À revoir » ci-dessus.
+              </span>
+            )}
+          </p>
+          <button
+            onClick={() => setDerniereModification(null)}
+            aria-label="Fermer cette information"
+            className="text-brume hover:text-encre shrink-0 cursor-pointer w-8 h-8 flex items-center justify-center"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+              strokeLinecap="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Refus (422) ou panne technique (503) sur une modification — reste visible, ne disparaît pas comme un toast. */}
       {erreurModification && (
@@ -253,5 +301,51 @@ export default function ParcoursDetail() {
         </details>
       )}
     </PageLayout>
+  )
+}
+
+const LIBELLES_MODE_BUDGET: Record<Parcours['budget']['mode'], string> = {
+  individuel: 'par personne',
+  partage: 'partagé',
+}
+
+/**
+ * Lecture honnête du budget : le montant visé (saisi côté brief) et
+ * l'estimation courante (somme des prix connus, avec le nombre d'éléments
+ * réellement chiffrés) — jamais un total qui prétend inclure ce qui n'est
+ * pas encore chiffré, jamais un « 0 € » pour dire « inconnu ».
+ */
+export function BlocBudget({ parcours }: { parcours: Parcours }) {
+  const elements = parcours.timeline.flatMap((m) => m.elements)
+  const chiffres = elements.filter((e) => e.prix !== undefined)
+  const estimation = chiffres.reduce((total, e) => total + (e.prix ?? 0), 0)
+  const nombreEstimes = chiffres.filter((e) => e.prixEstime).length
+
+  return (
+    <div className="carte p-4 mb-6 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+      <div>
+        <p className="label-champ">Budget visé</p>
+        <p className="font-heading font-semibold text-encre mt-0.5">
+          {parcours.budget.montantTotal !== undefined
+            ? `${parcours.budget.montantTotal} ${parcours.budget.devise} · ${LIBELLES_MODE_BUDGET[parcours.budget.mode]}`
+            : 'Non précisé'}
+        </p>
+      </div>
+      <div className="h-px w-full sm:h-8 sm:w-px bg-encre/10" />
+      <div>
+        <p className="label-champ">Estimation à date</p>
+        {chiffres.length > 0 ? (
+          <p className="text-sm text-encre mt-0.5">
+            ~{estimation} {parcours.budget.devise}
+            <span className="text-brume">
+              {' '}· {chiffres.length}/{elements.length} élément(s) chiffré(s)
+              {nombreEstimes > 0 && `, dont ${nombreEstimes} estimé(s)`}
+            </span>
+          </p>
+        ) : (
+          <p className="text-sm text-brume mt-0.5">Aucune estimation disponible pour l'instant.</p>
+        )}
+      </div>
+    </div>
   )
 }
