@@ -35,9 +35,10 @@ export function EtatErreur({
 /** Squelette de chargement pour une liste de blocs (cartes, lignes de résultat). */
 export function EtatChargement({ nombre = 3, hauteur = 'h-20' }: { nombre?: number; hauteur?: string }) {
   return (
-    <div className="space-y-3" aria-hidden="true">
+    <div className="space-y-3" role="status" aria-live="polite">
+      <span className="sr-only">Chargement en cours</span>
       {Array.from({ length: nombre }, (_, i) => (
-        <div key={i} className={clsx('skeleton', hauteur)} />
+        <div key={i} className={clsx('skeleton', hauteur)} aria-hidden="true" />
       ))}
     </div>
   )
