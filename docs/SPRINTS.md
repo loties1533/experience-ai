@@ -447,7 +447,7 @@ ouvert. F5 passe à Terminé.
 **F8 — Modification complète** *(en cours)*
 
 - [x] **F8-A** — audit et contrat de dépendances (`determinerImpactModification`)
-- [ ] **F8-B** — régénération ciblée sur copie de travail
+- [x] **F8-B** — régénération ciblée sur copie de travail
 - [ ] **F8-C** — validation et application atomique
 - [ ] **F8-D** — intégration API/front, si le découpage le confirme nécessaire
 
@@ -549,6 +549,90 @@ imprécision, corrigés directement :
 - Un test ajouté par correction : budget hôtel inchangé, fusion intégrale +
   liste partielle vidée. Suite complète reverifiée : 1771 tests, 48 fichiers,
   toujours verte ; typecheck et lint inchangés.
+
+### Revue F8-B — régénération ciblée sur copie de travail (01/08)
+
+- **Constat d'audit** : aucun mécanisme ne consommait `elementsARegenerer`
+  avant ce lot — ni `appliquerModification`, ni `appliquerModificationHotel`,
+  ni `appliquerModificationTransport` ne régénèrent jamais les dépendants,
+  ils se contentent de les lister (ou de rendre `[]` pour l'hôtel/le
+  transport, dont l'impact réel vient exclusivement du contrat F8-A). La
+  route `/api/parcours/:id/modifications` sauvegarde donc aujourd'hui un
+  parcours dont les dépendants restent obsolètes. Aucune primitive de
+  régénération d'UN SEUL élément n'existe par ailleurs : `generation.ts`
+  génère par lot entier (ville × jours), avec ses propres outils de
+  recherche scoping — pas réutilisable pour un dépendant isolé sans
+  réinventer tout le pipeline de lots.
+- **Module ajouté** :
+  [`server/agents/regenerationModification.ts`](../server/agents/regenerationModification.ts)
+  — `regenererModificationSurCopie(parcoursActuel, modification, contexte,
+  brief?, dependances?)`. Flux : `structuredClone` (copie de travail
+  indépendante) → `determinerImpactModification` (F8-A) → application de la
+  modification (réutilise `appliquerModification` /
+  `appliquerModificationHotel` / `appliquerModificationTransport`, sans
+  duplication) → régénération de chaque dépendant listé par F8-A → validation
+  finale (`validerParcours`). Ne touche pas `generation.ts` : 0 ligne ajoutée
+  (`git diff --stat` vérifié).
+- **Types supportés** : les dix modifications déjà réellement mutables
+  aujourd'hui (élément — remplacer/supprimer/ajouter/justification/statut/
+  alternative —, hôtel — remplacer/séjour/occupation —, transport). Les
+  quatre catégories de contexte introduites par F8-A (`changer_dates`,
+  `changer_duree`, `changer_composition`, `changer_destination`) sont
+  **toujours refusées explicitement** (`422`, message « Modification non
+  supportée »), y compris le cas `changer_duree` avec dates déjà posées où
+  F8-A ne signale pourtant aucun impact : l'absence d'impact ne rend pas le
+  champ mutable pour autant, aucune route ne sait aujourd'hui écrire
+  `contexte.duree`. Pas de faux support.
+- **Régénération d'un dépendant** : par défaut, un agent LLM ciblé (même
+  famille que `agents/modification.ts`) propose un nouveau contenu
+  (nom/lieu/prix/justification) cohérent avec ce dont l'élément dépend
+  désormais ; validé par un schéma Zod strict, jamais fait confiance tel
+  quel. Le résultat redevient systématiquement `confiance: { niveau:
+  'suggestion' }` — jamais `verifie` sans preuve — quel que soit le niveau
+  d'avant. Un hébergement ou un transport ne passe **jamais** par ce chemin
+  générique (garde explicite, `422`) : leur identité doit passer par
+  `remplacer_hotel` / `modifier_demande_transport`, jamais inventée par un
+  LLM libre. Un élément déjà disparu par ricochet (chaîne de suppressions)
+  est ignoré sans erreur.
+- **Impact intégral** : jamais implémenté en douce comme une régénération
+  partielle. Le module expose un point d'injection
+  (`dependances.regenererIntegralement`) pour une future régénération
+  complète réellement câblée (F8-C ou au-delà) ; par défaut, non fourni, donc
+  toujours refusé explicitement — aucune fausse régénération.
+- **Budget** : `invaliderBudget` n'est volontairement PAS traduit en
+  recalcul de `budget.montantTotal` — aucune primitive fiable de somme des
+  prix n'existe aujourd'hui dans le domaine (le total, quand il existe, est
+  une valeur déclarée, pas dérivée). Documenté ici plutôt que fabriqué : un
+  montant inventé serait pire qu'une absence.
+- **Garanties vérifiées par les tests** : parcours d'entrée jamais muté
+  (`structuredClone` + égalité profonde avant/après) ; élément indépendant
+  conservé structurellement identique, y compris sa confiance `verifie` ;
+  échec d'un seul dépendant → aucune copie retournée (pas de sauvegarde
+  partielle) ; dépendance orpheline injectée → validation finale rejette
+  toute la préparation ; dépendants dédupliqués (diamant de dépendances) ;
+  aucun accès DB (`chargerParcours`/`sauvegarderParcours` espionnés, jamais
+  appelés) — cohérent avec le hors-périmètre du lot (F8-C fera la
+  persistance).
+- **Tests ajoutés** :
+  [`tests/unit/regenerationModification.test.ts`](../tests/unit/regenerationModification.test.ts)
+  (21 cas, dont les 17 demandés) — remplacement/suppression/ajout avec et
+  sans dépendants, justification/statut sans appel IA, hôtel et transport
+  ciblés (Foursquare et résolution de liens transport mockés), échec réseau
+  simulé sur un dépendant, validation finale en échec, non-mutation, élément
+  indépendant préservé bit-à-bit, impact intégral supporté (injecté) et non
+  supporté (dont le cas `changer_duree` avec dates), aucun accès DB,
+  dépendants sans doublon, statuts de confiance préservés, garde
+  hébergement/transport, et un cas passant réellement par `callAI` mocké
+  (pas seulement par injection) pour prouver le chemin par défaut.
+- **Résultats** : typecheck OK, lint sans nouvelle erreur (avertissements
+  préexistants inchangés), `git diff --check` propre, suite complète verte
+  (1792 tests, 49 fichiers), `generation.ts` inchangé (0 ligne).
+- **Limites / hors périmètre assumé** : aucune écriture DB (F8-C) ; pas de
+  branchement sur `/api/parcours/:id/modifications` ni le front (F8-D, si
+  confirmé nécessaire) ; pas de support réel pour dates/durée/composition/
+  destination ; pas de recalcul de budget faute de primitive fiable.
+- **Recommandation** : prêt pour revue humaine avant fusion. F8 reste en
+  cours — F8-C (validation et application atomique) non commencé.
 
 ### Revue F7-C — intégration du dialogue de bout en bout (01/08)
 
