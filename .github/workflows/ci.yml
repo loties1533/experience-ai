@@ -45,6 +45,13 @@ jobs:
       - name: Installer les dependances
         run: npm ci
 
+      - name: Installer les dependances client-react
+        # Premiers tests de composants (UI-B) : ils importent du code
+        # client-react qui dépend de paquets propres à ce sous-projet (ex.
+        # clsx), absents de la racine. Sans cette étape, vitest (lancé à la
+        # racine) échoue à résoudre ces imports.
+        run: cd client-react && npm ci
+
       - name: Generer le client Prisma
         run: npx prisma generate
 
