@@ -634,6 +634,39 @@ imprécision, corrigés directement :
 - **Recommandation** : prêt pour revue humaine avant fusion. F8 reste en
   cours — F8-C (validation et application atomique) non commencé.
 
+#### Correction post-revue (01/08)
+
+Une revue ciblée sur la sécurité des données de la régénération et l'ordre
+d'exécution a trouvé trois défauts réels, corrigés directement :
+
+- **Vérité des données** : `regenererElementParDefaut` demandait au LLM un
+  `nom` et un `lieu` libres, marqués `suggestion` — mais rien n'empêchait un
+  nom d'établissement et une adresse inventés, ce qui ressemble à une
+  observation fournisseur (interdit par la loi produit). Corrigé : le LLM ne
+  fournit plus que `justification` (et un prix éventuel) ; le `nom` reste la
+  formule générique `nomSuggestion` déjà utilisée en génération pour tout
+  contenu sans preuve (exportée depuis `generation.ts`, réutilisée telle
+  quelle). `lieu`, `reservation`, `contraintes`, `reactions` et `statut` de
+  l'ancien élément ne survivent plus à une régénération.
+- **Ordre de régénération** : l'ordre de `impact.elementsARegenerer` est
+  topologique par construction pour une cible unique
+  (`elementsDependants`), mais une fusion multi-cibles (`impactParType` —
+  occupation hôtelière, transport) concatène plusieurs listes sans garantie
+  d'ordre global. Un tri topologique explicite, restreint au sous-graphe des
+  ids à régénérer, est désormais recalculé dans F8-B avant toute
+  régénération ; un cycle (normalement impossible) est détecté et rejeté
+  explicitement plutôt que de boucler ou lire des données obsolètes.
+- **Codes d'erreur** : `echecDepuisErreur` ignorait silencieusement les
+  codes 403/404 (dont le 404 « élément introuvable » de la régénération par
+  défaut elle-même) ; corrigé pour propager tout le domaine `StatutHttpEchec`
+  déclaré.
+- Tests ajoutés : ordre A→B→C prouvé (le mock de C observe le B déjà
+  régénéré), cycle détecté et refusé, suppression de racine sans référence
+  orpheline, aucune identité inventée par un LLM non conforme au prompt.
+  Suite complète revérifiée : 1795 tests, 49 fichiers, toujours verte ;
+  typecheck et lint inchangés ; `generation.ts` : +1/-1 ligne (export d'une
+  primitive existante, aucune nouvelle logique).
+
 ### Revue F7-C — intégration du dialogue de bout en bout (01/08)
 
 - **Nature du lot** : aucun défaut réel trouvé dans `intake.ts`/`brief.ts` —
