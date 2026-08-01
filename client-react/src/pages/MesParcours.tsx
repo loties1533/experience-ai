@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
+import { EtatChargement, EtatVide } from '../components/ui/Etats'
 import { listerParcours, supprimerParcours } from '../lib/api'
 
 const LIBELLES_VISIBILITE: Record<string, string> = {
@@ -34,18 +35,14 @@ export default function MesParcours() {
         <Link to="/" className="btn-primaire text-sm">Nouvelle envie</Link>
       </div>
 
-      {isLoading && (
-        <div className="space-y-3">
-          {[0, 1, 2].map((i) => <div key={i} className="skeleton h-20" />)}
-        </div>
-      )}
+      {isLoading && <EtatChargement nombre={3} hauteur="h-20" />}
 
       {!isLoading && liste.length === 0 && (
-        <div className="carte p-10 text-center">
-          <p className="font-heading font-semibold text-encre text-lg">Aucun parcours pour l'instant</p>
-          <p className="text-brume text-sm mt-1">Dis-nous ce que tu as envie de vivre, on construit le reste.</p>
-          <Link to="/" className="btn-primaire inline-block mt-4">Commencer</Link>
-        </div>
+        <EtatVide
+          titre="Aucun parcours pour l'instant"
+          description="Dis-nous ce que tu as envie de vivre, on construit le reste."
+          action={<Link to="/" className="btn-primaire inline-block">Commencer</Link>}
+        />
       )}
 
       <ul className="space-y-3">

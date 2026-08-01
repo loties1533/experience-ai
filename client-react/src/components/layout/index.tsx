@@ -35,7 +35,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 bg-white/70 backdrop-blur-md border-b border-encre/10">
-      <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+      <div className="conteneur h-16 flex items-center justify-between gap-4">
         <Link to="/" className="flex items-center gap-2.5" onClick={() => setMenuOuvert(false)}>
           <Logo size={40} className="text-soleil" />
           <div className="flex flex-col">
@@ -139,9 +139,9 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen aurora">
       <Header />
-      <main className="max-w-5xl mx-auto px-4 py-6 relative z-10">{children}</main>
+      <main className="conteneur py-6 relative z-10">{children}</main>
       <footer className="mt-24 border-t border-encre/10 bg-sable-dark/60">
-        <div className="max-w-5xl mx-auto px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="conteneur py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
             <Logo size={28} className="text-soleil" />
             <span className="font-heading font-bold text-encre">Experience AI</span>

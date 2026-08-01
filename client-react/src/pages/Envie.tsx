@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
+import { Bouton } from '../components/ui/Bouton'
+import { BanniereStatutMetier } from '../components/ui/StatutMetier'
 import { useAuthStore, useDialogueStore } from '../store'
 import { avancerDialogue, genererParcours, type Brief } from '../lib/api'
+import { statutMetierDepuisErreur } from '../lib/erreurAffichage'
 
 // La page d'entrée : « Qu'as-tu envie de vivre ? » (doc 05, étapes 1→5).
 // Dialogue de cadrage → brief reformulé → confirmation → génération.
@@ -25,6 +28,7 @@ export default function Envie() {
   const [saisie, setSaisie] = useState('')
   const [enCours, setEnCours] = useState(false)
   const [generationEnCours, setGenerationEnCours] = useState(false)
+  const [erreurGeneration, setErreurGeneration] = useState<{ statut: 'refus' | 'indisponible'; message: string } | null>(null)
   const navigate = useNavigate()
   const finListe = useRef<HTMLDivElement>(null)
 
@@ -70,6 +74,7 @@ export default function Envie() {
 
   const generer = async () => {
     setGenerationEnCours(true)
+    setErreurGeneration(null)
     try {
       // Le brief est complet (estComplet) : le serveur revalide de toute façon.
       const { parcours } = await genererParcours(brief as Brief)
@@ -77,7 +82,12 @@ export default function Envie() {
       toast.success('Votre parcours est prêt')
       navigate(`/parcours/${parcours.id}`)
     } catch (e) {
-      toast.error((e as Error).message)
+      const statut = statutMetierDepuisErreur(e)
+      if (statut) {
+        setErreurGeneration({ statut, message: (e as Error).message })
+      } else {
+        toast.error((e as Error).message)
+      }
       setGenerationEnCours(false)
     }
   }
@@ -85,7 +95,7 @@ export default function Envie() {
   return (
     <PageLayout>
       <Seo title="Experience AI — Qu'as-tu envie de vivre ?" />
-      <section className="max-w-2xl mx-auto pt-8 sm:pt-16">
+      <section className="conteneur-etroit pt-8 sm:pt-16">
         <h1 className="text-3xl sm:text-5xl font-bold text-encre text-center leading-tight">
           Qu'as-tu envie de <span className="text-soleil">vivre</span> ?
         </h1>
@@ -127,26 +137,42 @@ export default function Envie() {
         )}
 
         {/* Confirmation du brief (doc 05, étape 4 : rien ne se génère sans accord) */}
-        {estComplet && !generationEnCours && (
+        {estComplet && !generationEnCours && !erreurGeneration && (
           <div className="carte mt-4 p-4 flex flex-col sm:flex-row items-center gap-3 border-lagon/40">
             <p className="text-sm text-encre-light flex-1">
               Le brief te convient ? Tu peux encore corriger en écrivant ci-dessous.
             </p>
-            <button className="btn-primaire whitespace-nowrap" onClick={generer}>
+            <Bouton onClick={generer} className="whitespace-nowrap">
               Construire mon parcours
-            </button>
+            </Bouton>
           </div>
         )}
 
         {generationEnCours && (
           <div className="carte mt-4 p-6 text-center">
-            <p className="font-heading font-semibold text-encre">Construction du parcours…</p>
-            <p className="text-sm text-brume mt-1">Moments, justifications, temps libres : quelques secondes.</p>
+            <p className="titre-section">Construction du parcours…</p>
+            <p className="texte-secondaire mt-1">Moments, justifications, temps libres : quelques secondes.</p>
             <div className="mt-4 space-y-2">
               <div className="skeleton h-4 w-3/4 mx-auto" />
               <div className="skeleton h-4 w-2/3 mx-auto" />
               <div className="skeleton h-4 w-1/2 mx-auto" />
             </div>
+          </div>
+        )}
+
+        {/* Refus (422) ou panne technique (503) — jamais réduits à un toast qui disparaît. */}
+        {erreurGeneration && (
+          <div className="mt-4">
+            <BanniereStatutMetier
+              statut={erreurGeneration.statut}
+              action={
+                <Bouton variante="secondaire" onClick={() => setErreurGeneration(null)}>
+                  {erreurGeneration.statut === 'refus' ? 'Reformuler' : 'Réessayer'}
+                </Bouton>
+              }
+            >
+              {erreurGeneration.message}
+            </BanniereStatutMetier>
           </div>
         )}
 
@@ -167,9 +193,9 @@ export default function Envie() {
             maxLength={500}
             disabled={generationEnCours}
           />
-          <button type="submit" className="btn-primaire" disabled={enCours || generationEnCours || !saisie.trim()}>
+          <Bouton type="submit" disabled={enCours || generationEnCours || !saisie.trim()}>
             Envoyer
-          </button>
+          </Bouton>
         </form>
 
         {messages.length > 0 && !generationEnCours && (
