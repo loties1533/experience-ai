@@ -179,6 +179,39 @@ describe('regenererModificationSurCopie — remplacements et suppressions', () =
     expect(bar.dependDe).not.toContain('resto');
   });
 
+  it('3bis. suppression de la RACINE (hotel) : resto survit sans dépendance restante, reconstruit, aucune référence orpheline', async () => {
+    // hotel supprimé → resto (qui n'en dépendait QUE de lui) doit survivre en
+    // suggestion autonome, jamais rester avec un dependDe pointant vers un
+    // id qui n'existe plus dans le parcours.
+    const parcours = parcoursDeTest();
+    const regenererElement = vi.fn(async (_p: Parcours, elementId: string) =>
+      element(elementId, { nom: `${elementId}-reconstruit-sans-hotel` })
+    );
+    const resultat = await regenererModificationSurCopie(
+      parcours,
+      { type: 'supprimer_element', elementId: 'hotel' },
+      CONTEXTE,
+      undefined,
+      { regenererElement }
+    );
+    expect(resultat.ok).toBe(true);
+    if (!resultat.ok) return;
+    const tousLesIds = new Set(resultat.parcours.timeline.flatMap((m) => m.elements.map((e) => e.id)));
+    expect(tousLesIds.has('hotel')).toBe(false);
+    expect(tousLesIds.has('resto')).toBe(true);
+    expect(resultat.elementsRegeneres).toContain('resto');
+    const resto = resultat.parcours.timeline
+      .flatMap((m) => m.elements)
+      .find((e) => e.id === 'resto')!;
+    // Aucune référence orpheline : chaque id dans dependDe existe encore.
+    for (const dependanceId of resto.dependDe) {
+      expect(tousLesIds.has(dependanceId)).toBe(true);
+    }
+    // La validation finale (domaine) est passée : le test le prouve déjà en
+    // atteignant `ok: true`, mais on le vérifie explicitement ici aussi.
+    expect(resto.dependDe).not.toContain('hotel');
+  });
+
   it('4. ajout sans régénération inutile : aucun élément existant ne dépend d’un ajout', async () => {
     const parcours = parcoursDeTest();
     const regenererElement = vi.fn(regenererElementFactice);
@@ -395,6 +428,74 @@ describe('regenererModificationSurCopie — échecs', () => {
   });
 });
 
+describe('regenererModificationSurCopie — ordre de régénération (A → B → C)', () => {
+  it('régénère B avant C : C voit le NOUVEAU B, jamais l’ancien (hotel=A remplacé, resto=B, bar=C)', async () => {
+    const observationsDeC: string[] = [];
+    const regenererElement = vi.fn(async (parcoursCourant: Parcours, elementId: string) => {
+      if (elementId === 'bar') {
+        // Au moment où C (bar) est régénéré, B (resto) doit déjà porter son
+        // nouveau contenu dans la copie de travail passée en paramètre —
+        // jamais l'ancien resto.
+        const restoVu = parcoursCourant.timeline
+          .flatMap((m) => m.elements)
+          .find((e) => e.id === 'resto')!;
+        observationsDeC.push(restoVu.nom);
+      }
+      return element(elementId, { nom: `${elementId}-v2` });
+    });
+    // La suppression de « hotel » (A) marque resto (B) ET bar (C) à
+    // régénérer : B ne dépend plus que de rien (A a disparu), C dépend de B.
+    const resultat = await regenererModificationSurCopie(
+      parcoursDeTest(),
+      { type: 'supprimer_element', elementId: 'hotel' },
+      CONTEXTE,
+      undefined,
+      { regenererElement }
+    );
+    expect(resultat.ok).toBe(true);
+    expect(observationsDeC).toEqual(['resto-v2']);
+  });
+
+  it('détecte un cycle de dépendances entre éléments à régénérer et refuse explicitement (pas de boucle infinie, pas de données obsolètes)', async () => {
+    // Cycle impossible en usage normal (validerParcours le refuse déjà en
+    // sortie) mais qui doit être détecté AVANT toute tentative de
+    // régénération, pas seulement constaté après coup. x et y dépendent
+    // l'un de l'autre ; les deux dépendent aussi de « racine », remplacée.
+    const parcoursCyclique: Parcours = {
+      ...parcoursDeTest(),
+      timeline: [
+        {
+          id: 'm1',
+          titre: 'Cycle',
+          elements: [
+            element('racine'),
+            element('x', { dependDe: ['racine', 'y'] }),
+            element('y', { dependDe: ['x'] }),
+          ],
+        },
+      ],
+    };
+    const regenererElement = vi.fn(regenererElementFactice);
+    const resultat = await regenererModificationSurCopie(
+      parcoursCyclique,
+      {
+        type: 'remplacer_element',
+        elementId: 'racine',
+        remplacement: { type: 'activite', nom: 'Nouvelle racine', justification: 'x' },
+      },
+      CONTEXTE,
+      undefined,
+      { regenererElement }
+    );
+    expect(resultat.ok).toBe(false);
+    if (resultat.ok) return;
+    expect(resultat.erreur).toMatch(/boucle/);
+    // Le cycle est détecté AVANT toute régénération : aucune donnée obsolète
+    // n'a pu être lue par un dépendant.
+    expect(regenererElement).not.toHaveBeenCalled();
+  });
+});
+
 describe('regenererModificationSurCopie — garanties transverses', () => {
   it('11. ne mute jamais le parcours reçu', async () => {
     const parcours = parcoursDeTest();
@@ -536,10 +637,17 @@ describe('regenererModificationSurCopie — garanties transverses', () => {
     expect(bar.confiance.niveau).toBe('suggestion');
   });
 
-  it('n’appelle jamais la régénération générique par défaut sans y être forcé (utilise callAI réellement quand rien n’est injecté)', async () => {
+  it('utilise réellement callAI par défaut (chemin non injecté), et IGNORE tout nom/adresse que le LLM tenterait d’inventer', async () => {
     const parcours = parcoursDeTest();
+    // Un modèle non conforme au prompt qui inventerait quand même une
+    // identité (nom propre + adresse) : le module doit l'ignorer purement et
+    // simplement — aucune information fournisseur ne peut en sortir.
     vi.mocked(callAI).mockResolvedValue(
-      JSON.stringify({ nom: 'Bar reconstruit par IA', justification: 'cohérent avec le nouveau resto' })
+      JSON.stringify({
+        nom: 'Restaurant Chez Marcel',
+        lieu: '12 rue Invention',
+        justification: 'cohérent avec le nouveau resto',
+      })
     );
     const resultat = await regenererModificationSurCopie(
       parcours,
@@ -550,8 +658,13 @@ describe('regenererModificationSurCopie — garanties transverses', () => {
     if (!resultat.ok) return;
     expect(callAI).toHaveBeenCalledTimes(1);
     const bar = resultat.parcours.timeline[0]!.elements.find((e) => e.id === 'bar')!;
-    expect(bar.nom).toBe('Bar reconstruit par IA');
+    // Jamais le nom propre inventé par le modèle : une idée générique, sans
+    // identité réelle (même formule que `nomSuggestion` en génération).
+    expect(bar.nom).not.toBe('Restaurant Chez Marcel');
+    expect(bar.nom).toMatch(/^Une activité/);
+    expect(bar.lieu).toBeUndefined();
     expect(bar.confiance.niveau).toBe('suggestion');
+    expect(bar.justification).toBe('cohérent avec le nouveau resto');
   });
 
   it('refuse de régénérer automatiquement un dépendant hébergement ou transport (identité protégée)', async () => {

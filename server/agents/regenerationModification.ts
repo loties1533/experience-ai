@@ -20,6 +20,7 @@ import {
   type ChangementContexteParcours,
   type ChangementParcours,
 } from './impactModification.js';
+import { nomSuggestion } from './generation.js';
 import type { Brief } from './brief.js';
 
 // F8-B — la régénération ciblée EN MÉMOIRE (invariant 3 + F8-A), sur une
@@ -62,6 +63,50 @@ function remplacerElementDansParcours(parcours: Parcours, element: Element): Par
   };
 }
 
+/**
+ * Ordonne les dépendants à régénérer pour qu'un parent soit TOUJOURS
+ * régénéré avant ses propres dépendants (A → B → C : B voit le nouveau A,
+ * C voit le nouveau B, jamais l'ancien). `elementsDependants` (F8-A) rend
+ * déjà cet ordre par construction (BFS par profondeur de dépendance) pour
+ * une cible unique, mais une fusion de plusieurs cibles
+ * (`impactParType` — occupation hôtelière, demande de transport) concatène
+ * plusieurs listes bout à bout : rien ne garantit alors l'ordre global. On
+ * ne fait donc jamais confiance à l'ordre reçu : un tri topologique explicite,
+ * restreint au sous-graphe des ids à régénérer, est recalculé ici. Un cycle
+ * (normalement impossible, `validerParcours` le refuse déjà) est détecté
+ * plutôt que de boucler ou de régénérer avec des données obsolètes.
+ */
+function ordonnerParDependance(parcours: Parcours, ids: string[]): string[] | null {
+  const ensemble = new Set(ids);
+  const dependDePar = new Map(
+    parcours.timeline
+      .flatMap((moment) => moment.elements)
+      .map((e) => [e.id, e.dependDe.filter((id) => ensemble.has(id))] as const)
+  );
+
+  const ordre: string[] = [];
+  const acheves = new Set<string>();
+  const enCours = new Set<string>();
+
+  function visiter(id: string): boolean {
+    if (acheves.has(id)) return true;
+    if (enCours.has(id)) return false;
+    enCours.add(id);
+    for (const dependance of dependDePar.get(id) ?? []) {
+      if (!visiter(dependance)) return false;
+    }
+    enCours.delete(id);
+    acheves.add(id);
+    ordre.push(id);
+    return true;
+  }
+
+  for (const id of ids) {
+    if (!visiter(id)) return null;
+  }
+  return ordre;
+}
+
 /** Qui prépare la modification, et quand — repris tel quel côté application. */
 export interface ContexteRegeneration extends ContexteModification {
   /** Injectable pour les tests : par défaut `randomUUID` (comme la route). */
@@ -102,42 +147,52 @@ export type ResultatRegeneration =
     }
   | { ok: false; erreur: string; statutHttp?: StatutHttpEchec };
 
+const STATUTS_HTTP_ECHEC = new Set<StatutHttpEchec>([403, 404, 422, 502, 503]);
+
 function echecDepuisErreur(erreur: unknown): { erreur: string; statutHttp?: StatutHttpEchec } {
   if (erreur instanceof AppError) {
     const statutHttp = erreur.statusCode;
     return {
       erreur: erreur.message,
-      ...(statutHttp === 422 || statutHttp === 502 || statutHttp === 503 ? { statutHttp } : {}),
+      ...(STATUTS_HTTP_ECHEC.has(statutHttp as StatutHttpEchec) ? { statutHttp: statutHttp as StatutHttpEchec } : {}),
     };
   }
   return { erreur: 'La régénération a échoué', statutHttp: 502 };
 }
 
-const RegenerationElementSchema = z
-  .object({
-    nom: z.string().trim().min(1).max(200),
-    lieu: z.string().trim().min(1).max(300).optional(),
-    prix: z.number().nonnegative().optional(),
-    justification: z.string().trim().min(1).max(1000),
-  })
-  .strict();
+// Pas de `.strict()` : un modèle qui ajoute malgré tout une clé ignorée par
+// le prompt (ex. un `nom` non demandé) ne doit pas faire échouer la
+// régénération, elle est simplement écartée par zod.
+const RegenerationElementSchema = z.object({
+  prix: z.number().nonnegative().optional(),
+  justification: z.string().trim().min(1).max(1000),
+});
 
-const SYSTEM_REGENERATION = `Tu régénères UN élément d'un parcours devenu incohérent après la modification d'un élément dont il dépend.
+const SYSTEM_REGENERATION = `Tu justifies UN élément d'un parcours devenu incohérent après la modification d'un élément dont il dépend.
 Réponds UNIQUEMENT en JSON valide de cette forme :
-{"nom": string, "lieu"?: string, "prix"?: number, "justification": string}
-Le type et la place de l'élément dans le parcours ne changent pas : seul son contenu doit rester cohérent avec ce dont il dépend désormais.
-N'écris jamais confiance, provenance, fournisseur, source, recupereLe, identifiantExterne, adresse, réservation, disponibilité ni lien.
+{"prix"?: number, "justification": string}
+Le type, le nom et la place de l'élément dans le parcours ne changent pas : seule sa justification doit rester cohérente avec ce dont il dépend désormais.
+N'invente jamais de nom d'établissement, d'adresse, de confiance, de provenance, de fournisseur, de source, de disponibilité ni de lien : ce ne sont pas des informations que tu possèdes.
 Si l'élément porte déjà un prix, donne un prix du même ordre de grandeur, sauf si le changement l'implique clairement.`;
 
 /**
- * Régénération PAR DÉFAUT d'un dépendant : une proposition de contenu
- * cohérente avec ce dont il dépend désormais, jamais une donnée vérifiée
- * (aucune preuve fournisseur n'existe pour un contenu réécrit par un LLM).
+ * Régénération PAR DÉFAUT d'un dépendant : jamais un nom propre ni une
+ * adresse inventés (loi produit — « un résultat sans preuve reste une idée
+ * générique, jamais un faux nom propre », déjà le principe de
+ * `nomSuggestion` en génération). Le LLM ne fournit QUE la justification (et
+ * éventuellement un prix) ; le nom reste la même formule générique que la
+ * génération utilise pour tout ce qui n'a aucune preuve fournisseur.
  *
  * Un hébergement ou un transport ne passe JAMAIS par ce mécanisme : leur
  * identité doit passer par un contrat dédié (`remplacer_hotel`,
  * `modifier_demande_transport`), exactement comme au premier remplacement —
  * inventer un hôtel ou un trajet ici romprait la loi produit.
+ *
+ * Aucune preuve de l'ancien contenu ne survit : `lieu`, `reservation`,
+ * `contraintes` et `reactions` de l'ancien élément décrivaient un contenu
+ * qui n'existe plus. `statut` et `alternatives` repartent aussi de zéro —
+ * une suggestion reconstruite n'a pas hérité de l'arbitrage rendu sur
+ * l'ancien contenu.
  */
 async function regenererElementParDefaut(
   parcours: Parcours,
@@ -158,7 +213,7 @@ async function regenererElementParDefaut(
     .map((id) => trouverElement(parcours, id))
     .filter((e): e is Element => e !== undefined);
   const prompt = `Intention du parcours : ${parcours.intention.texte}
-Élément à régénérer : « ${cible.nom} » [${cible.type}]${cible.prix !== undefined ? `, prix actuel : ${cible.prix} €` : ''}
+Élément à régénérer (générique, sans identité réelle) : « ${cible.nom} » [${cible.type}]${cible.prix !== undefined ? `, prix actuel : ${cible.prix} €` : ''}
 Justification actuelle : ${sanitizeInput(cible.justification)}
 Ce dont il dépend désormais :
 ${
@@ -182,15 +237,20 @@ ${
 
   return {
     ...cible,
-    nom: sortie.nom,
-    ...(sortie.lieu !== undefined ? { lieu: sortie.lieu } : {}),
+    nom: nomSuggestion(cible.type),
+    lieu: undefined,
     prix: sortie.prix ?? cible.prix,
     prixEstime: true,
     // Jamais `verifie` sans preuve fournisseur : un contenu réécrit redevient
     // toujours une suggestion, quel que soit le niveau de confiance d'avant.
     confiance: { niveau: 'suggestion' },
     justification: sortie.justification,
+    statut: 'propose',
+    estAncre: cible.estAncre,
     alternatives: [],
+    contraintes: [],
+    reservation: undefined,
+    reactions: [],
   };
 }
 
@@ -237,7 +297,17 @@ export async function regenererModificationSurCopie(
   const regenererElement = dependances.regenererElement ?? regenererElementParDefaut;
   const elementsRegeneres: string[] = [];
 
-  for (const elementId of new Set(impact.elementsARegenerer)) {
+  const idsARegenerer = [...new Set(impact.elementsARegenerer)];
+  const ordre = ordonnerParDependance(parcoursTravail, idsARegenerer);
+  if (ordre === null) {
+    return {
+      ok: false,
+      erreur: 'La chaîne de dépendances des éléments à régénérer boucle sur elle-même',
+      statutHttp: 422,
+    };
+  }
+
+  for (const elementId of ordre) {
     // Un dépendant peut avoir déjà disparu par ricochet (ex. supprimé lui
     // aussi) : on ne régénère que ce qui existe encore dans la copie.
     if (!trouverElement(parcoursTravail, elementId)) continue;
