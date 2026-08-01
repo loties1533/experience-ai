@@ -18,7 +18,7 @@
 | F4 — Vols et transports | IATA, dates, voyageurs et multi-villes | Terminé |
 | F5 — Génération progressive | Plan global puis lots validés | Terminé |
 | F6 — Benchmark modèles | Choix mesuré du modèle de production | Terminé |
-| F7 — Dialogue fiable | Dates relatives et absence de répétitions | En cours |
+| F7 — Dialogue fiable | Dates relatives et absence de répétitions | Terminé |
 | F8 — Modification complète | Régénération atomique des seuls dépendants | À faire |
 | F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
 
@@ -438,10 +438,50 @@ ouvert. F5 passe à Terminé.
 - [x] **F6-G** — correction de `schema_generation_invalide` (`identifiantExterne` vide)
 - [x] **F6-H** — benchmark final et décision du modèle de production
 
-**F7 — Dialogue fiable** *(en cours)*
+**F7 — Dialogue fiable** *(terminé)*
 
 - [x] **F7-A** — résolution déterministe des dates relatives
 - [x] **F7-B** — état déterministe du dialogue de base
+- [x] **F7-C** — intégration du dialogue de bout en bout
+
+### Revue F7-C — intégration du dialogue de bout en bout (01/08)
+
+- **Nature du lot** : aucun défaut réel trouvé dans `intake.ts`/`brief.ts` —
+  F7-A et F7-B garantissaient déjà, ensemble, les invariants demandés
+  (non-répétition, remplacement ciblé par correction, gate hébergement/
+  transport). Aucune correction de code n'a donc été nécessaire ; le lot
+  ajoute la couverture d'intégration multi-tours qui le prouve explicitement.
+- **Tests ajoutés** :
+  [`tests/unit/dialogueIntegrationBoutEnBout.test.ts`](../tests/unit/dialogueIntegrationBoutEnBout.test.ts)
+  (10 cas), un tour de dialogue par appel à `avancerDialogue`, le brief renvoyé
+  par un tour devenant le `briefActuel` du suivant — sans mémoire parallèle,
+  sans historique brut conservé. Horloge fixe et fuseau explicite
+  (`vi.setSystemTime`, `Europe/Paris`), aucun appel réseau réel.
+  - Scénario 1 : parcours progressif intention → avecQui → duree → dates, un
+    champ de base par tour, aucune question répétée.
+  - Scénario 2 : tous les champs de base dans un seul message, aucune
+    question de base inutile.
+  - Scénario 3 : trois corrections successives (avecQui, duree, dates),
+    chacune ne remplace que le champ visé.
+  - Scénario 4 : message neutre (« d'accord », « oui ») — aucun champ perdu,
+    aucune double question, aucune reformulation rejouée telle quelle sur un
+    brief déjà complet.
+  - Scénario 5 : la question transport ne devient accessible qu'après les 4
+    champs de base ; un champ transport déjà répondu n'est jamais reposé.
+  - Scénario 6 : brief complet après un dialogue en 5 tours avec correction de
+    date ; aucun faux `estComplet` avant complétude ; aucune génération réelle
+    déclenchée (`genererParcours` n'est ni importé ni appelé dans ce test).
+- **Point de vigilance confirmé en écrivant les tests** : une correction de
+  date qui remplace une date déjà arrêtée dans le brief ne repasse pas par la
+  résolution F7-A automatique (celle-ci ne s'active que si `brief.dates` est
+  encore absent) — c'est le LLM qui doit alors structurer explicitement la
+  nouvelle plage dans `brief.dates`, comportement déjà couvert par
+  F7-B/agents.test.ts et confirmé ici sur un dialogue complet.
+- **Résultats** : typecheck OK, lint sans nouvelle erreur (avertissements
+  préexistants inchangés), `git diff --check` propre, suite complète verte
+  (1754 tests, 47 fichiers).
+- **Recommandation** : prêt pour revue humaine avant fusion — aucun blocage
+  identifié côté build.
 
 ### Revue F7-B — état déterministe du dialogue de base (01/08)
 
