@@ -7,10 +7,14 @@ import Seo from '../components/Seo'
 import AvisGroupe from '../components/AvisGroupe'
 import { BadgeConfiance, LibelleLien, libelleLien, LienRechercheTransport } from '../components/ConfianceElement'
 import PanneauPartage from '../components/PanneauPartage'
+import { Bouton } from '../components/ui/Bouton'
+import { BanniereStatutMetier } from '../components/ui/StatutMetier'
+import { EtatChargement, EtatErreur } from '../components/ui/Etats'
 import {
   chargerParcours, modifierParcours,
   type Parcours, type Element, type DemandeSurElementClient,
 } from '../lib/api'
+import { statutMetierDepuisErreur } from '../lib/erreurAffichage'
 
 // La boucle qui fait la valeur (doc 05, étapes 6 ↔ 7) : explorer moment par
 // moment, et modifier élément par élément — jamais tout d'un coup.
@@ -30,6 +34,7 @@ export default function ParcoursDetail() {
   const queryClient = useQueryClient()
   const [phrase, setPhrase] = useState('')
   const [aRegenerer, setARegenerer] = useState<string[]>([])
+  const [erreurModification, setErreurModification] = useState<{ statut: 'refus' | 'indisponible'; message: string } | null>(null)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['parcours', id],
@@ -45,12 +50,20 @@ export default function ParcoursDetail() {
       queryClient.invalidateQueries({ queryKey: ['parcours'] })
       setARegenerer(reponse.elementsARegenerer)
       setPhrase('')
+      setErreurModification(null)
       toast.success(reponse.description)
       if (reponse.elementsARegenerer.length > 0) {
         toast.info(`${reponse.elementsARegenerer.length} élément(s) dépendant(s) à revoir`)
       }
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => {
+      const statut = statutMetierDepuisErreur(e)
+      if (statut) {
+        setErreurModification({ statut, message: (e as Error).message })
+      } else {
+        toast.error((e as Error).message)
+      }
+    },
   })
 
   const changerStatut = (elementId: string, statut: 'accepte' | 'a_remplacer') =>
@@ -65,7 +78,7 @@ export default function ParcoursDetail() {
   if (isLoading) {
     return (
       <PageLayout>
-        <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-28" />)}</div>
+        <EtatChargement nombre={3} hauteur="h-28" />
       </PageLayout>
     )
   }
@@ -73,10 +86,10 @@ export default function ParcoursDetail() {
   if (error || !data) {
     return (
       <PageLayout>
-        <div className="carte p-10 text-center">
-          <p className="font-heading font-semibold text-encre">Parcours introuvable</p>
-          <Link to="/parcours" className="btn-secondaire inline-block mt-4">Retour à mes parcours</Link>
-        </div>
+        <EtatErreur
+          titre="Parcours introuvable"
+          action={<Link to="/parcours" className="btn-secondaire inline-block">Retour à mes parcours</Link>}
+        />
       </PageLayout>
     )
   }
@@ -89,9 +102,9 @@ export default function ParcoursDetail() {
 
       {/* En-tête : l'intention d'abord, toujours */}
       <header className="mb-8">
-        <p className="text-xs font-bold uppercase tracking-widest text-lagon-dark">Ton parcours</p>
-        <h1 className="text-2xl sm:text-3xl font-bold text-encre mt-1">{parcours.intention.texte}</h1>
-        <p className="text-brume text-sm mt-2">
+        <p className="label-champ">Ton parcours</p>
+        <h1 className="titre-page mt-1">{parcours.intention.texte}</h1>
+        <p className="texte-secondaire mt-2">
           {parcours.contexte.avecQui} · {parcours.contexte.duree.valeur} {parcours.contexte.duree.unite}
           {/* Les dates ne s'affichent que si le parcours en a de vraies */}
           {parcours.contexte.dates && (
@@ -111,7 +124,7 @@ export default function ParcoursDetail() {
             <div className="flex items-baseline gap-3 mb-4">
               <span className="w-7 h-7 rounded-full bg-lagon/10 text-lagon-dark font-heading font-bold text-sm
                                flex items-center justify-center shrink-0">{index + 1}</span>
-              <h2 className="font-heading font-semibold text-lg text-encre">{moment.titre}</h2>
+              <h2 className="titre-section">{moment.titre}</h2>
             </div>
 
             <ul className="space-y-3">
@@ -158,22 +171,21 @@ export default function ParcoursDetail() {
                     {/* L'utilisateur garde le dernier mot (Constitution #6) */}
                     <div className="flex flex-wrap gap-2 shrink-0" role="group" aria-label={`Actions pour ${element.nom}`}>
                       {element.statut !== 'accepte' && (
-                        <button className="btn-secondaire min-h-[44px] text-xs"
+                        <Bouton variante="secondaire" className="min-h-[44px] text-xs"
                           onClick={() => changerStatut(element.id, 'accepte')} disabled={modification.isPending}>
                           Accepter
-                        </button>
+                        </Bouton>
                       )}
                       {element.statut !== 'a_remplacer' && element.type !== 'temps_libre' && (
-                        <button className="btn-secondaire min-h-[44px] text-xs"
+                        <Bouton variante="secondaire" className="min-h-[44px] text-xs"
                           onClick={() => changerStatut(element.id, 'a_remplacer')} disabled={modification.isPending}>
                           À remplacer
-                        </button>
+                        </Bouton>
                       )}
-                      <button
-                        className="btn-secondaire min-h-[44px] text-xs !text-corail hover:!border-corail"
+                      <Bouton variante="danger" className="min-h-[44px] text-xs"
                         onClick={() => supprimerElement(element)} disabled={modification.isPending}>
                         Retirer
-                      </button>
+                      </Bouton>
                     </div>
                   </div>
                 </li>
@@ -182,6 +194,22 @@ export default function ParcoursDetail() {
           </li>
         ))}
       </ol>
+
+      {/* Refus (422) ou panne technique (503) sur une modification — reste visible, ne disparaît pas comme un toast. */}
+      {erreurModification && (
+        <div className="mt-6">
+          <BanniereStatutMetier
+            statut={erreurModification.statut}
+            action={
+              <Bouton variante="secondaire" onClick={() => setErreurModification(null)}>
+                Fermer
+              </Bouton>
+            }
+          >
+            {erreurModification.message}
+          </BanniereStatutMetier>
+        </div>
+      )}
 
       {/* Modification en langage naturel — l'agent traduit, le domaine décide */}
       <form
@@ -199,9 +227,10 @@ export default function ParcoursDetail() {
                      focus:border-soleil focus:outline-none focus:ring-2 focus:ring-soleil/25"
           maxLength={500}
         />
-        <button type="submit" className="btn-primaire !py-2.5" disabled={modification.isPending || !phrase.trim()}>
-          {modification.isPending ? 'Modification…' : 'Modifier'}
-        </button>
+        <Bouton type="submit" className="!py-2.5" disabled={!phrase.trim()}
+          chargement={modification.isPending} texteChargement="Modification…">
+          Modifier
+        </Bouton>
       </form>
 
       {/* Partager au groupe pour pouvoir décider ensemble (doc 07) */}

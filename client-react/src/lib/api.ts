@@ -27,6 +27,19 @@ export type {
 // En production : VITE_API_URL pointe vers l'API distante
 const BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api'
 
+// Porte le statutHttp jusqu'à l'UI : c'est ce qui permet de distinguer un
+// refus produit (422, ADR-0008) d'une panne fournisseur passagère (503) sans
+// toucher au contrat backend — le serveur renvoie déjà `{ error }` + le code,
+// on se contente de ne plus le jeter.
+export class ErreurApi extends Error {
+  statutHttp: number
+  constructor(message: string, statutHttp: number) {
+    super(message)
+    this.name = 'ErreurApi'
+    this.statutHttp = statutHttp
+  }
+}
+
 async function request<T = unknown>(path: string, opts: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -36,12 +49,12 @@ async function request<T = unknown>(path: string, opts: RequestInit = {}): Promi
 
   if (res.status === 401) {
     window.location.href = '/login'
-    throw new Error('Session expirée, veuillez vous reconnecter.')
+    throw new ErreurApi('Session expirée, veuillez vous reconnecter.', 401)
   }
   if (res.status === 204) return undefined as T
 
   const data = (await res.json()) as T
-  if (!res.ok) throw new Error((data as { error?: string }).error || `Erreur ${res.status}`)
+  if (!res.ok) throw new ErreurApi((data as { error?: string }).error || `Erreur ${res.status}`, res.status)
   return data
 }
 

@@ -20,8 +20,8 @@
 | F6 — Benchmark modèles | Choix mesuré du modèle de production | Terminé |
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | Terminé |
 | F8 — Modification complète | Régénération atomique des seuls dépendants | Terminé |
-| UI-A — Audit et direction visuelle | Diagnostic front et cap éditorial voyage | En cours |
-| UI-B — Fondations visuelles | Composants et statuts métier (indisponible/refus) | À faire |
+| UI-A — Audit et direction visuelle | Diagnostic front et cap éditorial voyage | Terminé |
+| UI-B — Fondations visuelles | Composants et statuts métier (indisponible/refus) | En cours |
 | UI-C — Écrans principaux + photos | Intégration des photographies personnelles | À faire |
 | UI-D — Responsive / états / polish | Vérification mobile/tablette/desktop et contrastes | À faire |
 | F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
@@ -220,6 +220,53 @@ modification, l'OpenAPI et le front.
 - Aucun code de production modifié : audit et documentation seuls justifiaient
   ce lot. `npx tsc --noEmit`, `npm run lint` et `npx vitest run` passent sans
   changement de comportement.
+
+### Revue UI-B — fondations visuelles et statuts métier (01/08)
+
+- **Cœur du lot : les cinq statuts métier.** `StatutMetier.tsx` devient la
+  source unique de la palette/libellés pour `verifie`/`estime`/`suggestion`/
+  `indisponible`/`refus` (doc 15 §7, ADR-0008). `BadgeConfiance`
+  (`ConfianceElement.tsx`) est mutualisé dessus — il ne garde que ce qui lui
+  est propre : le détail de provenance au niveau élément (source, fournisseur,
+  date). `suggestion` reste volontairement le badge le moins saillant des cinq,
+  vérifié par test.
+- **422/503 enfin distincts.** `lib/api.ts` porte désormais le `statutHttp`
+  dans une erreur typée (`ErreurApi`) au lieu de le jeter — sans toucher au
+  contrat backend, qui renvoyait déjà `{ error }` + le code HTTP.
+  `erreurAffichage.ts` classe l'erreur en `refus` (422) ou `indisponible`
+  (503) ; tout le reste continue de passer par le toast générique existant.
+  `BanniereStatutMetier` rend le refus en `role="alert"` (décision produit
+  assumée, ton non alarmiste) et l'indisponibilité en `role="status"`
+  (panne passagère, réessai proposé) — branché sur la génération (`Envie.tsx`)
+  et la modification (`ParcoursDetail.tsx`), les deux points identifiés par
+  l'audit UI-A comme réduits à un toast qui disparaît.
+- **Composants communs.** `Bouton.tsx` (variantes principal/secondaire/
+  discret/danger, `chargement`/`aria-busy`, focus et disabled déjà acquis via
+  les classes existantes) ; `Etats.tsx` (`EtatVide`, `EtatErreur`,
+  `EtatChargement`) remplace les blocs « carte + squelette » dupliqués entre
+  `MesParcours` et `ParcoursDetail`.
+- **Design system minimal.** Pas de nouveau token de couleur (la palette
+  `soleil`/`lagon`/`sable`/`encre`/`brume`/`sauge`/`corail` suffisait déjà,
+  comme prévu par le doc 15 §6). Ajoutés dans `index.css` : classes de
+  conteneur (`.conteneur`, `.conteneur-etroit`, remplace les `max-w-* mx-auto
+  px-4` dupliqués entre `Header` et `PageLayout`) et de hiérarchie
+  typographique (`.titre-page`, `.titre-section`, `.texte-secondaire`,
+  `.label-champ`, `.micro-copie`).
+- **Écrans branchés, pas refaits.** `Envie.tsx`, `ParcoursDetail.tsx` et
+  `MesParcours.tsx` consomment les nouveaux composants pour prouver leur
+  usage réel — aucune refonte d'écran, conformément au périmètre UI-B (la
+  refonte des écrans est UI-C).
+- **Dépendance de test corrigée.** `@testing-library/react` (racine) tirait
+  React 19 alors que `client-react` est en React 18 : premier test de
+  composant du dépôt, premier à révéler le conflit. Fixé en épinglant
+  `react`/`react-dom` à `18.3.1` côté racine (même version que
+  `client-react`) plutôt que de contourner par un alias Vitest.
+- **Hors périmètre confirmé.** Aucun contrat backend ni route API modifiée ;
+  aucune image ajoutée ; pas de refonte des écrans de parcours (UI-C) ; F9
+  reste après la phase UI.
+- Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run
+  lint` (mêmes 4 avertissements préexistants, aucune nouvelle erreur),
+  `npx vitest run` (1833 tests verts, dont les nouveaux tests de composants).
 
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 

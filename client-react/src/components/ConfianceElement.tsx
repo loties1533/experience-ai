@@ -1,40 +1,18 @@
 import type { Element, TypeLienExterne } from '../../../server/domaine/parcours'
+import { BadgeStatutMetier } from './ui/StatutMetier'
 
-const PRESENTATION = {
-  verifie: {
-    libelle: 'Vérifié',
-    classe: 'bg-lagon/10 text-lagon-dark',
-  },
-  estime: {
-    libelle: 'Estimé',
-    classe: 'bg-soleil/10 text-soleil-dark',
-  },
-  suggestion: {
-    libelle: 'Suggestion',
-    classe: 'bg-encre/5 text-brume',
-  },
-} as const
-
+// La palette et les libellés viennent de StatutMetier (source unique des cinq
+// statuts métier). Ce composant garde ce qui lui est propre : le détail au
+// niveau élément (source, fournisseur, date de récupération).
 export function BadgeConfiance({ element }: { element: Element }) {
-  const presentation = PRESENTATION[element.confiance.niveau]
   const detail =
     element.confiance.niveau === 'verifie'
       ? `Source : ${element.confiance.source}. Fournisseur : ${
           element.confiance.fournisseur
         }. Récupérée le ${new Date(element.confiance.recupereLe).toLocaleDateString('fr-FR')}`
-      : element.confiance.niveau === 'estime'
-        ? 'Information approximative, à confirmer'
-        : 'Idée générique, aucun établissement précis n’est confirmé'
+      : undefined
 
-  return (
-    <span
-      className={`badge-statut ${presentation.classe}`}
-      title={detail}
-      aria-label={`${presentation.libelle}. ${detail}`}
-    >
-      {presentation.libelle}
-    </span>
-  )
+  return <BadgeStatutMetier statut={element.confiance.niveau} detail={detail} />
 }
 
 const LIBELLES_LIEN: Record<TypeLienExterne, string> = {

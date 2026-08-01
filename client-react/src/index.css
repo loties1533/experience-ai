@@ -95,6 +95,32 @@
 
   .scroll-hide { scrollbar-width: none; }
   .scroll-hide::-webkit-scrollbar { display: none; }
+
+  /* Conteneurs — largeur/gutters partagés (remplace les max-w-* mx-auto px-4
+     dupliqués entre Header, PageLayout et les pages). */
+  .conteneur {
+    @apply max-w-5xl mx-auto px-4 sm:px-6;
+  }
+  .conteneur-etroit {
+    @apply max-w-2xl mx-auto px-4;
+  }
+
+  /* Hiérarchie typographique éditoriale — un seul endroit pour chaque niveau. */
+  .titre-page {
+    @apply font-heading font-bold text-encre text-2xl sm:text-3xl;
+  }
+  .titre-section {
+    @apply font-heading font-semibold text-encre text-lg;
+  }
+  .texte-secondaire {
+    @apply text-brume text-sm;
+  }
+  .label-champ {
+    @apply text-xs font-bold uppercase tracking-widest text-lagon-dark;
+  }
+  .micro-copie {
+    @apply text-xs text-brume;
+  }
 }
 
 /* Nappe aurora — lente, coupée si l'utilisateur préfère éviter le mouvement */
