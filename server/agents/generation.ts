@@ -655,7 +655,7 @@ function confianceVerifiee(args: {
 }
 
 /** Un résultat sans preuve reste une idée générique, jamais un faux nom propre. */
-function nomSuggestion(type: TypeElement, ville?: string): string {
+export function nomSuggestion(type: TypeElement, ville?: string): string {
   const endroit = ville ? ` à ${ville}` : '';
   const noms: Record<TypeElement, string> = {
     activite: `Une activité adaptée à l’intention${endroit}`,
