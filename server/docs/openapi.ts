@@ -1096,6 +1096,15 @@ export const openapiSpec = {
           403: forbidden,
           404: notFound,
           422: { description: 'Modification refusée : elle rendrait le parcours incohérent', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          502: {
+            description:
+              'La régénération d’un dépendant a produit une sortie IA inexploitable (F8-B)',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Error' },
+              },
+            },
+          },
           503: {
             description:
               'Dépendance externe indispensable momentanément indisponible, par exemple Foursquare lors d’un remplacement hôtelier',
