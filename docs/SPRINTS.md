@@ -522,6 +522,34 @@ ouvert. F5 passe à Terminé.
 - **Recommandation** : prêt pour revue humaine avant fusion. F8 reste en
   cours — F8-B/C non commencés.
 
+#### Correction post-revue (01/08)
+
+Une revue ciblée sur la sémantique du contrat a trouvé un défaut réel et une
+imprécision, corrigés directement :
+
+- **Budget d'un hôtel remplacé** : `remplacer_hotel`/`modifier_sejour_hebergement`
+  marquaient `invaliderBudget: true`, mais `elementHotelRemplace`/`reconstruireLien`
+  (`modificationHotel.ts`) recopient toujours `cible.prix` tel quel — ces deux
+  types n'exposent d'ailleurs aucun champ prix côté client. Le prix ne peut donc
+  jamais changer par ce chemin ; corrigé à `false`, aligné sur
+  `modifier_occupation_hebergement`.
+- **Motif de `changer_duree`** : le texte affirmait que la durée « ne pilote
+  donc plus rien » dès que des dates existent. Faux : `ParcoursDetail.tsx` et
+  `ParcoursPartage.tsx` affichent `contexte.duree` inconditionnellement, même
+  aux côtés de dates réelles. Reformulé : « aucun impact » porte sur la
+  génération et les invariants du domaine, jamais sur l'affichage.
+- **`combinerImpacts`** : un impact intégral peut désormais fusionner avec un
+  impact partiel non vide (ex. suppression d'élément + changement de dates) ;
+  la liste ciblée de la fusion est maintenant toujours vidée dès que
+  `regenererIntegralement` est vrai, pour qu'aucune liste partielle ne semble
+  encore pertinente à côté de lui.
+- Documentation du champ `elementsARegenerer` renforcée : n'inclut jamais la
+  cible de la modification elle-même (comportement hérité, déjà celui
+  d'`appliquerModification`).
+- Un test ajouté par correction : budget hôtel inchangé, fusion intégrale +
+  liste partielle vidée. Suite complète reverifiée : 1771 tests, 48 fichiers,
+  toujours verte ; typecheck et lint inchangés.
+
 ### Revue F7-C — intégration du dialogue de bout en bout (01/08)
 
 - **Nature du lot** : aucun défaut réel trouvé dans `intake.ts`/`brief.ts` —

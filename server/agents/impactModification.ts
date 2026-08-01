@@ -32,7 +32,13 @@ export type ChangementContexteParcours =
 export type ChangementParcours = DemandeSurElementClient | ChangementContexteParcours;
 
 export interface ImpactModification {
-  /** Portée ciblée (invariant 3) : ids d'éléments EXISTANTS à régénérer. */
+  /**
+   * Portée ciblée (invariant 3) : ids des DÉPENDANTS existants à régénérer.
+   * N'inclut jamais la cible elle-même de la modification (élément remplacé,
+   * supprimé, ou hôtel dont le séjour change) — celle-ci est produite
+   * directement par l'opération, exactement comme `appliquerModification`
+   * le fait déjà aujourd'hui pour `remplacer_element`/`supprimer_element`.
+   */
   elementsARegenerer: string[];
   /**
    * Le changement dépasse tout recalcul ciblé connu : aucune dépendance
@@ -163,11 +169,15 @@ export function determinerImpactModification(
 
     case 'remplacer_hotel':
     case 'modifier_sejour_hebergement':
+      // `elementHotelRemplace`/`reconstruireLien` (modificationHotel.ts)
+      // recopient TOUJOURS `cible.prix` tel quel — aucun champ prix n'existe
+      // même côté client pour ces deux types : le budget ne peut pas changer
+      // ici, seul le lien de recherche est reconstruit.
       return impactElementExistant(
         parcours,
         modification.elementId,
-        true,
-        "un séjour ou un hôtel remplacé peut changer de prix et reconstruit son lien de recherche"
+        false,
+        'un séjour ou un hôtel remplacé reconstruit son lien de recherche ; son prix reste inchangé'
       );
 
     case 'modifier_demande_transport':
@@ -224,13 +234,18 @@ export function determinerImpactModification(
 
     case 'changer_duree':
       // Doc 06 / schema.ts : quand des dates réelles existent, ce sont ELLES
-      // qui font foi et la durée voulue n'est plus utilisée nulle part — donc
-      // aucun impact tant qu'elles sont présentes. Sans dates, rien ne borne
+      // qui font foi pour la génération et les invariants du domaine
+      // (`deriverPlan`, `validerParcours`) — la durée voulue ne les recalcule
+      // jamais et ne déclenche donc aucune régénération ni invalidation.
+      // Elle reste néanmoins affichée telle quelle à côté des dates
+      // (`ParcoursDetail.tsx`, `ParcoursPartage.tsx`) : « aucun impact » porte
+      // ici uniquement sur la régénération, pas sur la mise à jour directe du
+      // champ par la modification elle-même. Sans dates, rien ne borne
       // aujourd'hui un changement de durée : dépendance non modélisée, impact
       // prudent et documenté (jamais deviné).
       return parcours.contexte.dates
         ? impactSansDependance(
-            'les dates du parcours font foi ; la durée voulue ne les remplace jamais et ne pilote donc plus rien'
+            'les dates du parcours font foi pour la génération et les invariants ; la durée voulue ne les recalcule jamais et ne déclenche aucune régénération (elle reste seulement affichée)'
           )
         : impactIntegral(
             "sans dates, aucune dépendance n'est modélisée pour la durée voulue : impact prudent, à documenter"
@@ -263,19 +278,25 @@ export function determinerImpactModification(
  * Fusionne plusieurs impacts en un seul (union des régénérations, OR des
  * invalidations) — pour le cas de plusieurs changements simultanés, sans que
  * `determinerImpactModification` ait besoin de connaître la notion de lot.
+ *
+ * Dès qu'un seul impact est intégral, la liste ciblée de la fusion reste
+ * TOUJOURS vide (même si d'autres impacts combinés en portaient une) : un
+ * `regenererIntegralement: true` doit se suffire à lui-même, jamais laisser
+ * croire qu'une liste partielle resterait pertinente à côté de lui.
  */
 export function combinerImpacts(impacts: ImpactModification[]): ImpactModification {
-  return impacts.reduce<ImpactModification>(
-    (fusion, impact) => ({
+  const fusion = impacts.reduce<ImpactModification>(
+    (acc, impact) => ({
       elementsARegenerer: [
-        ...new Set([...fusion.elementsARegenerer, ...impact.elementsARegenerer]),
+        ...new Set([...acc.elementsARegenerer, ...impact.elementsARegenerer]),
       ],
-      regenererIntegralement: fusion.regenererIntegralement || impact.regenererIntegralement,
-      invaliderHebergement: fusion.invaliderHebergement || impact.invaliderHebergement,
-      invaliderTransport: fusion.invaliderTransport || impact.invaliderTransport,
-      invaliderBudget: fusion.invaliderBudget || impact.invaliderBudget,
-      motif: [...new Set([fusion.motif, impact.motif].filter((m) => m.length > 0))].join(' — '),
+      regenererIntegralement: acc.regenererIntegralement || impact.regenererIntegralement,
+      invaliderHebergement: acc.invaliderHebergement || impact.invaliderHebergement,
+      invaliderTransport: acc.invaliderTransport || impact.invaliderTransport,
+      invaliderBudget: acc.invaliderBudget || impact.invaliderBudget,
+      motif: [...new Set([acc.motif, impact.motif].filter((m) => m.length > 0))].join(' — '),
     }),
     { ...IMPACT_NEUTRE, motif: '' }
   );
+  return fusion.regenererIntegralement ? { ...fusion, elementsARegenerer: [] } : fusion;
 }

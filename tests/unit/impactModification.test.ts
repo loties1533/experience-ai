@@ -108,7 +108,7 @@ describe('determinerImpactModification — matrice de dépendances', () => {
     expect(impact.invaliderTransport).toBe(true);
   });
 
-  it("changement d'hébergement (remplacer_hotel) : dépendants ciblés, budget et lien hôtelier invalidés, transport intact", () => {
+  it("changement d'hébergement (remplacer_hotel) : dépendants ciblés, lien hôtelier invalidé, prix inchangé (aucun champ prix côté client)", () => {
     const impact = determinerImpactModification(
       { type: 'remplacer_hotel', elementId: 'hotel', villeDemandee: 'Boston', requete: 'hôtel' },
       parcoursDeTest()
@@ -116,7 +116,9 @@ describe('determinerImpactModification — matrice de dépendances', () => {
     expect(impact.regenererIntegralement).toBe(false);
     expect(impact.elementsARegenerer.sort()).toEqual(['bar', 'resto']);
     expect(impact.invaliderHebergement).toBe(true);
-    expect(impact.invaliderBudget).toBe(true);
+    // `elementHotelRemplace` recopie toujours `cible.prix` tel quel : aucun
+    // remplacement d'hôtel ne peut changer le prix, donc le budget reste valide.
+    expect(impact.invaliderBudget).toBe(false);
     expect(impact.invaliderTransport).toBe(false);
   });
 
@@ -227,5 +229,15 @@ describe('combinerImpacts — plusieurs changements simultanés', () => {
       determinerImpactModification({ type: 'changer_destination' }, parcours),
     ]);
     expect(fusion.regenererIntegralement).toBe(true);
+  });
+
+  it('un impact intégral vide toujours la liste ciblée de la fusion, même combiné à une liste partielle non vide', () => {
+    const parcours = parcoursDeTest();
+    const fusion = combinerImpacts([
+      determinerImpactModification({ type: 'supprimer_element', elementId: 'hotel' }, parcours),
+      determinerImpactModification({ type: 'changer_dates' }, parcours),
+    ]);
+    expect(fusion.regenererIntegralement).toBe(true);
+    expect(fusion.elementsARegenerer).toEqual([]);
   });
 });
