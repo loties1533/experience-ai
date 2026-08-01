@@ -311,23 +311,39 @@ modification, l'OpenAPI et le front.
 - **Aucun contrat F8 changé.** Modification, statuts, suppression : mêmes
   appels, mêmes types (`DemandeSurElementClient`, `ReponseModification`).
 - **Tests ciblés ajoutés.** `ImageContextuelle.test.tsx` (repli sans `src`,
-  `alt`, `loading`) et `BlocBudget` dans `ParcoursDetail.test.tsx` (budget non
-  précisé jamais à 0 €, distinction chiffré/estimé). Pas de test de rendu
-  complet pour `Envie`/`MesParcours` avec hooks (`useAuthStore`,
-  `react-router-dom`) : conflit de copies React racine/`client-react` déjà
-  identifié en UI-B pour `react`/`react-dom` (SPRINTS.md, revue UI-B), non
-  résolu ici pour `zustand`/`react-router-dom` — hors périmètre de ce lot,
-  vérifié manuellement dans le navigateur à la place (accueil desktop et
-  mobile, aucun overflow horizontal, aucune erreur console).
+  `alt`, `loading`), `BlocBudget` dans `ParcoursDetail.test.tsx` (budget non
+  précisé jamais à 0 €, distinction chiffré/estimé), et — après correction du
+  conflit React ci-dessous — trois rendus complets : `Envie.test.tsx` (accueil
+  sans photo réelle, génération honnête, refus 422 assertif), `MesParcours.
+  test.tsx` (carte sans champ inventé, état vide) et `ParcoursDetail.render.
+  test.tsx` (jamais de « Réserver », bandeau de modification qui reste
+  affiché jusqu'à fermeture explicite).
+- **Correction du conflit React racine/`client-react`.** La cause réelle,
+  reproduite avant correction : `@testing-library/react` (installé uniquement
+  à la racine) résout `react-dom` depuis la racine, alors que tout composant
+  du dépôt résout `react`/`react-dom` depuis `client-react/node_modules` (le
+  plus proche) — deux copies physiques distinctes de React 18.3.1, incompatibles
+  au niveau du dispatcher de hooks dès qu'un composant sous test appelle un
+  hook (`useState`, `useRef` de `react-router-dom`, le store `zustand`…). Le
+  correctif tenté d'abord (alias/`dedupe`/`server.deps.inline` dans
+  `vitest.config.ts`) n'a rien changé : ces mécanismes n'interceptent pas les
+  `require()` internes d'un paquet CJS externalisé. Le vrai correctif —
+  minimal, sans toucher à l'architecture du dépôt ni introduire d'alias —
+  ajoute `@testing-library/react`/`@testing-library/jest-dom` comme
+  devDependencies de `client-react` lui-même : Node résout alors ces paquets
+  depuis `client-react/node_modules` (le plus proche du fichier de test), et
+  leurs propres `require('react-dom')` internes retombent sur la même copie
+  que le reste de l'arbre. `npm ls react react-dom zustand react-router-dom`
+  confirme une seule copie dédupliquée par sous-projet après coup.
 - **Hors périmètre confirmé.** Aucun contrat backend, aucune image générée ou
   téléchargée, aucun changement de comportement de modification/suppression.
   UI-D reste : polish responsive fin, contrastes de badges, focus clavier sur
-  les nouveaux composants, tests de rendu complet une fois le conflit React
-  racine/`client-react` résolu pour `zustand`/`react-router-dom`.
+  les nouveaux composants.
 - Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run
   lint` (mêmes 4 avertissements préexistants, aucune nouvelle erreur),
-  `npx vitest run` (1843 tests verts), `git diff --check` propre, `npm ls
-  react react-dom` (une seule version 18.3.1, dédupliquée).
+  `npx vitest run` (1850 tests verts), `git diff --check` propre, `npm ls
+  react react-dom zustand react-router-dom` (racine et `client-react`, une
+  seule copie 18.3.1 dédupliquée par sous-projet).
 
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
