@@ -19,7 +19,11 @@
 | F5 — Génération progressive | Plan global puis lots validés | Terminé |
 | F6 — Benchmark modèles | Choix mesuré du modèle de production | Terminé |
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | Terminé |
-| F8 — Modification complète | Régénération atomique des seuls dépendants | En cours |
+| F8 — Modification complète | Régénération atomique des seuls dépendants | Terminé |
+| UI-A — Audit et direction visuelle | Diagnostic front et cap éditorial voyage | En cours |
+| UI-B — Fondations visuelles | Composants et statuts métier (indisponible/refus) | À faire |
+| UI-C — Écrans principaux + photos | Intégration des photographies personnelles | À faire |
+| UI-D — Responsive / états / polish | Vérification mobile/tablette/desktop et contrastes | À faire |
 | F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
 
 ### Board — avancement du chantier
@@ -184,6 +188,38 @@ correspond à aucune branche ni PR dédiée.
 F4 est désormais **terminé** : B1, B2, C1, C2 et C3 (a, b, c) posés en
 interne, puis D1, D2 et E qui les branchent réellement dans la génération, la
 modification, l'OpenAPI et le front.
+
+### Revue UI-A — audit front et direction visuelle (01/08)
+
+- **Un audit, pas une refonte.** Le métier (F0→F8) est fiable ; le front n'avait
+  jamais été confronté à la question « rend-il visibles les garanties que le
+  backend tient déjà ? ». UI-A répond par un diagnostic et un cap, documentés
+  dans [`docs/15-direction-ui.md`](15-direction-ui.md), avant de coder quoi que
+  ce soit côté écrans.
+- **Fondation à garder.** La palette Tailwind existante (`soleil`/`lagon`/
+  `sable`/`encre`/`brume`/`sauge`/`corail`) est déjà alignée avec un rendu
+  éditorial voyage sobre — aucun violet/bleu générique, aucun glassmorphism
+  généralisé. `BadgeConfiance` distingue déjà `verifie`/`estime`/`suggestion`.
+  On affine cette base, on ne la remplace pas.
+- **Trois manques critiques identifiés.** Le refus (`422`) et l'indisponibilité
+  technique (`503`) — pourtant distingués par ADR-0008 — retombent tous deux sur
+  un `toast.error` générique, indissociables d'une erreur de formulaire ; la
+  génération progressive (F5) n'affiche aucune progression réelle par lots ;
+  aucune photographie n'apparaît nulle part dans les 7 écrans, alors que
+  `hero.png` existe dans `public/assets/` sans être utilisé.
+- **`hero.png` écarté.** Ce triptyque (Bali/Tokyo/Santorin) juxtapose trois
+  clichés touristiques avec des coutures nettes et un étalonnage incohérent —
+  l'esthétique « collage IA générique » que la direction visuelle veut
+  précisément éviter. Il ne sera ni modifié ni utilisé comme référence de
+  palette ; remplacé par une vraie photo personnelle en UI-C.
+- **Découpage retenu.** UI-B (composants et statuts métier indisponible/refus),
+  UI-C (écrans principaux + intégration des photos personnelles), UI-D
+  (responsive, contrastes, polish) — détaillé dans le doc 15, §9.
+- **Hors périmètre confirmé.** Aucun contrat backend, aucune route API modifiée.
+  F9 reste après cette phase UI.
+- Aucun code de production modifié : audit et documentation seuls justifiaient
+  ce lot. `npx tsc --noEmit`, `npm run lint` et `npx vitest run` passent sans
+  changement de comportement.
 
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
