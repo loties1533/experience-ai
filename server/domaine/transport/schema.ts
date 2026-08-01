@@ -609,7 +609,7 @@ export const CandidatVolAerienSchema = z
   .strict()
   .superRefine((candidat, contexte) => {
     const premier = candidat.segments[0];
-    const dernier = candidat.segments.at(-1);
+    const dernier = candidat.segments[candidat.segments.length - 1];
     if (premier.origine.codeIata !== candidat.demande.origineIata) {
       contexte.addIssue({
         code: 'custom',

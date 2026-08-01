@@ -1,4 +1,4 @@
-import type { Element } from '../../../server/domaine/parcours'
+import type { Element, TypeLienExterne } from '../../../server/domaine/parcours'
 
 const PRESENTATION = {
   verifie: {
@@ -37,12 +37,13 @@ export function BadgeConfiance({ element }: { element: Element }) {
   )
 }
 
-const LIBELLES_LIEN = {
+const LIBELLES_LIEN: Record<TypeLienExterne, string> = {
   officiel: 'Voir le site officiel',
   billetterie: 'Voir la billetterie',
+  reservation: 'Voir la réservation',
   recherche: 'Consulter les résultats actuels',
   carte: 'Voir sur la carte',
-} as const
+}
 
 export function libelleLien(element: Element) {
   return element.reservation ? LIBELLES_LIEN[element.reservation.typeLien] : ''
