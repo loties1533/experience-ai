@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
 import { Bouton } from '../components/ui/Bouton'
+import { ImageContextuelle } from '../components/ui/ImageContextuelle'
 import { BanniereStatutMetier } from '../components/ui/StatutMetier'
 import { useAuthStore, useDialogueStore } from '../store'
 import { avancerDialogue, genererParcours, type Brief } from '../lib/api'
@@ -95,8 +96,17 @@ export default function Envie() {
   return (
     <PageLayout>
       <Seo title="Experience AI — Qu'as-tu envie de vivre ?" />
-      <section className="conteneur-etroit pt-8 sm:pt-16">
-        <h1 className="text-3xl sm:text-5xl font-bold text-encre text-center leading-tight">
+      <section className="conteneur-etroit pt-6 sm:pt-10">
+        {/* Bande éditoriale : pose l'univers voyage avant le premier mot tapé,
+            hauteur bornée pour que le formulaire reste visible sans scroll. */}
+        <ImageContextuelle
+          alt="Bande éditoriale d'ouverture — sera remplacée par une photographie réelle du produit"
+          ratio="hero"
+          prioritaire
+          className="max-h-40 sm:max-h-56"
+        />
+
+        <h1 className="text-3xl sm:text-5xl font-bold text-encre text-center leading-tight mt-6 sm:mt-8">
           Qu'as-tu envie de <span className="text-soleil">vivre</span> ?
         </h1>
         <p className="text-brume text-center mt-4 max-w-lg mx-auto">
@@ -148,15 +158,21 @@ export default function Envie() {
           </div>
         )}
 
+        {/* Le serveur ne renvoie qu'un résultat final (pas d'étapes intermédiaires
+            exposées à l'API) : on reste honnête sur ce qu'on sait — le parcours
+            se construit — sans mimer une progression par lots qu'on n'observe pas. */}
         {generationEnCours && (
-          <div className="carte mt-4 p-6 text-center">
-            <p className="titre-section">Construction du parcours…</p>
-            <p className="texte-secondaire mt-1">Moments, justifications, temps libres : quelques secondes.</p>
-            <div className="mt-4 space-y-2">
-              <div className="skeleton h-4 w-3/4 mx-auto" />
-              <div className="skeleton h-4 w-2/3 mx-auto" />
-              <div className="skeleton h-4 w-1/2 mx-auto" />
-            </div>
+          <div className="carte mt-4 p-6 text-center" role="status" aria-live="polite">
+            <span className="inline-flex w-10 h-10 rounded-full bg-soleil/10 items-center justify-center motion-safe:animate-pulse">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-soleil">
+                <path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
+              </svg>
+            </span>
+            <p className="titre-section mt-3">Construction du parcours…</p>
+            <p className="texte-secondaire mt-1">
+              Moments, justifications, temps libres : quelques secondes, on ne quitte pas la page.
+            </p>
           </div>
         )}
 

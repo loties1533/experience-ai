@@ -268,6 +268,83 @@ modification, l'OpenAPI et le front.
   lint` (mêmes 4 avertissements préexistants, aucune nouvelle erreur),
   `npx vitest run` (1833 tests verts, dont les nouveaux tests de composants).
 
+### Revue UI-C — refonte des écrans principaux et photographie (01/08)
+
+- **Aucune photo réelle disponible.** Le dépôt ne contient toujours que
+  `hero.png` (écarté depuis UI-A) — aucune vraie photographie personnelle n'a
+  été fournie pour ce lot. `ImageContextuelle.tsx` (ratio `hero`/`carte`/
+  `vignette`, `src` optionnel, `alt` obligatoire, lazy par défaut) est le seul
+  composant ajouté : sans `src`, il rend un repli graphique sobre (dégradé
+  `soleil`/`sable`/`lagon` + trait éditorial discret), jamais une image cassée
+  ni un rectangle gris. Les emplacements sont posés (bande d'accueil, vignette
+  `MesParcours`) ; les vraies photos restent à déposer manuellement dans
+  `public/assets/`.
+- **Accueil.** Bande éditoriale en tête (hauteur bornée `max-h-40 sm:max-h-56`)
+  pour ne pas repousser le formulaire hors écran sur desktop, conforme au doc
+  15 §5.
+- **Génération honnête, pas de fausse timeline.** L'API `/parcours` (POST)
+  reste un appel bloquant unique — aucune étape par lot n'est exposée au
+  client malgré F5 côté serveur. Plutôt que d'inventer des libellés de lots
+  (« Transport » → « Activités » → …) non observables, l'écran garde un état
+  simple honnête (`role="status"`, une seule icône, un texte qui ne prétend
+  pas savoir où en est le serveur). Documenté ici comme limite explicite :
+  une vraie progression par lots demanderait que le serveur l'expose, hors
+  périmètre UI.
+- **`MesParcours`.** `ResumeParcours` (`depotParcours.ts`) n'expose que
+  `id`/`intention`/`visibilite`/`misAJourLe` — ni destination, ni dates, ni
+  résumé. La carte gagne en hiérarchie (vignette, badge de visibilité, CTA
+  « Ouvrir » explicite) sans inventer les champs absents ; limite documentée
+  plutôt que contournée par une donnée fabriquée.
+- **`ParcoursDetail`.** Carte élément resserrée en deux niveaux : ligne
+  principale (type, ancre, confiance, statuts, nom, lieu/prix) et détail
+  replié (`<details>`, ouvert d'office sur un élément « À revoir ») pour
+  liens externes, justification et avis du groupe. Accent de couleur latéral
+  distinguant transport/hébergement (lagon) des autres éléments (soleil) ;
+  séjour hôtelier affiché avec ses vraies dates (`sejourHebergement`) plutôt
+  que le lieu générique. Nouveau bloc budget : montant visé si renseigné
+  (jamais de valeur inventée sinon, affiche « Non précisé ») et estimation à
+  date calculée depuis les prix réellement connus, avec le nombre d'éléments
+  chiffrés/estimés — jamais un total qui inclut ce qui n'est pas chiffré, ni
+  un « 0 € » pour dire « inconnu ». La description de la dernière
+  modification reste affichée dans un bandeau persistant (au lieu du seul
+  `toast.info` qui disparaissait) tant que l'utilisateur ne l'a pas fermée.
+- **Aucun contrat F8 changé.** Modification, statuts, suppression : mêmes
+  appels, mêmes types (`DemandeSurElementClient`, `ReponseModification`).
+- **Tests ciblés ajoutés.** `ImageContextuelle.test.tsx` (repli sans `src`,
+  `alt`, `loading`), `BlocBudget` dans `ParcoursDetail.test.tsx` (budget non
+  précisé jamais à 0 €, distinction chiffré/estimé), et — après correction du
+  conflit React ci-dessous — trois rendus complets : `Envie.test.tsx` (accueil
+  sans photo réelle, génération honnête, refus 422 assertif), `MesParcours.
+  test.tsx` (carte sans champ inventé, état vide) et `ParcoursDetail.render.
+  test.tsx` (jamais de « Réserver », bandeau de modification qui reste
+  affiché jusqu'à fermeture explicite).
+- **Correction du conflit React racine/`client-react`.** La cause réelle,
+  reproduite avant correction : `@testing-library/react` (installé uniquement
+  à la racine) résout `react-dom` depuis la racine, alors que tout composant
+  du dépôt résout `react`/`react-dom` depuis `client-react/node_modules` (le
+  plus proche) — deux copies physiques distinctes de React 18.3.1, incompatibles
+  au niveau du dispatcher de hooks dès qu'un composant sous test appelle un
+  hook (`useState`, `useRef` de `react-router-dom`, le store `zustand`…). Le
+  correctif tenté d'abord (alias/`dedupe`/`server.deps.inline` dans
+  `vitest.config.ts`) n'a rien changé : ces mécanismes n'interceptent pas les
+  `require()` internes d'un paquet CJS externalisé. Le vrai correctif —
+  minimal, sans toucher à l'architecture du dépôt ni introduire d'alias —
+  ajoute `@testing-library/react`/`@testing-library/jest-dom` comme
+  devDependencies de `client-react` lui-même : Node résout alors ces paquets
+  depuis `client-react/node_modules` (le plus proche du fichier de test), et
+  leurs propres `require('react-dom')` internes retombent sur la même copie
+  que le reste de l'arbre. `npm ls react react-dom zustand react-router-dom`
+  confirme une seule copie dédupliquée par sous-projet après coup.
+- **Hors périmètre confirmé.** Aucun contrat backend, aucune image générée ou
+  téléchargée, aucun changement de comportement de modification/suppression.
+  UI-D reste : polish responsive fin, contrastes de badges, focus clavier sur
+  les nouveaux composants.
+- Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run
+  lint` (mêmes 4 avertissements préexistants, aucune nouvelle erreur),
+  `npx vitest run` (1850 tests verts), `git diff --check` propre, `npm ls
+  react react-dom zustand react-router-dom` (racine et `client-react`, une
+  seule copie 18.3.1 dédupliquée par sous-projet).
+
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
 - **Un contrat intermédiaire, pas un lieu confirmé.** `CandidatGareNavitia`
