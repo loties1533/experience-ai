@@ -139,9 +139,13 @@ export default function ParcoursDetail() {
                         ? 'border-encre/10 border-l-lagon/60 bg-white'
                         : 'border-encre/10 border-l-soleil/40 bg-white'
                   }`}>
-                  <div className="flex flex-wrap items-start gap-2">
-                    {/* Ligne principale : identité + statut de confiance — lisible en un coup d'œil */}
-                    <div className="flex-1 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-start gap-2">
+                    {/* Ligne principale : identité + statut de confiance — lisible en un coup d'œil.
+                        `sm:flex-row` seul ne suffit pas : sans `w-full` en dessous, cette colonne
+                        gardait sa largeur intrinsèque sur mobile et les actions se plaçaient à côté
+                        d'elle au lieu de passer dessous, écrasant le nom de l'élément sur une colonne
+                        d'un mot. */}
+                    <div className="w-full sm:w-auto sm:flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] font-bold uppercase tracking-wide text-brume">
                           {LIBELLES_TYPE[element.type]}
@@ -270,7 +274,7 @@ export default function ParcoursDetail() {
           value={phrase}
           onChange={(e) => setPhrase(e.target.value)}
           placeholder='Ex. : « change le resto du moment 2, plutôt italien »'
-          className="flex-1 px-4 py-2.5 rounded-xl border border-encre/15 bg-white text-encre
+          className="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-encre/15 bg-white text-encre
                      placeholder:text-brume transition-colors
                      focus:border-soleil focus:outline-none focus:ring-2 focus:ring-soleil/25"
           maxLength={500}

@@ -65,4 +65,9 @@ describe('Envie', () => {
     expect(banniere).toHaveTextContent('Impossible de construire ce parcours en l’état.')
     expect(screen.getByRole('button', { name: 'Reformuler' })).toBeInTheDocument()
   })
+
+  it('n’affiche pas le pied de page — longueur inutile sur mobile alors que le formulaire doit rester la dernière chose atteignable', () => {
+    rendreEnvie()
+    expect(screen.queryByText('© 2026 Experience AI')).not.toBeInTheDocument()
+  })
 })

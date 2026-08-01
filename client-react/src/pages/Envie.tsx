@@ -94,7 +94,7 @@ export default function Envie() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout piedDePage={false}>
       <Seo title="Experience AI — Qu'as-tu envie de vivre ?" />
       <section className="conteneur-etroit pt-6 sm:pt-10">
         {/* Bande éditoriale : pose l'univers voyage avant le premier mot tapé,
@@ -203,7 +203,7 @@ export default function Envie() {
             value={saisie}
             onChange={(e) => setSaisie(e.target.value)}
             placeholder={messages.length === 0 ? 'Ex. : revoir les lieux de mon enfance avec ma sœur…' : 'Réponds ou corrige ici…'}
-            className="flex-1 px-4 py-3 rounded-xl border border-encre/15 bg-white text-encre
+            className="flex-1 min-w-0 px-4 py-3 rounded-xl border border-encre/15 bg-white text-encre
                        placeholder:text-brume transition-colors
                        focus:border-soleil focus:outline-none focus:ring-2 focus:ring-soleil/25"
             maxLength={500}
