@@ -19,18 +19,14 @@ import { BriefSchema, BriefPartielSchema } from '../agents/brief.js';
 import { avancerDialogue } from '../agents/intake.js';
 import { genererParcours } from '../agents/generation.js';
 import { interpreterDemande } from '../agents/modification.js';
-import { appliquerModificationHotel } from '../services/modificationHotel.js';
-import { appliquerModificationTransport } from '../services/modificationTransport.js';
+import { regenererModificationSurCopie } from '../agents/regenerationModification.js';
 import {
   DemandeSurElementClientSchema,
   type DemandeDePartage,
   ParticipantSchema,
   VisibiliteSchema,
   appliquerModification,
-  estDemandeModificationHotelClient,
-  estDemandeModificationTransportClient,
   participantsPartageables,
-  preparerDemandeSurElementClient,
   type Parcours,
 } from '../domaine/parcours/index.js';
 
@@ -176,27 +172,18 @@ router.post(
       const contexteModification = {
         auteurId: auteurDe(parcours, req.user!.id),
         horodatage: new Date().toISOString(),
+        creerId: randomUUID,
       };
-      const resultat = estDemandeModificationHotelClient(demandeClient)
-        ? await appliquerModificationHotel(
-            parcours,
-            demandeClient,
-            contexteModification
-          )
-        : estDemandeModificationTransportClient(demandeClient)
-        ? await appliquerModificationTransport(
-            parcours,
-            demandeClient,
-            contexteModification
-          )
-        : appliquerModification(
-            parcours,
-            preparerDemandeSurElementClient(
-              demandeClient,
-              randomUUID
-            ),
-            contexteModification
-          );
+
+      // F8-C : toute la préparation (application + régénération ciblée des
+      // dépendants + validation) se fait EN MÉMOIRE sur une copie (F8-B).
+      // Rien n'est écrit avant que cette copie soit entièrement valide —
+      // et une seule écriture la persiste ensuite, jamais deux.
+      const resultat = await regenererModificationSurCopie(
+        parcours,
+        demandeClient,
+        contexteModification
+      );
       if (!resultat.ok) {
         throw new AppError(
           resultat.erreur,
@@ -207,7 +194,7 @@ router.post(
       await sauvegarderParcours(req.user!.id, resultat.parcours);
       res.json({
         parcours: resultat.parcours,
-        elementsARegenerer: resultat.elementsARegenerer,
+        elementsARegenerer: resultat.elementsRegeneres,
         description: resultat.description,
       });
     } catch (err) {

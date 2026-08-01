@@ -444,12 +444,12 @@ ouvert. F5 passe à Terminé.
 - [x] **F7-B** — état déterministe du dialogue de base
 - [x] **F7-C** — intégration du dialogue de bout en bout
 
-**F8 — Modification complète** *(en cours)*
+**F8 — Modification complète** *(terminé)*
 
 - [x] **F8-A** — audit et contrat de dépendances (`determinerImpactModification`)
 - [x] **F8-B** — régénération ciblée sur copie de travail
-- [ ] **F8-C** — validation et application atomique
-- [ ] **F8-D** — intégration API/front, si le découpage le confirme nécessaire
+- [x] **F8-C** — validation et application atomique
+- [x] **F8-D** — inutile : F8-C a déjà branché F8-B sur la seule route de modification existante (voir revue F8-C)
 
 ### Revue F8-A — contrat de dépendances de modification (01/08)
 
@@ -666,6 +666,78 @@ d'exécution a trouvé trois défauts réels, corrigés directement :
   Suite complète revérifiée : 1795 tests, 49 fichiers, toujours verte ;
   typecheck et lint inchangés ; `generation.ts` : +1/-1 ligne (export d'une
   primitive existante, aucune nouvelle logique).
+
+### Revue F8-C — persistance atomique, F8-B branché sur la route réelle (01/08)
+
+- **Constat d'audit** : `POST /api/parcours/:id/modifications`
+  ([`server/routes/parcours.ts`](../server/routes/parcours.ts)) faisait déjà
+  **une seule écriture** (`sauvegarderParcours`, un `upsert` unique côté
+  dépôt) — l'atomicité au sens « une seule écriture » était déjà acquise
+  avant ce lot. Le vrai défaut : la route n'appelait **jamais** F8-B
+  (`regenererModificationSurCopie`). Elle appliquait la modification
+  directement via `appliquerModificationHotel` / `appliquerModificationTransport`
+  / `appliquerModification`, sans jamais régénérer les dépendants — le
+  contrat F8-A était calculé ailleurs (tests) mais mort côté route, et
+  `elementsARegenerer` ne servait qu'à demander au *front* de revoir des
+  éléments jamais réellement reconstruits.
+- **Changement** : la route charge le parcours (authz déjà correcte —
+  `chargerParcours` ne rend que les parcours de l'utilisateur, donc 404 pour
+  un id d'un autre compte, sans avoir besoin d'y toucher), délègue
+  entièrement l'application + la régénération ciblée + la validation à
+  `regenererModificationSurCopie` (F8-B, EN MÉMOIRE, sur une copie), puis
+  persiste `resultat.parcours` tel quel en un seul `upsert` si `ok`, sinon ne
+  persiste rien. Les branches directes vers `appliquerModificationHotel` /
+  `appliquerModificationTransport` / `appliquerModification` ont été retirées
+  de la route (elles restent la responsabilité interne de F8-B, qui les
+  appelle déjà) — plus aucun code de branchement par type de demande dans
+  la route elle-même.
+- **Écritures avant/après** : 1 avant (mais sans régénération réelle des
+  dépendants), 1 après (avec régénération réelle). Aucune écriture
+  intermédiaire n'existait ni n'a été ajoutée ; `sauvegarderParcours`
+  contient un `findUnique` (vérif propriétaire) + un `upsert` — un seul
+  write, inchangé.
+- **Contrat de réponse préservé** : `{ parcours, elementsARegenerer,
+  description }` inchangé dans sa forme ; `elementsARegenerer` porte
+  désormais les ids **effectivement régénérés côté serveur**
+  (`resultat.elementsRegeneres` de F8-B) plutôt qu'une liste que le front
+  devait auparavant redemander lui-même — sémantique documentée dans
+  `server/docs/openapi.ts`, aucun changement de schéma. Le front
+  (`ParcoursDetail.tsx`) affiche toujours ces ids dans un toast
+  « à revoir » ; le libellé devient légèrement daté (les éléments sont déjà
+  régénérés, pas seulement signalés) mais reste correct fonctionnellement —
+  non touché, hors périmètre de ce lot (F8-D si un jour un vrai changement de
+  contrat/texte front est décidé).
+- **Erreurs** : tous les statuts structurés par F8-B (`403`, `404`, `422`,
+  `502`, `503`) sont propagés tels quels via `AppError`, `422` par défaut si
+  F8-B ne précise pas de statut. Si `regenererModificationSurCopie` échoue,
+  rien n'est écrit (le `throw` intervient avant `sauvegarderParcours`). Si la
+  persistance finale échoue après un F8-B réussi, l'erreur remonte au
+  gestionnaire global (500), sans jamais renvoyer un `parcours` dans le
+  corps de la réponse : aucun faux succès possible.
+- **Concurrence** : aucune protection optimiste n'existe dans
+  [`server/depots/depotParcours.ts`](../server/depots/depotParcours.ts) — ni
+  version, ni condition sur `updated_at` dans l'`upsert`. Deux modifications
+  quasi simultanées du même parcours se résolvent en dernier-écrivain-gagne
+  silencieux. Limite documentée, non traitée ici (le schéma Prisma
+  `Parcours` n'a pas de colonne de version à réutiliser ; en ajouter une
+  serait un chantier de verrouillage distinct, hors périmètre F8-C).
+- **Tests** :
+  [`tests/unit/parcoursModificationsAtomique.test.ts`](../tests/unit/parcoursModificationsAtomique.test.ts)
+  (12 cas, dépôt Prisma et F8-B mockés, aucun réseau réel) : succès sans
+  dépendant → 1 écriture ; succès avec dépendants régénérés → 1 écriture,
+  contenu persisté strictement égal à la copie validée par F8-B (aucune
+  seconde application) ; échec F8-B pour chacun des 5 statuts (403/404/422/
+  502/503) → 0 écriture ; refus sans statut explicite → 422 par défaut, 0
+  écriture ; parcours introuvable → 404, F8-B jamais appelé, 0 écriture ;
+  utilisateur non propriétaire → 404, F8-B jamais appelé, 0 écriture ; F8-B
+  réussit mais l'écriture finale échoue → 500, aucun `parcours` dans la
+  réponse ; modification hôtel passe intégralement par F8-B, sans chemin
+  dédié résiduel dans la route. Suite complète revérifiée : 1807 tests, 50
+  fichiers, verte ; `tsc --noEmit`, lint et `git diff --check` sans nouvelle
+  erreur.
+- **F8-D** : jugé inutile. La seule route de modification existante est
+  maintenant branchée sur F8-B ; aucune autre route de mutation de parcours
+  n'existe à câbler. F8 est clos.
 
 ### Revue F7-C — intégration du dialogue de bout en bout (01/08)
 

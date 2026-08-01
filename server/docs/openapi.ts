@@ -1033,7 +1033,9 @@ export const openapiSpec = {
         summary: 'Modifier un élément sans tout régénérer',
         description:
           'Deux entrées possibles : une demande structurée (le front sait déjà quoi changer) ou une phrase que l\'agent Modification traduit. ' +
-          'Dans les deux cas le domaine applique ou refuse, et renvoie `elementsARegenerer` : exactement ce qui dépend du changement. ' +
+          'Dans les deux cas le domaine applique ou refuse. La régénération des dépendants (invariant 3) est faite ENTIÈREMENT en mémoire sur une copie avant toute écriture ; ' +
+          '`elementsARegenerer` liste les ids déjà régénérés par le serveur dans la réponse — le front n’a rien à redemander. ' +
+          'Un seul commit persiste le résultat final : si une étape échoue avant la validation complète, rien n’est écrit. ' +
           'Les preuves externes sont produites uniquement par le serveur. Une modification hôtelière peut mettre à jour un séjour ou une occupation déclarée, ou demander un remplacement qui repasse par Foursquare. ' +
           'Le lien Booking rendu est seulement une recherche : l’API ne fournit ni réservation ni disponibilité.',
         security: [{ cookieAuth: [] }, { bearerAuth: [] }],
