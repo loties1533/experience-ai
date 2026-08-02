@@ -36,7 +36,7 @@ vi.mock('express-rate-limit', () => ({
 }));
 vi.mock('../../server/middleware/limiter.js', () => {
   const p = (_: any, __: any, n: any) => n();
-  return { aiGenerateLimiter: p, aiChatLimiter: p, authLimiter: p, partageLimiter: p };
+  return { aiGenerateLimiter: p, aiChatLimiter: p, authLimiter: p, partageLimiter: p, photosLimiter: p };
 });
 vi.mock('../../server/agents/modification.js', () => ({
   interpreterDemande: vi.fn().mockResolvedValue({ type: 'supprimer_element', elementId: 'e1' }),

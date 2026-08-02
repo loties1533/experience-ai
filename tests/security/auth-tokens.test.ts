@@ -22,7 +22,7 @@ vi.mock('express-rate-limit', () => ({
 }));
 vi.mock('../../server/middleware/limiter.js', () => {
   const p = (_: any, __: any, n: any) => n();
-  return { aiGenerateLimiter: p, aiChatLimiter: p, authLimiter: p, partageLimiter: p };
+  return { aiGenerateLimiter: p, aiChatLimiter: p, authLimiter: p, partageLimiter: p, photosLimiter: p };
 });
 
 // Mock Prisma : GET /api/parcours → findMany ([]) ; GET /api/parcours/:id passe

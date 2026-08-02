@@ -83,20 +83,6 @@ export function parseJSON(raw: string): unknown {
   }
 }
 
-export function normalizeChips(chips: unknown): string[] {
-  if (!Array.isArray(chips)) return [];
-  return (chips as unknown[]).map(c => {
-    if (typeof c === 'string') return c;
-    if (c && typeof c === 'object') {
-      const obj = c as Record<string, unknown>;
-      if (obj.label)  return String(obj.label);
-      if (obj.value)  return String(obj.value);
-      if (obj.text)   return String(obj.text);
-    }
-    return String(c);
-  }).filter(Boolean);
-}
-
 export async function callAI(
   userPrompt: string,
   systemPrompt: string = SYSTEM_PROMPT,

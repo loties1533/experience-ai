@@ -37,6 +37,19 @@ export const partageLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Limiteur pour la recherche de photo de destination (Unsplash/Pexels) :
+// chaque ville non encore en cache déclenche un appel fournisseur externe,
+// on plafonne donc les requêtes par IP pour éviter de vider les quotas.
+export const photosLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 60,
+  message: {
+    error: 'Trop de recherches de photos. Réessayez dans quelques minutes.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Limiteur dédié à l'authentification (connexion + inscription).
 // Protège contre le bourrage d'identifiants (credential stuffing) et le spam
 // de comptes : 10 tentatives max par fenêtre de 15 min et par IP.
