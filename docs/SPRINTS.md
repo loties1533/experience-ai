@@ -24,7 +24,7 @@
 | UI-B — Fondations visuelles | Composants et statuts métier (indisponible/refus) | Terminé |
 | UI-C — Écrans principaux + photos | Intégration des photographies personnelles | Terminé |
 | UI-D — Responsive / états / polish | Vérification mobile/tablette/desktop et contrastes | Terminé |
-| F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
+| F9 — Recette de sortie | Robustesse NBA puis valeur EVG | Terminé |
 
 ### Board — avancement du chantier
 
@@ -420,6 +420,56 @@ modification, l'OpenAPI et le front.
   `npx vitest run` (1853 tests verts), `git diff --check` propre, `npm ls
   react react-dom zustand react-router-dom` (racine et `client-react`, une
   seule copie 18.3.1 dédupliquée par sous-projet).
+
+### Revue F9 — recette finale et robustesse produit (02/08)
+
+> Audit en lecture seule de F0 → F8 (Foursquare, Navitia, Amadeus, PredictHQ,
+> statuts de confiance, persistance F8, scénario NBA/New York), puis
+> correction du seul défaut réel trouvé. Détail complet dans
+> [`docs/16-recette-f9.md`](16-recette-f9.md).
+
+- **Aucun bug reproductible bloquant.** Foursquare, Navitia et Amadeus sont
+  fail-closed de façon symétrique et testée sur absence de clé
+  (`configuration_absente`, aucun appel réseau) ; PredictHQ de même. Aucune
+  invention de lieu, prix, gare, aéroport, événement ou lien trouvée.
+- **F4-D2 vérifié réellement branché** dans `agents/generation.ts` (pas
+  seulement documenté) : la résolution transport alimente bien
+  `ajouterLiensRechercheTransport` avant la revalidation finale du domaine.
+- **NBA/New York (F6, 0/3) : cause ré-examinée sur les données brutes du
+  benchmark, pas une cause unique.** Haiku échoue 2/3 sur `json_invalide` (JSON
+  cassé au premier lot, `tours: 1`) — qualité du modèle, sans rapport avec les
+  outils. Haiku 1/3 et Sonnet 3/3 échouent en `service_indisponible` (boucle
+  d'un lot non aboutie ; le budget d'outils est **par lot** avec reprises, pas
+  un budget global épuisé par la longueur). Cause exacte de la non-convergence
+  non isolée déterministe → documentée comme hypothèse. Point essentiel :
+  **aucune exécution ne fabrique de parcours** — chaque échec est honnête
+  (502/503). Ne pas toucher `MAX_TOURS_OUTILS` ni le modèle en F9 : chantier de
+  performance, pas de fiabilité.
+- **Risque « dépendance essentielle indisponible » ré-instruit : garantie
+  structurelle, pas dépendante du LLM.** Une recherche `indisponible`/`vide` ne
+  peut jamais produire un élément `verifie`, seulement une suggestion qualifiée
+  (`outils.ts:475-493`, testé `generationOutillee.test.ts:1421`). Les essentiels
+  déterministes (hébergement/transport déclarés, boucle non aboutie) sont
+  verrouillés en `422`/`503` côté serveur (`generation.ts:766-846`,
+  `core.ts:281-289`). Seul le choix `503` vs suggestion honnête pour une donnée
+  *discrétionnaire* relève du modèle — les deux issues sont conformes à
+  ADR-0008. Classé limite acceptée (verdict C), pas défaut structurel.
+- **Seule lacune réelle trouvée : une garantie non testée, pas un bug.** La
+  persistance de la génération (`POST /api/parcours`) n'avait de preuve que
+  par lecture de code — contrairement à F8 (modification), déjà couverte par
+  8 scénarios dédiés. Corrigé par l'ajout de
+  `tests/unit/parcoursGenerationRoute.test.ts` (5 scénarios : succès, 422,
+  503, 502, schéma final invalide → zéro écriture sauf succès réel).
+- **Autres points documentés, non corrigés** : `prixEstime` est vivant et rendu
+  dans l'UI, mais le niveau `confiance.niveau: 'estime'` (élément) reste dormant
+  (jamais émis, UI prête — pas de promesse trompeuse) ; absence d'observabilité
+  (logs) sur les indisponibilités fournisseurs prolongées.
+- Matrice de capacités (SUPPORTED/PARTIAL/UNAVAILABLE) consignée dans
+  [`docs/16-recette-f9.md`](16-recette-f9.md).
+- Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run
+  lint` (mêmes 4 avertissements préexistants, aucune nouvelle erreur),
+  `npx vitest run` (1858 tests verts, 63 fichiers, dont les 5 nouveaux), `git
+  diff --check` propre.
 
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
