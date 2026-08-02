@@ -509,6 +509,40 @@ modification, l'OpenAPI et le front.
   `npx vitest run` (1860 tests verts, 64 fichiers), `git diff --check` propre,
   `npm ls react react-dom zustand react-router-dom` sans conflit de version.
 
+### Refactor — découpage architectural de la génération (02/08)
+
+> Suite du `SPLIT_LATER` posé par les finitions techniques : `generation.ts`
+> (1419 lignes) faisait cohabiter plusieurs raisons de changer distinctes
+> (contrat LLM, orchestration, cartographie fournisseur). Étape 2/3 :
+> l'implémentation. Aucun changement fonctionnel volontaire, aucun changement
+> d'API, de modèle, de fournisseur ni d'UI. Étape 3/3 (revue indépendante de
+> bout en bout) restant à faire.
+
+- **Découpage par raison de changer, pas par nombre de lignes.** Six modules
+  feuilles ou intermédiaires sous `server/agents/generation/` :
+  `plan.ts` (plan déterministe), `contratLLM.ts` (prompt + schémas sortie/refus),
+  `transport.ts` (transport déterministe), `resolution.ts` (rapprochement de
+  preuves), `confiance.ts` (verifie/suggestion, anti-hallucination) et
+  `lot.ts` (cycle de vie d'un lot + politique d'erreur 422/502/503).
+- **`generation.ts` reste la façade/orchestrateur** (505 lignes, contre 1419) :
+  validations pré-IA, `genererEtAssemblerLots` (reprise 503 comprise),
+  assemblage du `Parcours`, ids serveur, enrichissements, validation finale.
+  Il ré-exporte la surface publique (`genererParcours`, `deriverPlan`,
+  `PlanGeneration`, `nettoyerMomentsTransport`, `nomSuggestion`,
+  `OptionsGenerationParcours`) — aucun importateur externe modifié.
+- **Extraction progressive, un commit par module**, chaque étape validée par
+  tsc + tests ciblés + suite complète + `git diff --check` avant la suivante.
+  Aucun test comportemental modifié : les tests mockent au niveau fournisseur,
+  insensibles au découpage interne.
+- **Dette restante, volontairement non traitée** : fuite des noms fournisseurs
+  (`Foursquare`/`PredictHQ`) dans `resolution.ts` (M1), et dépendance de
+  `lot.ts`/façade sur `resolution.ts` pour `cleTexte`/`texteNonVide`.
+- Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run lint`
+  (mêmes 3 avertissements préexistants, aucune nouvelle erreur), `npx vitest
+  run` (1860 tests verts, 64 fichiers), `git diff --check` propre, `npm ls`
+  sans conflit de version. Livré par la
+  [PR #69](https://github.com/loties1533/experience-ai/pull/69).
+
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
 - **Un contrat intermédiaire, pas un lieu confirmé.** `CandidatGareNavitia`
