@@ -10,11 +10,6 @@ import {
   type BoiteAOutils,
   type CandidatJournal,
 } from '../services/claude/outils.js';
-import {
-  cleDemandeResolutionLien,
-  estNomTropGenerique,
-  resoudreLien,
-} from '../services/liens.js';
 import { AppError } from '../lib/AppError.js';
 import {
   ParcoursSchema,
@@ -56,12 +51,14 @@ import {
   momentDeTransition,
   nettoyerMomentsTransport,
 } from './generation/transport.js';
+import {
+  cleTexte,
+  preparerMomentsPourResolution,
+  resoudreDemandesLien,
+  type MomentPrepare,
+} from './generation/resolution.js';
 import type { PreferencesParcours } from '../domaine/preferences.js';
-import type { TypeMetierRecherche } from '../services/rechercheExterne.js';
-import type {
-  DemandeResolutionLien,
-  ResultatResolutionLien,
-} from '../services/liens/contrat.js';
+import type { ResultatResolutionLien } from '../services/liens/contrat.js';
 
 // Surface publique historique : `generation.ts` reste le point d'entrée
 // canonique du produit. Les symboles extraits vers ./generation/* y sont
@@ -69,8 +66,6 @@ import type {
 export { deriverPlan } from './generation/plan.js';
 export type { PlanGeneration } from './generation/plan.js';
 export { nettoyerMomentsTransport } from './generation/transport.js';
-
-const CONCURRENCE_MAX_RESOLUTION_LIENS = 3;
 
 // Un lot techniquement indisponible (503) est rejoué seul, sans toucher aux
 // lots déjà validés. Au-delà de cette borne, la génération échoue sans exposer
@@ -96,201 +91,6 @@ const TENTATIVES_MAX_PAR_LOT = 2;
 // refs inconnues sont écartées, les liens externes ne viennent PAS de lui mais
 // des connecteurs, et le parcours final repasse par les invariants du domaine
 // avant de sortir.
-
-interface ElementPrepare {
-  element: ElementGenere;
-  candidat?: CandidatJournal;
-  cleDemandeLien?: string;
-}
-
-interface MomentPrepare {
-  moment: z.infer<typeof SortieGenerationSchema>['moments'][number];
-  ville?: string;
-  elements: ElementPrepare[];
-}
-
-function cleTexte(texte: string): string {
-  return texte
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-function villeDuMoment(villeProposee: string | undefined, villesDuBrief: string[]): string | undefined {
-  if (villeProposee) {
-    const cleVille = cleTexte(villeProposee);
-    const villeValidee = villesDuBrief.find((ville) => cleTexte(ville) === cleVille);
-    if (villeValidee) return villeValidee;
-  }
-  return villesDuBrief.length === 1 ? villesDuBrief[0] : undefined;
-}
-
-function typeRecherchePour(typeElement: TypeElement): TypeMetierRecherche | undefined {
-  if (
-    typeElement === 'restaurant' ||
-    typeElement === 'activite' ||
-    typeElement === 'sortie' ||
-    typeElement === 'hebergement' ||
-    typeElement === 'evenement'
-  ) {
-    return typeElement;
-  }
-  return undefined;
-}
-
-function texteNonVide(valeur: unknown): valeur is string {
-  return typeof valeur === 'string' && valeur.trim().length > 0;
-}
-
-function construireDemandeResolutionLien(
-  candidat: CandidatJournal,
-): DemandeResolutionLien | undefined {
-  if (
-    !texteNonVide(candidat.identifiantExterne) ||
-    !texteNonVide(candidat.nom) ||
-    !texteNonVide(candidat.villeDemandee) ||
-    !texteNonVide(candidat.source) ||
-    !texteNonVide(candidat.recupereLe) ||
-    Number.isNaN(Date.parse(candidat.recupereLe))
-  ) {
-    return undefined;
-  }
-
-  // Le chemin hôtelier F3-C2 reste local. Un hôtel Foursquare vérifié ne doit
-  // jamais déclencher Tavily ni produire une réservation.
-  if (candidat.typeMetierRecherche === 'hebergement') {
-    return undefined;
-  }
-
-  const adresseOuSalle =
-    candidat.typeMetierRecherche === 'evenement'
-      ? candidat.salle
-      : candidat.adresse;
-  const commun = {
-    identifiantExterne: candidat.identifiantExterne.trim(),
-    nom: candidat.nom.trim(),
-    villeDemandee: candidat.villeDemandee.trim(),
-    adresseOuSalle: texteNonVide(adresseOuSalle)
-      ? adresseOuSalle.trim()
-      : undefined,
-    sourceMetier: candidat.source.trim(),
-  };
-
-  if (candidat.typeMetierRecherche === 'evenement') {
-    if (
-      candidat.fournisseur !== 'PredictHQ' ||
-      !texteNonVide(candidat.dateDebut)
-    ) {
-      return undefined;
-    }
-    return {
-      ...commun,
-      typeMetierRecherche: 'evenement',
-      fournisseurMetier: 'PredictHQ',
-      dateDebut: candidat.dateDebut.trim(),
-      dateFin: texteNonVide(candidat.dateFin)
-        ? candidat.dateFin.trim()
-        : undefined,
-    };
-  }
-
-  if (candidat.fournisseur !== 'Foursquare') {
-    return undefined;
-  }
-  return {
-    ...commun,
-    typeMetierRecherche: candidat.typeMetierRecherche,
-    fournisseurMetier: 'Foursquare',
-  };
-}
-
-function preparerMomentsPourResolution(
-  moments: z.infer<typeof SortieGenerationSchema>['moments'],
-  boite: BoiteAOutils,
-  villesDuBrief: string[],
-): {
-  moments: MomentPrepare[];
-  demandes: Map<string, DemandeResolutionLien>;
-} {
-  const demandes = new Map<string, DemandeResolutionLien>();
-  const momentsPrepares = moments.map((moment) => {
-    const ville = villeDuMoment(moment.ville, villesDuBrief);
-    const elements = moment.elements.map((element): ElementPrepare => {
-      const typeMetierRecherche = typeRecherchePour(element.type);
-      const candidat =
-        typeMetierRecherche && ville
-          ? boite.rapprocherCandidat({
-              identifiantExterne: element.identifiantExterne,
-              nom: element.nom,
-              villeDemandee: ville,
-              typeMetierRecherche,
-              adresse:
-                typeMetierRecherche === 'hebergement'
-                  ? element.lieu
-                  : undefined,
-            })
-          : undefined;
-      if (!candidat) return { element };
-
-      if (candidat.typeMetierRecherche === 'hebergement') {
-        return { element, candidat };
-      }
-
-      const demande = construireDemandeResolutionLien(candidat);
-      if (!demande) return { element };
-      if (estNomTropGenerique(candidat.nom)) {
-        return { element, candidat };
-      }
-
-      const cleDemandeLien = cleDemandeResolutionLien(demande);
-      if (!demandes.has(cleDemandeLien)) {
-        demandes.set(cleDemandeLien, demande);
-      }
-      return { element, candidat, cleDemandeLien };
-    });
-    return { moment, ville, elements };
-  });
-
-  return { moments: momentsPrepares, demandes };
-}
-
-async function resoudreDemandesLien(
-  demandes: Map<string, DemandeResolutionLien>,
-): Promise<Map<string, ResultatResolutionLien>> {
-  const entrees = [...demandes.entries()];
-  const resultats = new Map<string, ResultatResolutionLien>();
-  let prochainIndex = 0;
-
-  async function executerFile(): Promise<void> {
-    while (prochainIndex < entrees.length) {
-      const index = prochainIndex;
-      prochainIndex += 1;
-      const [cleDemande, demande] = entrees[index];
-      try {
-        const resultat = await resoudreLien(demande);
-        resultats.set(cleDemande, resultat);
-      } catch {
-        // Le lien est facultatif : une exception inattendue reste une
-        // indisponibilité technique locale, sans interrompre les autres
-        // résolutions et sans produire de repli.
-        console.warn(
-          'Résolution facultative de lien indisponible après une erreur technique inattendue.',
-        );
-      }
-    }
-  }
-
-  const nombreExecutants = Math.min(
-    CONCURRENCE_MAX_RESOLUTION_LIENS,
-    entrees.length,
-  );
-  await Promise.all(
-    Array.from({ length: nombreExecutants }, () => executerFile()),
-  );
-  return resultats;
-}
 
 function confianceVerifiee(args: {
   source: string;
