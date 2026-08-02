@@ -85,4 +85,19 @@ describe('ParcoursDetail (rendu complet)', () => {
       expect(screen.queryByText(/Randonnée remplacée par une visite de musée/)).not.toBeInTheDocument()
     })
   })
+
+  it('empile le nom de l’élément au-dessus des actions sur mobile — sans ça, les boutons se plaçaient à côté du contenu et écrasaient le nom sur une colonne d’un mot', async () => {
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture() })
+    rendreParcoursDetail()
+
+    const nom = await screen.findByText('Randonnée')
+    const carteElement = nom.closest('li')
+    const ligne = carteElement?.querySelector(':scope > div')
+    expect(ligne?.className).toContain('flex-col')
+    expect(ligne?.className).toContain('sm:flex-row')
+
+    const blocContenu = nom.closest('div.w-full')
+    expect(blocContenu).not.toBeNull()
+    expect(blocContenu?.className).toContain('sm:w-auto')
+  })
 })

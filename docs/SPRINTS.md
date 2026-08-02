@@ -21,9 +21,9 @@
 | F7 — Dialogue fiable | Dates relatives et absence de répétitions | Terminé |
 | F8 — Modification complète | Régénération atomique des seuls dépendants | Terminé |
 | UI-A — Audit et direction visuelle | Diagnostic front et cap éditorial voyage | Terminé |
-| UI-B — Fondations visuelles | Composants et statuts métier (indisponible/refus) | En cours |
-| UI-C — Écrans principaux + photos | Intégration des photographies personnelles | À faire |
-| UI-D — Responsive / états / polish | Vérification mobile/tablette/desktop et contrastes | À faire |
+| UI-B — Fondations visuelles | Composants et statuts métier (indisponible/refus) | Terminé |
+| UI-C — Écrans principaux + photos | Intégration des photographies personnelles | Terminé |
+| UI-D — Responsive / états / polish | Vérification mobile/tablette/desktop et contrastes | Terminé |
 | F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
 
 ### Board — avancement du chantier
@@ -342,6 +342,82 @@ modification, l'OpenAPI et le front.
 - Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run
   lint` (mêmes 4 avertissements préexistants, aucune nouvelle erreur),
   `npx vitest run` (1850 tests verts), `git diff --check` propre, `npm ls
+  react react-dom zustand react-router-dom` (racine et `client-react`, une
+  seule copie 18.3.1 dédupliquée par sous-projet).
+
+### Revue UI-D — responsive final, polish et accessibilité (02/08)
+
+- **Deux régressions responsives réelles trouvées par vérification visuelle
+  au compte démo** (parcours de test créé directement via `ParcoursSchema` en
+  base, puis supprimé — aucune génération IA ni appel réseau réel n'a été
+  déclenché) :
+  1. **Carte élément écrasée sous 640px (`ParcoursDetail` et
+     `ParcoursPartage`).** La ligne `flex flex-wrap` plaçait le bloc contenu
+     (nom, badges) et le bloc actions (`Accepter`/`À remplacer`/`Retirer`) côte
+     à côte au lieu de les empiler : les actions gardaient leur largeur et
+     réduisaient le contenu à une colonne d'un mot. Corrigé par
+     `flex-col sm:flex-row sm:flex-wrap` sur le conteneur et
+     `w-full sm:w-auto sm:flex-1` sur le bloc contenu — le nom de l'élément
+     reprend sa largeur normale sur mobile, les actions passent proprement en
+     dessous.
+  2. **Overflow horizontal à 320px (`Envie` et `ParcoursDetail`).** Les champs
+     `flex-1` du formulaire de saisie et de la barre de modification n'avaient
+     pas de `min-w-0` : un `<input>` flex ne rétrécit jamais sous sa largeur
+     intrinsèque sans cette règle, ce qui poussait le bouton (« Envoyer » /
+     « Modifier ») hors viewport (`scrollWidth` 362px pour un `clientWidth` de
+     320px, confirmé par mesure DOM). Corrigé par l'ajout de `min-w-0` aux deux
+     champs.
+- **Pied de page retiré sur l'écran de dialogue (`Envie`)**, conformément au
+  doc 15 §5/§9 : `PageLayout` accepte désormais `piedDePage` (défaut `true`),
+  `Envie` passe `piedDePage={false}` pour garder le formulaire de saisie comme
+  dernier élément atteignable sur mobile.
+- **Contraste du badge « Accepté » insuffisant.** `text-sauge` sur fond clair
+  mesurait 3.3:1 (sous le seuil AA de 4.5:1 pour du texte 11px gras). Premier
+  correctif (`sauge.dark` `#15803D`) mesuré uniquement contre `sable`/blanc
+  plein — insuffisant : le badge affiche son texte sur son propre fond
+  translucide `bg-sauge/10`, composé par-dessus la carte réelle (blanche, ou
+  teintée `soleil/5` sur un élément « à revoir »), ce qui ne donnait que
+  4.26–4.5:1 selon la carte. Corrigé en `#166534` (6.0–6.4:1 sur les deux
+  fonds réels), suivant le même motif que `soleil`/`lagon`/`encre` — aucune
+  nouvelle palette. **Limite constatée, hors périmètre de cette PR :** les
+  badges `propose`/`a_remplacer` (UI-B, non touchés ici) partagent le même
+  motif `bg-X/10` + `text-X-dark` et mesurent, sur les mêmes fonds réels,
+  4.34–4.76:1 — proches du seuil AA sans le franchir clairement dans tous les
+  cas. `verifie`/`estime`/`indisponible`/`refus` ne sont pas concernés (déjà
+  ≥ 4.76:1 même en composite). `suggestion` reste le moins saillant des trois
+  statuts de confiance (icône ampoule + `brume` neutre), conformément à
+  ADR-0008.
+- **Focus clavier vérifié sans régression.** La règle globale
+  `:focus-visible { outline: 2px solid #EA580C }` (posée en UI-B) s'applique
+  sans override sur les liens, boutons et `<summary>` — vérifié par focus
+  programmatique (`:focus-visible` matches + `outlineStyle: solid`) sur
+  plusieurs éléments représentatifs de `ParcoursDetail`. Aucune régression,
+  aucun correctif nécessaire.
+- **Reste vérifié sans anomalie** : navigation desktop/mobile (aucun
+  chevauchement à 320px), grille `MesParcours`, formulaire `PanneauPartage`
+  (les trois blocs `flex-wrap` s'empilent proprement sous 360px, pas de
+  chevauchement), bloc budget, `ImageContextuelle` (ratio/`object-fit`/repli
+  déjà corrects depuis UI-C), tailles tactiles (`min-h-[44px]` déjà en place).
+- **Hors périmètre confirmé.** Aucun contrat backend, aucune route API,
+  aucun statut métier, aucun recalcul de budget, aucune image ajoutée. Le
+  parcours de vérification a été inséré directement via `ParcoursSchema.parse`
+  (mêmes invariants que le domaine) puis supprimé après usage, sans jamais
+  appeler de LLM ni de fournisseur externe.
+- **Tests ciblés ajoutés.** `ParcoursDetail.render.test.tsx` (empilement
+  mobile : classes `flex-col`/`sm:flex-row` sur la ligne, `w-full`/`sm:w-auto`
+  sur le contenu), `ParcoursPartage.test.tsx` (nouveau fichier, même
+  vérification sur l'écran de consultation partagée), `Envie.test.tsx` (pied
+  de page absent).
+- **Limite documentée.** Aucune interaction réelle avec le dialogue IA
+  (`avancerDialogue`/`genererParcours`) n'a été déclenchée en navigateur : le
+  rendu des bulles de message (déjà couvert par les tests existants et par
+  `max-w-[85%]` + `flex-wrap`) n'a pas été revérifié visuellement en direct,
+  pour respecter la consigne « aucun appel réseau réel ».
+- **Phase UI terminée.** UI-A → UI-D closent la refonte visuelle. Prochaine
+  étape : F9 (recette de sortie).
+- Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run
+  lint` (mêmes 4 avertissements préexistants, aucune nouvelle erreur),
+  `npx vitest run` (1853 tests verts), `git diff --check` propre, `npm ls
   react react-dom zustand react-router-dom` (racine et `client-react`, une
   seule copie 18.3.1 dédupliquée par sous-projet).
 

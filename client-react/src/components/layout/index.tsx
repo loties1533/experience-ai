@@ -135,23 +135,27 @@ function IconeMenu({ ouvert }: { ouvert: boolean }) {
   )
 }
 
-export function PageLayout({ children }: { children: React.ReactNode }) {
+export function PageLayout({ children, piedDePage = true }: { children: React.ReactNode; piedDePage?: boolean }) {
   return (
     <div className="min-h-screen aurora">
       <Header />
       <main className="conteneur py-6 relative z-10">{children}</main>
-      <footer className="mt-24 border-t border-encre/10 bg-sable-dark/60">
-        <div className="conteneur py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <Logo size={28} className="text-soleil" />
-            <span className="font-heading font-bold text-encre">Experience AI</span>
+      {/* Absent sur l'écran de dialogue : longueur inutile sur mobile alors que
+          le formulaire de saisie doit rester la dernière chose atteignable. */}
+      {piedDePage && (
+        <footer className="mt-24 border-t border-encre/10 bg-sable-dark/60">
+          <div className="conteneur py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <Logo size={28} className="text-soleil" />
+              <span className="font-heading font-bold text-encre">Experience AI</span>
+            </div>
+            <p className="text-brume text-sm text-center sm:text-left max-w-md">
+              Une envie, un contexte — et un parcours cohérent de moments, modifiable élément par élément.
+            </p>
+            <p className="text-brume text-xs">© 2026 Experience AI</p>
           </div>
-          <p className="text-brume text-sm text-center sm:text-left max-w-md">
-            Une envie, un contexte — et un parcours cohérent de moments, modifiable élément par élément.
-          </p>
-          <p className="text-brume text-xs">© 2026 Experience AI</p>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   )
 }

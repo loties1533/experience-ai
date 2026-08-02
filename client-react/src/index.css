@@ -83,7 +83,7 @@
   .badge-statut {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold;
   }
-  .badge-accepte    { @apply badge-statut bg-sauge/10 text-sauge; }
+  .badge-accepte    { @apply badge-statut bg-sauge/10 text-sauge-dark; }
   .badge-propose    { @apply badge-statut bg-lagon/10 text-lagon-dark; }
   .badge-a-remplacer{ @apply badge-statut bg-soleil/10 text-soleil-dark; }
 

@@ -106,8 +106,8 @@ export default function ParcoursPartage() {
             <ul className="space-y-3">
               {moment.elements.map((element) => (
                 <li key={element.id} className="rounded-xl border border-encre/10 bg-white p-4">
-                  <div className="flex flex-wrap items-start gap-2">
-                    <div className="flex-1 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-start gap-2">
+                    <div className="w-full sm:w-auto sm:flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] font-bold uppercase tracking-wide text-brume">
                           {LIBELLES_TYPE[element.type]}
