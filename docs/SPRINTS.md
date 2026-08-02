@@ -372,14 +372,21 @@ modification, l'OpenAPI et le front.
   `Envie` passe `piedDePage={false}` pour garder le formulaire de saisie comme
   dernier élément atteignable sur mobile.
 - **Contraste du badge « Accepté » insuffisant.** `text-sauge` sur fond clair
-  mesurait 3.3:1 (sous le seuil AA de 4.5:1 pour du texte 11px gras). Ajout de
-  `sauge.dark` (`#15803D`, 5.02:1) dans `tailwind.config.js`, suivant le même
-  motif que `soleil`/`lagon`/`encre` déjà en place — aucune nouvelle palette.
-  Les autres badges/bannières (`verifie`, `estime`, `suggestion`,
-  `indisponible`, `refus`) utilisaient déjà leurs variantes `-dark` et
-  passent tous ≥ 4.76:1 ; `suggestion` reste le moins saillant des trois
-  statuts de confiance (icône ampoule + `brume` neutre vs icônes et couleurs
-  saturées de `verifie`/`estime`), conformément à ADR-0008.
+  mesurait 3.3:1 (sous le seuil AA de 4.5:1 pour du texte 11px gras). Premier
+  correctif (`sauge.dark` `#15803D`) mesuré uniquement contre `sable`/blanc
+  plein — insuffisant : le badge affiche son texte sur son propre fond
+  translucide `bg-sauge/10`, composé par-dessus la carte réelle (blanche, ou
+  teintée `soleil/5` sur un élément « à revoir »), ce qui ne donnait que
+  4.26–4.5:1 selon la carte. Corrigé en `#166534` (6.0–6.4:1 sur les deux
+  fonds réels), suivant le même motif que `soleil`/`lagon`/`encre` — aucune
+  nouvelle palette. **Limite constatée, hors périmètre de cette PR :** les
+  badges `propose`/`a_remplacer` (UI-B, non touchés ici) partagent le même
+  motif `bg-X/10` + `text-X-dark` et mesurent, sur les mêmes fonds réels,
+  4.34–4.76:1 — proches du seuil AA sans le franchir clairement dans tous les
+  cas. `verifie`/`estime`/`indisponible`/`refus` ne sont pas concernés (déjà
+  ≥ 4.76:1 même en composite). `suggestion` reste le moins saillant des trois
+  statuts de confiance (icône ampoule + `brume` neutre), conformément à
+  ADR-0008.
 - **Focus clavier vérifié sans régression.** La règle globale
   `:focus-visible { outline: 2px solid #EA580C }` (posée en UI-B) s'applique
   sans override sur les liens, boutons et `<summary>` — vérifié par focus

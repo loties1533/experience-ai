@@ -14,7 +14,7 @@ export default {
         sable:  { DEFAULT: '#FFF7ED', dark: '#FDF0E3' },                   // surfaces claires
         encre:  { DEFAULT: '#0F172A', light: '#334155' },                  // texte
         brume:  '#64748B',                                                 // texte secondaire
-        sauge:  { DEFAULT: '#16A34A', dark: '#15803D' },                   // sémantique : succès
+        sauge:  { DEFAULT: '#16A34A', dark: '#166534' },                   // sémantique : succès
         corail: '#DC2626',                                                 // sémantique : danger
       },
       boxShadow: {
