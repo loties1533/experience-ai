@@ -29,7 +29,7 @@ vi.mock('express-rate-limit', () => ({
 }));
 vi.mock('../../server/middleware/limiter.js', () => {
   const p = (_: any, __: any, n: any) => n();
-  return { aiGenerateLimiter: p, aiChatLimiter: p, authLimiter: p, partageLimiter: p };
+  return { aiGenerateLimiter: p, aiChatLimiter: p, authLimiter: p, partageLimiter: p, photosLimiter: p };
 });
 
 // F8-B est mocké : ce test vérifie l'orchestration (F8-C), pas la

@@ -67,14 +67,6 @@ function plagesSeChevauchent(a: PlageHoraire, b: PlageHoraire): boolean {
   return Date.parse(a.debut) < Date.parse(b.fin) && Date.parse(b.debut) < Date.parse(a.fin);
 }
 
-/** `interieure` tient-elle entièrement dans `englobante` (bornes comprises) ? */
-function plageContenue(interieure: PlageHoraire, englobante: PlageHoraire): boolean {
-  return (
-    Date.parse(interieure.debut) >= Date.parse(englobante.debut) &&
-    Date.parse(interieure.fin) <= Date.parse(englobante.fin)
-  );
-}
-
 /** Tout ce dont un élément dépend, directement ou par ricochet. */
 function dependancesTransitives(elements: Element[], elementId: string): Set<string> {
   const parId = new Map(elements.map((e) => [e.id, e]));

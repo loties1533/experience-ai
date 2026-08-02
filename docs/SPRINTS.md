@@ -471,6 +471,44 @@ modification, l'OpenAPI et le front.
   `npx vitest run` (1858 tests verts, 63 fichiers, dont les 5 nouveaux), `git
   diff --check` propre.
 
+### Finitions techniques — dette et validation des intégrations (02/08)
+
+> Passe finale après la fermeture de F0-F9 et de UI-A→UI-D : reprise du
+> backlog d'audit externe, mesure des gros fichiers, validation en direct des
+> clés d'intégration configurées. Aucune nouvelle fonctionnalité. Détail
+> complet dans [`docs/17-finitions-techniques.md`](17-finitions-techniques.md).
+> Livré par la [PR #68](https://github.com/loties1533/experience-ai/pull/68).
+
+- **`auth.ts` (accès Prisma direct) : non corrigé, documenté.** Aucun dépôt
+  `User` n'existe (seulement `Parcours`, `PartageParcours`, `Preferences`) —
+  en créer un pour ce seul appelant serait une abstraction cosmétique.
+- **`GET /api/photos/:city` (absence de rate limiter) : corrigé.** Ajout de
+  `photosLimiter` (60 req/15 min, même mécanisme `express-rate-limit` que les
+  autres routes) dans `middleware/limiter.ts`, branché sur la route. Test
+  ciblé `tests/unit/photosLimiter.test.ts`.
+- **`agents/generation.ts` (1419 lignes) : proposition de découpage
+  documentée, non exécutée.** Huit responsabilités identifiées (plan,
+  prompt/schémas, transport, résolution de liens, validations essentielles,
+  hébergement, génération par lot, orchestrateur), mais types internes
+  partagés entre presque toutes les sections et 10 fichiers de tests à
+  ajuster : pas un découpage petit et sans risque. Classé `SPLIT_LATER`.
+- **Audit des 25 plus gros fichiers de `server/`** : aucun `SPLIT_NOW`
+  (tableau complet dans `docs/17`). Deux fonctions mortes trouvées et
+  supprimées (`normalizeChips`, `plageContenue`), déjà en warning ESLint.
+  Aucun autre code mort, import inutilisé, TODO/FIXME ni duplication réelle.
+- **Intégrations validées en direct, sans exposer de secret** : Anthropic
+  (`GET /v1/models`, non génératif), Foursquare (Bordeaux **et** New York,
+  tier gratuit) et Tavily → toutes `VALID`. Navitia, Amadeus et PredictHQ :
+  clés absentes de `.env` → `ABSENT`, rien de plus à tester.
+- **Hygiène** : `.env` ignoré et jamais tracké, aucun secret dans les tests
+  ou la documentation, timeouts présents sur tous les appels fournisseurs,
+  erreurs fournisseurs jamais exposées brutes au frontend
+  (`gestionnairreErreurGlobal`).
+- Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run
+  lint` (mêmes 3 avertissements préexistants, aucune nouvelle erreur),
+  `npx vitest run` (1860 tests verts, 64 fichiers), `git diff --check` propre,
+  `npm ls react react-dom zustand react-router-dom` sans conflit de version.
+
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
 - **Un contrat intermédiaire, pas un lieu confirmé.** `CandidatGareNavitia`
