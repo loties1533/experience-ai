@@ -477,6 +477,7 @@ modification, l'OpenAPI et le front.
 > backlog d'audit externe, mesure des gros fichiers, validation en direct des
 > clés d'intégration configurées. Aucune nouvelle fonctionnalité. Détail
 > complet dans [`docs/17-finitions-techniques.md`](17-finitions-techniques.md).
+> Livré par la [PR #68](https://github.com/loties1533/experience-ai/pull/68).
 
 - **`auth.ts` (accès Prisma direct) : non corrigé, documenté.** Aucun dépôt
   `User` n'existe (seulement `Parcours`, `PartageParcours`, `Preferences`) —
