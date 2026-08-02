@@ -350,6 +350,16 @@ ${JSON.stringify(briefPourLot(brief, lot, plan.lots.length === 1), null, 2)}${bl
   return { moments: momentsAssembles, ambiance, boiteAgregat };
 }
 
+// Le pipeline de bout en bout, une étape par bloc lisible ci-dessous :
+//   brief → validation pré-IA (refus 422 déterministes)
+//         → plan déterministe (generation/plan)
+//         → génération des lots outillés (generation/lot) et assemblage
+//         → transport déterministe (generation/transport)
+//         → résolution des preuves (generation/resolution)
+//         → confiance / anti-hallucination (generation/confiance)
+//         → construction du Parcours + attribution des ids serveur
+//         → enrichissements (liens hébergement puis transport)
+//         → validation finale du domaine → retour.
 export async function genererParcours(
   briefRecu: Brief,
   preferences: PreferencesParcours | null = null,
