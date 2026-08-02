@@ -540,7 +540,8 @@ modification, l'OpenAPI et le front.
 - Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run lint`
   (mêmes 3 avertissements préexistants, aucune nouvelle erreur), `npx vitest
   run` (1860 tests verts, 64 fichiers), `git diff --check` propre, `npm ls`
-  sans conflit de version. Livré par la PR (lien à ajouter après ouverture).
+  sans conflit de version. Livré par la
+  [PR #69](https://github.com/loties1533/experience-ai/pull/69).
 
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
