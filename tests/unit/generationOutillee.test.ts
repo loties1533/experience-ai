@@ -2419,6 +2419,48 @@ describe('le journal de candidats — rapprochement conservateur', () => {
     ).toBe('fsq-central-2');
   });
 
+  it('refuse un rapprochement événementiel PredictHQ ambigu sans identifiant externe', async () => {
+    const premier = candidatEvenement({
+      identifiantExterne: 'evt-festival-1',
+      nom: 'Festival du Port',
+      villeDemandee: 'Bordeaux',
+      dateDebut: '2026-09-05T20:00:00Z',
+    });
+    const second = candidatEvenement({
+      identifiantExterne: 'evt-festival-2',
+      nom: 'Festival du Port',
+      villeDemandee: 'Bordeaux',
+      dateDebut: '2026-09-06T20:00:00Z',
+    });
+    vi.mocked(rechercherEvenementsPredictHQ).mockResolvedValue({
+      statut: 'ok',
+      resultats: [premier, second],
+      recupereLe: DATE_RECUPERATION,
+    });
+    const boite = creerBoiteAOutils();
+    await boite.executer('chercher_evenements', {
+      ville: 'Bordeaux',
+      dateDebut: '2026-09-05',
+      dateFin: '2026-09-06',
+    });
+
+    expect(
+      boite.rapprocherCandidat({
+        nom: 'Festival du Port',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'evenement',
+      })
+    ).toBeUndefined();
+    expect(
+      boite.rapprocherCandidat({
+        identifiantExterne: 'evt-festival-2',
+        nom: 'Festival du Port',
+        villeDemandee: 'Bordeaux',
+        typeMetierRecherche: 'evenement',
+      })?.identifiantExterne
+    ).toBe('evt-festival-2');
+  });
+
   it('ne change pas le rapprochement F2 avec une adresse LLM sur des restaurants ambigus', async () => {
     const candidats = [
       candidatLieu({
