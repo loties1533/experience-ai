@@ -435,26 +435,35 @@ modification, l'OpenAPI et le front.
 - **F4-D2 vérifié réellement branché** dans `agents/generation.ts` (pas
   seulement documenté) : la résolution transport alimente bien
   `ajouterLiensRechercheTransport` avant la revalidation finale du domaine.
-- **NBA/New York (F6, 0/3 Haiku et Sonnet) : cause confirmée non liée au
-  modèle.** Le bug de troncature JSON du 26/07 est résolu. L'échec restant
-  vient du budget d'outils (`MAX_TOURS_OUTILS = 3`) insuffisant pour un
-  parcours multi-ville long, et du modèle qui refuse proprement plutôt que
-  d'inventer — comportement conforme au contrat, pas un défaut de fiabilité.
-  Documenté comme limite plutôt que corrigé : changer le budget d'outils
-  dépasse le périmètre F9 (risque de régression sur coût/latence sans
-  scénario de recette reproductible faute de clés Amadeus/Navitia/PredictHQ
-  locales).
+- **NBA/New York (F6, 0/3) : cause ré-examinée sur les données brutes du
+  benchmark, pas une cause unique.** Haiku échoue 2/3 sur `json_invalide` (JSON
+  cassé au premier lot, `tours: 1`) — qualité du modèle, sans rapport avec les
+  outils. Haiku 1/3 et Sonnet 3/3 échouent en `service_indisponible` (boucle
+  d'un lot non aboutie ; le budget d'outils est **par lot** avec reprises, pas
+  un budget global épuisé par la longueur). Cause exacte de la non-convergence
+  non isolée déterministe → documentée comme hypothèse. Point essentiel :
+  **aucune exécution ne fabrique de parcours** — chaque échec est honnête
+  (502/503). Ne pas toucher `MAX_TOURS_OUTILS` ni le modèle en F9 : chantier de
+  performance, pas de fiabilité.
+- **Risque « dépendance essentielle indisponible » ré-instruit : garantie
+  structurelle, pas dépendante du LLM.** Une recherche `indisponible`/`vide` ne
+  peut jamais produire un élément `verifie`, seulement une suggestion qualifiée
+  (`outils.ts:475-493`, testé `generationOutillee.test.ts:1421`). Les essentiels
+  déterministes (hébergement/transport déclarés, boucle non aboutie) sont
+  verrouillés en `422`/`503` côté serveur (`generation.ts:766-846`,
+  `core.ts:281-289`). Seul le choix `503` vs suggestion honnête pour une donnée
+  *discrétionnaire* relève du modèle — les deux issues sont conformes à
+  ADR-0008. Classé limite acceptée (verdict C), pas défaut structurel.
 - **Seule lacune réelle trouvée : une garantie non testée, pas un bug.** La
   persistance de la génération (`POST /api/parcours`) n'avait de preuve que
   par lecture de code — contrairement à F8 (modification), déjà couverte par
   8 scénarios dédiés. Corrigé par l'ajout de
   `tests/unit/parcoursGenerationRoute.test.ts` (5 scénarios : succès, 422,
   503, 502, schéma final invalide → zéro écriture sauf succès réel).
-- **Risques documentés, non corrigés faute de reproduction déterministe** :
-  passage 422→503 dépendant de la discipline du prompt plutôt que d'un
-  contrôle serveur structurel ; niveau `estimé` jamais produit en pratique
-  malgré le schéma qui le permet ; absence d'observabilité (logs) sur les
-  indisponibilités fournisseurs prolongées.
+- **Autres points documentés, non corrigés** : `prixEstime` est vivant et rendu
+  dans l'UI, mais le niveau `confiance.niveau: 'estime'` (élément) reste dormant
+  (jamais émis, UI prête — pas de promesse trompeuse) ; absence d'observabilité
+  (logs) sur les indisponibilités fournisseurs prolongées.
 - Matrice de capacités (SUPPORTED/PARTIAL/UNAVAILABLE) consignée dans
   [`docs/16-recette-f9.md`](16-recette-f9.md).
 - Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run
