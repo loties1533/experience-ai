@@ -24,7 +24,7 @@
 | UI-B — Fondations visuelles | Composants et statuts métier (indisponible/refus) | Terminé |
 | UI-C — Écrans principaux + photos | Intégration des photographies personnelles | Terminé |
 | UI-D — Responsive / états / polish | Vérification mobile/tablette/desktop et contrastes | Terminé |
-| F9 — Recette de sortie | Robustesse NBA puis valeur EVG | À faire |
+| F9 — Recette de sortie | Robustesse NBA puis valeur EVG | Terminé |
 
 ### Board — avancement du chantier
 
@@ -420,6 +420,47 @@ modification, l'OpenAPI et le front.
   `npx vitest run` (1853 tests verts), `git diff --check` propre, `npm ls
   react react-dom zustand react-router-dom` (racine et `client-react`, une
   seule copie 18.3.1 dédupliquée par sous-projet).
+
+### Revue F9 — recette finale et robustesse produit (02/08)
+
+> Audit en lecture seule de F0 → F8 (Foursquare, Navitia, Amadeus, PredictHQ,
+> statuts de confiance, persistance F8, scénario NBA/New York), puis
+> correction du seul défaut réel trouvé. Détail complet dans
+> [`docs/16-recette-f9.md`](16-recette-f9.md).
+
+- **Aucun bug reproductible bloquant.** Foursquare, Navitia et Amadeus sont
+  fail-closed de façon symétrique et testée sur absence de clé
+  (`configuration_absente`, aucun appel réseau) ; PredictHQ de même. Aucune
+  invention de lieu, prix, gare, aéroport, événement ou lien trouvée.
+- **F4-D2 vérifié réellement branché** dans `agents/generation.ts` (pas
+  seulement documenté) : la résolution transport alimente bien
+  `ajouterLiensRechercheTransport` avant la revalidation finale du domaine.
+- **NBA/New York (F6, 0/3 Haiku et Sonnet) : cause confirmée non liée au
+  modèle.** Le bug de troncature JSON du 26/07 est résolu. L'échec restant
+  vient du budget d'outils (`MAX_TOURS_OUTILS = 3`) insuffisant pour un
+  parcours multi-ville long, et du modèle qui refuse proprement plutôt que
+  d'inventer — comportement conforme au contrat, pas un défaut de fiabilité.
+  Documenté comme limite plutôt que corrigé : changer le budget d'outils
+  dépasse le périmètre F9 (risque de régression sur coût/latence sans
+  scénario de recette reproductible faute de clés Amadeus/Navitia/PredictHQ
+  locales).
+- **Seule lacune réelle trouvée : une garantie non testée, pas un bug.** La
+  persistance de la génération (`POST /api/parcours`) n'avait de preuve que
+  par lecture de code — contrairement à F8 (modification), déjà couverte par
+  8 scénarios dédiés. Corrigé par l'ajout de
+  `tests/unit/parcoursGenerationRoute.test.ts` (5 scénarios : succès, 422,
+  503, 502, schéma final invalide → zéro écriture sauf succès réel).
+- **Risques documentés, non corrigés faute de reproduction déterministe** :
+  passage 422→503 dépendant de la discipline du prompt plutôt que d'un
+  contrôle serveur structurel ; niveau `estimé` jamais produit en pratique
+  malgré le schéma qui le permet ; absence d'observabilité (logs) sur les
+  indisponibilités fournisseurs prolongées.
+- Matrice de capacités (SUPPORTED/PARTIAL/UNAVAILABLE) consignée dans
+  [`docs/16-recette-f9.md`](16-recette-f9.md).
+- Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run
+  lint` (mêmes 4 avertissements préexistants, aucune nouvelle erreur),
+  `npx vitest run` (1858 tests verts, 63 fichiers, dont les 5 nouveaux), `git
+  diff --check` propre.
 
 ### Revue F4-C3a — la gare Navitia comme candidat, rien de plus (30/07)
 
