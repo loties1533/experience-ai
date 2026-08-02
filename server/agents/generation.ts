@@ -15,9 +15,7 @@ import {
   ParcoursSchema,
   estSejourHebergementDansDatesParcours,
   validerParcours,
-  type Confiance,
   type Parcours,
-  type Reservation,
   type SejourHebergement,
   type TypeElement,
 } from '../domaine/parcours/index.js';
@@ -57,8 +55,11 @@ import {
   resoudreDemandesLien,
   type MomentPrepare,
 } from './generation/resolution.js';
+import {
+  nomSuggestion,
+  tracerLieuReel,
+} from './generation/confiance.js';
 import type { PreferencesParcours } from '../domaine/preferences.js';
-import type { ResultatResolutionLien } from '../services/liens/contrat.js';
 
 // Surface publique historique : `generation.ts` reste le point d'entrée
 // canonique du produit. Les symboles extraits vers ./generation/* y sont
@@ -66,6 +67,7 @@ import type { ResultatResolutionLien } from '../services/liens/contrat.js';
 export { deriverPlan } from './generation/plan.js';
 export type { PlanGeneration } from './generation/plan.js';
 export { nettoyerMomentsTransport } from './generation/transport.js';
+export { nomSuggestion } from './generation/confiance.js';
 
 // Un lot techniquement indisponible (503) est rejoué seul, sans toucher aux
 // lots déjà validés. Au-delà de cette borne, la génération échoue sans exposer
@@ -91,139 +93,6 @@ const TENTATIVES_MAX_PAR_LOT = 2;
 // refs inconnues sont écartées, les liens externes ne viennent PAS de lui mais
 // des connecteurs, et le parcours final repasse par les invariants du domaine
 // avant de sortir.
-
-function confianceVerifiee(args: {
-  source: string;
-  fournisseur: string;
-  recupereLe: string;
-  identifiantExterne: string;
-  categorieFournisseur?: string;
-  identifiantCategorieFournisseur?: string;
-  villeConfirmee?: string;
-  adresse?: string;
-}): Confiance {
-  return {
-    niveau: 'verifie',
-    source: args.source,
-    fournisseur: args.fournisseur,
-    recupereLe: args.recupereLe,
-    identifiantExterne: args.identifiantExterne,
-    categorieFournisseur: args.categorieFournisseur,
-    identifiantCategorieFournisseur:
-      args.identifiantCategorieFournisseur,
-    villeConfirmee: args.villeConfirmee,
-    adresse: args.adresse,
-  };
-}
-
-/** Un résultat sans preuve reste une idée générique, jamais un faux nom propre. */
-export function nomSuggestion(type: TypeElement, ville?: string): string {
-  const endroit = ville ? ` à ${ville}` : '';
-  const noms: Record<TypeElement, string> = {
-    activite: `Une activité adaptée à l’intention${endroit}`,
-    restaurant: `Un restaurant à choisir${endroit}`,
-    sortie: `Une sortie à choisir${endroit}`,
-    transport: `Un transport à organiser${endroit}`,
-    hebergement: `Un hébergement à choisir${endroit}`,
-    evenement: `Un événement à confirmer${endroit}`,
-    temps_libre: 'Un temps libre',
-  };
-  return noms[type];
-}
-
-/**
- * Ce qui, dans un élément, vient d'une recherche réelle et non du modèle.
- *
- * Quand le nom proposé correspond à un candidat Foursquare ou PredictHQ, on
- * conserve son identité et sa provenance. Un lien externe n'est ajouté que
- * lorsque le pipeline F2-B retourne `resolu` après sélection, validation URL,
- * contrôle DNS/SSRF et redirections.
- *
- * Aucun résultat ambigu, refusé, introuvable ou indisponible ne déclenche de
- * repli par nom ou par carte. F3-B sait vérifier l'identité d'un hébergement,
- * mais ses liens restent volontairement hors de ce sous-lot.
- */
-function tracerLieuReel(
-  element: ElementGenere,
-  candidat: CandidatJournal | undefined,
-  resolutionLien: ResultatResolutionLien | undefined,
-  options: {
-    ville?: string;
-  }
-): {
-  nom: string;
-  lieu?: string;
-  confiance: Confiance;
-  reservation?: Reservation;
-} {
-  if (element.type === 'transport') {
-    return {
-      nom: element.nom,
-      confiance: { niveau: 'suggestion' },
-    };
-  }
-
-  const lieuReel = candidat
-    ? candidat.typeMetierRecherche === 'evenement'
-      ? candidat.salle
-      : candidat.adresse
-    : undefined;
-  // Une identité hôtelière vérifiée ne récupère jamais l'adresse proposée par
-  // le modèle : si Foursquare n'en donne pas, le champ reste absent. Les autres
-  // types conservent leur comportement F2 existant.
-  const lieu =
-    candidat?.typeMetierRecherche === 'hebergement'
-      ? lieuReel
-      : lieuReel ?? element.lieu;
-
-  // Un temps libre ne se réserve pas (invariant 4) : rien à y rattacher.
-  if (element.type === 'temps_libre') {
-    return {
-      nom: nomSuggestion(element.type, options.ville),
-      lieu,
-      confiance: { niveau: 'suggestion' },
-    };
-  }
-
-  if (candidat) {
-    const confiance = confianceVerifiee({
-      source: candidat.source,
-      fournisseur: candidat.fournisseur,
-      recupereLe: candidat.recupereLe,
-      identifiantExterne: candidat.identifiantExterne,
-      categorieFournisseur: candidat.categorieFournisseur,
-      identifiantCategorieFournisseur:
-        'identifiantCategorieFournisseur' in candidat
-          ? candidat.identifiantCategorieFournisseur
-          : undefined,
-      villeConfirmee: candidat.villeConfirmee,
-      adresse:
-        candidat.typeMetierRecherche === 'evenement'
-          ? undefined
-          : candidat.adresse,
-    });
-    if (resolutionLien?.statut === 'resolu') {
-      return {
-        nom: candidat.nom,
-        lieu,
-        confiance,
-        reservation: {
-          lienExterne: resolutionLien.url,
-          fournisseur: resolutionLien.fournisseurRecherche,
-          typeLien: resolutionLien.typeLien,
-        },
-      };
-    }
-    return { nom: candidat.nom, lieu, confiance };
-  }
-
-  return {
-    nom: nomSuggestion(element.type, options.ville),
-    // Le lieu écrit par le modèle n'est pas conservé : il ferait passer une
-    // localisation non vérifiée pour une adresse.
-    confiance: { niveau: 'suggestion' },
-  };
-}
 
 function validerDonneesHotelieresEssentielles(brief: Brief): void {
   if (brief.hebergement?.necessaire !== true) return;
