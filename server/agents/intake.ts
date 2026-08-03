@@ -29,6 +29,7 @@ import {
   reformulerBrief,
   normaliserDatesBrief,
   calculerDates,
+  enFrancais,
   BriefSchema,
   TransportBriefSchema,
   questionHebergement,
@@ -44,6 +45,7 @@ import {
   type TransportBrief,
   type TronconTransportBrief,
   type BriefPartiel,
+  type EtatDialogue,
 } from './brief.js';
 import {
   resoudreExpressionRelative,
@@ -58,12 +60,18 @@ import {
 const SYSTEM_INTAKE = `Tu aides à comprendre l'envie d'un utilisateur pour construire un parcours personnalisé.
 Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
 - "brief" : uniquement les champs que le DERNIER message permet d'établir, parmi :
-  intention (string, l'envie — jamais une destination), avecQui ("solo"|"couple"|"famille"|"amis"|"groupe"),
+  intention ({"texte": string, "nature": "complement"|"remplacement"} — jamais une destination. "texte" ne porte QUE
+  l'information NOUVELLE de ce dernier message, jamais une fusion avec ce qui précède : la fusion se fait ailleurs, ne
+  la fais jamais toi-même. "nature" vaut "remplacement" si ce message change fondamentalement l'envie (l'utilisateur
+  abandonne ou change ce qu'il voulait vivre), "complement" s'il précise ou enrichit l'envie déjà exprimée sans la
+  remplacer), avecQui ("solo"|"couple"|"famille"|"amis"|"groupe"),
   duree ({"valeur": number, "unite": "heures"|"jours"|"semaines"}), dates ({"debut": ISO, "fin": ISO} — UNIQUEMENT si
   l'utilisateur donne les DEUX bornes explicitement), dateDebut (ISO — UNIQUEMENT si l'utilisateur donne une VRAIE date
   de départ, même approximative : "mi-août", "le 15 août", "dans deux semaines". Sans année précisée, suppose la
   prochaine occurrence future de cette date. Ne devine JAMAIS dateDebut s'il n'a rien dit sur le moment où il part —
-  ce champ concerne QUAND il part, jamais D'OÙ il part : une ville reste "lieux", pas "dateDebut"),
+  ce champ concerne QUAND il part, jamais D'OÙ il part : une ville reste "lieux", pas "dateDebut". Si "reponse" pose
+  une question de confirmation sur une date que l'utilisateur vient de donner, structure QUAND MÊME ta meilleure
+  interprétation dans "dateDebut" ou "dates" — ne laisse jamais "reponse" évoquer une date absente de "brief"),
   lieux (string[]), budgetTotal (number, en euros), ambiance (string), contraintes (string[]),
   hebergement (UNIQUEMENT si l'utilisateur exprime explicitement qu'un hébergement est nécessaire ou non) :
     {"necessaire": false}
@@ -115,6 +123,82 @@ function extraireDateDebut(brut: unknown): string | undefined {
   const valeur = (brut as Record<string, unknown>).dateDebut;
   const resultat = DateTimeISOSchema.safeParse(valeur);
   return resultat.success ? resultat.data : undefined;
+}
+
+const MOIS_FRANCAIS: Record<string, number> = {
+  janvier: 1,
+  février: 2,
+  fevrier: 2,
+  mars: 3,
+  avril: 4,
+  mai: 5,
+  juin: 6,
+  juillet: 7,
+  août: 8,
+  aout: 8,
+  septembre: 9,
+  octobre: 10,
+  novembre: 11,
+  décembre: 12,
+  decembre: 12,
+};
+
+/**
+ * Filet déterministe pour une date isolée écrite en toutes lettres ("le 30
+ * septembre", "12 juillet 2027") : le LLM la comprend mais ne la structure pas
+ * toujours dans "dateDebut" avant de poser sa question de confirmation. Motif
+ * générique : n'importe quel mois, jamais une date câblée en dur — même
+ * principe que `extrairePlageExplicite` ci-dessus, pour un seul jour au lieu
+ * d'une plage.
+ */
+function extraireDateSeuleExplicite(message: string): string | undefined {
+  const motif =
+    /\b(\d{1,2})\s+(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)(?:\s+(\d{4}))?\b/i;
+  const trouve = message.match(motif);
+  if (!trouve) return undefined;
+
+  const jour = Number(trouve[1]);
+  if (jour < 1 || jour > 31) return undefined;
+  const mois = MOIS_FRANCAIS[trouve[2].toLowerCase()];
+  const anneeCourante = new Date().getUTCFullYear();
+  const anneeExplicite = trouve[3] ? Number(trouve[3]) : undefined;
+
+  let date = new Date(Date.UTC(anneeExplicite ?? anneeCourante, mois - 1, jour));
+  // Sans année précisée : la prochaine occurrence future, jamais une date passée.
+  if (!anneeExplicite && date.getTime() < Date.now()) {
+    date = new Date(Date.UTC(anneeCourante + 1, mois - 1, jour));
+  }
+  return date.toISOString();
+}
+
+const IntentionExtraiteSchema = z
+  .object({
+    texte: z.string().min(1),
+    nature: z.enum(['complement', 'remplacement']),
+  })
+  .strict();
+
+/**
+ * L'intention reste une simple chaîne dans le Brief (`BriefSchema.intention`).
+ * Le LLM qualifie seulement ce qu'il vient d'apprendre ; la fusion réelle
+ * (compléter ou remplacer) se décide et s'applique ICI, jamais confiée à sa
+ * propre reformulation — sinon une précision ("assister à des matchs en
+ * direct") peut silencieusement effacer l'intention déjà acquise ("la NBA").
+ */
+function extraireIntention(
+  brut: unknown,
+  briefActuel: BriefPartiel
+): string | undefined {
+  if (typeof brut !== 'object' || brut === null) return undefined;
+  const resultat = IntentionExtraiteSchema.safeParse(
+    (brut as Record<string, unknown>).intention
+  );
+  if (!resultat.success) return undefined;
+
+  if (briefActuel.intention === undefined || resultat.data.nature === 'remplacement') {
+    return resultat.data.texte;
+  }
+  return `${briefActuel.intention} ; ${resultat.data.texte}`;
 }
 
 /**
@@ -179,7 +263,7 @@ function extraireChampsValides(brut: unknown): BriefPartiel {
   const retenu: Record<string, unknown> = {};
 
   for (const [cle, valeur] of Object.entries(brut as Record<string, unknown>)) {
-    if (cle === 'hebergement' || cle === 'transport') {
+    if (cle === 'hebergement' || cle === 'transport' || cle === 'intention') {
       continue; // fusions dédiées, champ par champ, ci-dessous
     }
     const forme = formes[cle as keyof typeof formes];
@@ -468,6 +552,12 @@ function decisionTransportDifferee(message: string): boolean {
 
 function confirmationPositive(message: string): boolean {
   return /^(?:oui|oui merci|d['’]accord|exactement|tout à fait)[.! ]*$/i.test(
+    message.trim()
+  );
+}
+
+function confirmationNegative(message: string): boolean {
+  return /^(?:non|non merci|pas exactement|pas cette date|pas celle[\s-]l[àa])[.! ]*$/i.test(
     message.trim()
   );
 }
@@ -916,12 +1006,100 @@ export interface EtapeDialogue {
   reponse: string;
   brief: BriefPartiel;
   estComplet: boolean;
+  /** État transitoire de dialogue à retransmettre au tour suivant, ou absent
+   * quand rien n'est en attente de confirmation. Jamais persisté dans le
+   * brief ni transmis à la génération. */
+  etatDialogue?: EtatDialogue;
+}
+
+/**
+ * Calcule la question suivante ou la reformulation finale à partir d'un brief
+ * déjà fusionné. Partagée par le chemin LLM normal et par la confirmation
+ * déterministe d'une date en attente, pour ne jamais dupliquer cette logique.
+ */
+function finaliserEtape(
+  brief: BriefPartiel,
+  briefActuel: BriefPartiel,
+  auMoinsUnChampNouveau: boolean,
+  champInvalideHebergement: ChampHebergement | undefined,
+  champInvalideTransport: ChampTransport | undefined,
+  reponseSiIncomplet: string
+): { reponse: string; estComplet: boolean } {
+  const complet = BriefSchema.safeParse(brief);
+  // « Complet » exige aussi un point de départ (dates) : une durée seule
+  // n'ancre le parcours à aucune vraie date, et les connecteurs chercheraient
+  // alors sur une date inventée, sans rapport avec le vrai séjour.
+  const dialogueTermine =
+    complet.success &&
+    champsManquants(brief).length === 0 &&
+    champInvalideHebergement === undefined &&
+    champInvalideTransport === undefined;
+  if (dialogueTermine) {
+    // Le brief était déjà complet et rien de nouveau n'a été retenu de ce
+    // message : l'utilisateur essayait de corriger quelque chose, mais rien
+    // n'a été compris (dates ambiguës, format inattendu...). Rejouer la même
+    // confirmation mot pour mot donnerait l'impression qu'on l'ignore — on le
+    // dit plutôt franchement, sans reformuler le contenu passé sous silence.
+    const briefActuelDejaTermine =
+      BriefSchema.safeParse(briefActuel).success && champsManquants(briefActuel).length === 0;
+    if (!auMoinsUnChampNouveau && briefActuelDejaTermine) {
+      return {
+        reponse: "Je n'ai pas compris ce changement — peux-tu préciser autrement (ex. une date au format JJ/MM/AAAA) ?",
+        estComplet: true,
+      };
+    }
+    return { reponse: `${reformulerBrief(complet.data)} C'est bien ça ?`, estComplet: true };
+  }
+  // Tant qu'un champ de base manque, c'est lui — et lui seul — qui doit être
+  // demandé : l'hébergement et le transport n'entrent en jeu qu'une fois les
+  // 4 champs de base validés.
+  return {
+    reponse:
+      prochainChampBase(brief) === undefined
+        ? questionHebergement(brief, champInvalideHebergement) ??
+          questionTransport(brief, champInvalideTransport) ??
+          reponseSiIncomplet
+        : reponseSiIncomplet,
+    estComplet: false,
+  };
 }
 
 export async function avancerDialogue(
   briefActuel: BriefPartiel,
-  messageUtilisateur: string
+  messageUtilisateur: string,
+  etatDialogueActuel?: EtatDialogue
 ): Promise<EtapeDialogue> {
+  // Une date candidate reste en attente d'un "oui"/"non" : on tranche ici,
+  // déterministe, SANS appeler le LLM — "oui" ne veut rien dire pour lui hors
+  // de ce contexte précis, et confirmationPositive() sert déjà ce rôle pour
+  // le transport (transport.besoin) : même mécanisme, étendu aux dates.
+  if (etatDialogueActuel?.champ === 'dates' && !briefActuel.dates) {
+    if (confirmationPositive(messageUtilisateur)) {
+      const brief = normaliserDatesBrief({
+        ...briefActuel,
+        dates: etatDialogueActuel.valeurCandidate,
+      });
+      const { reponse, estComplet } = finaliserEtape(
+        brief,
+        briefActuel,
+        true,
+        undefined,
+        undefined,
+        'Peux-tu préciser ta demande ?'
+      );
+      return { reponse, brief, estComplet };
+    }
+    if (confirmationNegative(messageUtilisateur)) {
+      return {
+        reponse: 'Pas de souci — quelle est ta date de départ, même approximative ?',
+        brief: briefActuel,
+        estComplet: false,
+      };
+    }
+    // Ni "oui" ni "non" : le message est traité normalement ci-dessous — une
+    // nouvelle date explicite ("plutôt le 2 octobre") remplacera la candidate.
+  }
+
   // Résolution déterministe AVANT l'appel au LLM : une expression relative
   // reconnue ("demain", "ce week-end"...) ne lui est jamais confiée. On ne la
   // tente que si aucune date n'est déjà arrêtée dans le brief — jamais pour
@@ -966,6 +1144,7 @@ Dates déjà résolues pour l'expression temporelle de ce message : du ${dateRel
   }
 
   const extrait = extraireChampsValides(sortie.data.brief);
+  const intentionExtraite = extraireIntention(sortie.data.brief, briefActuel);
   const extractionHebergement = extraireHebergement(
     sortie.data.brief,
     messageUtilisateur,
@@ -987,6 +1166,7 @@ Dates déjà résolues pour l'expression temporelle de ce message : du ${dateRel
   let brief: BriefPartiel = normaliserDatesBrief({
     ...briefActuel,
     ...extrait,
+    ...(intentionExtraite !== undefined ? { intention: intentionExtraite } : {}),
     ...(hebergement ? { hebergement } : {}),
     ...(transport ? { transport } : {}),
   });
@@ -1012,66 +1192,53 @@ Dates déjà résolues pour l'expression temporelle de ce message : du ${dateRel
     }
   }
 
-  // Un point de départ seul (sans la fin) ne vient pas de extraireChampsValides,
-  // qui ne connaît que les champs du domaine : on calcule la fin nous-mêmes,
-  // depuis la durée déjà connue — jamais confié au LLM.
-  let dateDebutUtilise = false;
+  // Un point de départ seul (sans la fin) reste une approximation : elle
+  // devient une CANDIDATE en attente de confirmation, jamais commise
+  // directement dans le brief. `dateDebut` peut venir du LLM ou, à défaut,
+  // du filet déterministe sur une date isolée écrite en toutes lettres.
+  let etatDialogueResultant: EtatDialogue | undefined =
+    etatDialogueActuel?.champ === 'dates' && !brief.dates
+      ? etatDialogueActuel
+      : undefined;
+  let candidateFraichementProduite = false;
   if (!brief.dates && brief.duree) {
-    const dateDebut = extraireDateDebut(sortie.data.brief);
+    const dateDebut =
+      extraireDateDebut(sortie.data.brief) ?? extraireDateSeuleExplicite(messageUtilisateur);
     if (dateDebut) {
-      brief = { ...brief, dates: calculerDates(dateDebut, brief.duree) };
-      dateDebutUtilise = true;
+      etatDialogueResultant = {
+        champ: 'dates',
+        valeurCandidate: calculerDates(dateDebut, brief.duree),
+      };
+      candidateFraichementProduite = true;
     }
   }
 
-  const complet = BriefSchema.safeParse(brief);
-  // « Complet » exige aussi un point de départ (dates) : une durée seule
-  // n'ancre le parcours à aucune vraie date, et les connecteurs chercheraient
-  // alors sur une date inventée, sans rapport avec le vrai séjour.
-  const dialogueTermine =
-    complet.success &&
-    champsManquants(brief).length === 0 &&
-    extractionHebergement.champInvalide === undefined &&
-    extractionTransport.champInvalide === undefined;
-  if (dialogueTermine) {
-    // Le brief était déjà complet et rien de nouveau n'a été retenu de ce
-    // message : l'utilisateur essayait de corriger quelque chose, mais rien
-    // n'a été compris (dates ambiguës, format inattendu...). Rejouer la même
-    // confirmation mot pour mot donnerait l'impression qu'on l'ignore — on le
-    // dit plutôt franchement, sans reformuler le contenu passé sous silence.
-    const auMoinsUnChampNouveau =
-      Object.keys(extrait).length > 0 ||
-      extractionHebergement.hebergement !== undefined ||
-      extractionTransport.transport !== undefined ||
-      dateDebutUtilise ||
-      plageExpliciteUtilisee ||
-      dateRelativeUtilisee;
-    const briefActuelDejaTermine =
-      BriefSchema.safeParse(briefActuel).success && champsManquants(briefActuel).length === 0;
-    if (!auMoinsUnChampNouveau && briefActuelDejaTermine) {
-      return {
-        reponse: "Je n'ai pas compris ce changement — peux-tu préciser autrement (ex. une date au format JJ/MM/AAAA) ?",
-        brief,
-        estComplet: true,
-      };
-    }
-    return {
-      reponse: `${reformulerBrief(complet.data)} C'est bien ça ?`,
-      brief,
-      estComplet: true,
-    };
-  }
-  // Tant qu'un champ de base manque, c'est lui — et lui seul — qui doit être
-  // demandé : l'hébergement et le transport n'entrent en jeu qu'une fois les
-  // 4 champs de base validés.
-  return {
-    reponse:
-      prochainChampBase(brief) === undefined
-        ? questionHebergement(brief, extractionHebergement.champInvalide) ??
-          questionTransport(brief, extractionTransport.champInvalide) ??
-          sortie.data.reponse
-        : sortie.data.reponse,
+  const reponseSiIncomplet =
+    candidateFraichementProduite && etatDialogueResultant
+      ? `Tu pars donc le ${enFrancais(etatDialogueResultant.valeurCandidate.debut)} ? Réponds « oui » pour confirmer, ou donne une autre date.`
+      : sortie.data.reponse;
+
+  const auMoinsUnChampNouveau =
+    Object.keys(extrait).length > 0 ||
+    intentionExtraite !== undefined ||
+    extractionHebergement.hebergement !== undefined ||
+    extractionTransport.transport !== undefined ||
+    candidateFraichementProduite ||
+    plageExpliciteUtilisee ||
+    dateRelativeUtilisee;
+
+  const { reponse, estComplet } = finaliserEtape(
     brief,
-    estComplet: false,
+    briefActuel,
+    auMoinsUnChampNouveau,
+    extractionHebergement.champInvalide,
+    extractionTransport.champInvalide,
+    reponseSiIncomplet
+  );
+  return {
+    reponse,
+    brief,
+    estComplet,
+    ...(etatDialogueResultant ? { etatDialogue: etatDialogueResultant } : {}),
   };
 }

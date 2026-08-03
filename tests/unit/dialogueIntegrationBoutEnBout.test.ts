@@ -35,7 +35,10 @@ afterEach(() => {
 describe('F7-C — scénario 1 : parcours progressif simple, un champ de base par tour', () => {
   it('mène le dialogue de intention → avecQui → durée → dates sans jamais répéter une question', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
-      reponseIntake({ intention: 'un week-end détente' }, 'Avec qui pars-tu ?')
+      reponseIntake(
+        { intention: { texte: 'un week-end détente', nature: 'remplacement' } },
+        'Avec qui pars-tu ?'
+      )
     );
     const tour1 = await avancerDialogue({}, 'Je veux organiser un week-end détente');
     expect(tour1.estComplet).toBe(false);
@@ -91,7 +94,7 @@ describe('F7-C — scénario 2 : plusieurs champs de base dans un seul message',
   it('conserve tous les champs extraits et ne pose plus aucune question de base', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
       reponseIntake({
-        intention: 'organiser l’EVG de Max',
+        intention: { texte: 'organiser l’EVG de Max', nature: 'remplacement' },
         avecQui: 'amis',
         duree: { valeur: 2, unite: 'jours' },
         lieux: ['Bordeaux'],
@@ -123,7 +126,7 @@ describe('F7-C — scénario 3 : corrections successives, un seul champ remplac�
   it('chaque correction remplace uniquement le champ visé, sans faire réapparaître une ancienne valeur', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
       reponseIntake({
-        intention: 'organiser un EVG',
+        intention: { texte: 'organiser un EVG', nature: 'remplacement' },
         avecQui: 'amis',
         duree: { valeur: 2, unite: 'jours' },
       })
@@ -266,7 +269,7 @@ describe('F7-C — scénario 5 : transition déterministe vers hébergement/tran
 describe('F7-C — scénario 6 : brief prêt pour génération, sans génération réelle déclenchée', () => {
   it('atteint un brief complet après un dialogue en plusieurs tours avec correction, sans doublon de question', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
-      reponseIntake({ intention: 'vivre un festival' }, 'Avec qui ?')
+      reponseIntake({ intention: { texte: 'vivre un festival', nature: 'remplacement' } }, 'Avec qui ?')
     );
     const tour1 = await avancerDialogue({}, 'je veux vivre un festival');
 
@@ -315,7 +318,7 @@ describe('F7-C — scénario 6 : brief prêt pour génération, sans génératio
   });
 
   it('n’annonce jamais un brief prêt tant qu’un champ de base essentiel manque', async () => {
-    vi.mocked(callAI).mockResolvedValueOnce(reponseIntake({ intention: 'vivre un festival' }));
+    vi.mocked(callAI).mockResolvedValueOnce(reponseIntake({ intention: { texte: 'vivre un festival', nature: 'remplacement' } }));
     const etape = await avancerDialogue({}, 'je veux vivre un festival');
     expect(etape.estComplet).toBe(false);
     expect(BriefSchema.safeParse(etape.brief).success).toBe(false);

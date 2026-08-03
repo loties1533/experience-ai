@@ -15,7 +15,7 @@ import {
 import { synchroniserLiens, revoquerTousLesLiens } from '../depots/depotPartage.js';
 import { chargerPreferences, sauvegarderPreferences } from '../depots/depotPreferences.js';
 import { PreferencesParcoursSchema } from '../domaine/preferences.js';
-import { BriefSchema, BriefPartielSchema } from '../agents/brief.js';
+import { BriefSchema, BriefPartielSchema, EtatDialogueSchema } from '../agents/brief.js';
 import { avancerDialogue } from '../agents/intake.js';
 import { genererParcours } from '../agents/generation.js';
 import { interpreterDemande } from '../agents/modification.js';
@@ -58,9 +58,14 @@ function auteurDe(parcours: Parcours, userId: string): string {
 }
 
 // ---- POST /api/parcours/dialogue — cadrage : une réponse, une question ----
+// `etatDialogue` est un contexte transitoire de clarification (ex. une date
+// approximative en attente de "oui"/"non"), jamais une information acquise :
+// il transite à côté du brief, jamais dedans, et n'atteint jamais la
+// génération (CorpsGenerationSchema plus bas ne connaît que BriefSchema).
 const CorpsDialogueSchema = z.object({
   brief: BriefPartielSchema.default({}),
   message: z.string().min(1).max(500),
+  etatDialogue: EtatDialogueSchema.optional(),
 });
 router.post(
   '/dialogue',
@@ -69,8 +74,8 @@ router.post(
   validateBody(CorpsDialogueSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { brief, message } = req.body as z.infer<typeof CorpsDialogueSchema>;
-      res.json(await avancerDialogue(brief, message));
+      const { brief, message, etatDialogue } = req.body as z.infer<typeof CorpsDialogueSchema>;
+      res.json(await avancerDialogue(brief, message, etatDialogue));
     } catch (err) {
       next(err);
     }
