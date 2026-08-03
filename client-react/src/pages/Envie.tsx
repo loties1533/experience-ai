@@ -25,7 +25,7 @@ const ENVIE_EN_ATTENTE = 'experience-ai:envie-en-attente'
 
 export default function Envie() {
   const { user } = useAuthStore()
-  const { messages, brief, estComplet, ajouterMessage, mettreAJourBrief, reinitialiser } = useDialogueStore()
+  const { messages, brief, estComplet, etatDialogue, ajouterMessage, mettreAJourBrief, reinitialiser } = useDialogueStore()
   const [saisie, setSaisie] = useState('')
   const [enCours, setEnCours] = useState(false)
   const [generationEnCours, setGenerationEnCours] = useState(false)
@@ -63,8 +63,8 @@ export default function Envie() {
     setSaisie('')
     setEnCours(true)
     try {
-      const etape = await avancerDialogue(brief, texte)
-      mettreAJourBrief(etape.brief, etape.estComplet)
+      const etape = await avancerDialogue(brief, texte, etatDialogue)
+      mettreAJourBrief(etape.brief, etape.estComplet, etape.etatDialogue)
       ajouterMessage('produit', etape.reponse)
     } catch (e) {
       toast.error((e as Error).message)

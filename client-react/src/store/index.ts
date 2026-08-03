@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { BriefPartiel } from '../lib/api'
+import type { BriefPartiel, EtatDialogue } from '../lib/api'
 
 // DIALOGUE STORE — le cadrage en cours (brief + fil de messages).
 // Persisté : on peut fermer l'onglet et reprendre son envie où on l'a laissée.
@@ -14,8 +14,12 @@ interface DialogueState {
   messages: MessageDialogue[]
   brief: BriefPartiel
   estComplet: boolean
+  // Contexte transitoire de clarification (ex. une date en attente de "oui"/
+  // "non") — jamais une information acquise : absent du brief, jamais envoyé
+  // à la génération.
+  etatDialogue: EtatDialogue | undefined
   ajouterMessage: (de: MessageDialogue['de'], texte: string) => void
-  mettreAJourBrief: (brief: BriefPartiel, estComplet: boolean) => void
+  mettreAJourBrief: (brief: BriefPartiel, estComplet: boolean, etatDialogue: EtatDialogue | undefined) => void
   reinitialiser: () => void
 }
 
@@ -25,10 +29,11 @@ export const useDialogueStore = create<DialogueState>()(
       messages: [],
       brief: {},
       estComplet: false,
+      etatDialogue: undefined,
       ajouterMessage: (de, texte) =>
         set((s) => ({ messages: [...s.messages, { id: crypto.randomUUID(), de, texte }] })),
-      mettreAJourBrief: (brief, estComplet) => set({ brief, estComplet }),
-      reinitialiser: () => set({ messages: [], brief: {}, estComplet: false }),
+      mettreAJourBrief: (brief, estComplet, etatDialogue) => set({ brief, estComplet, etatDialogue }),
+      reinitialiser: () => set({ messages: [], brief: {}, estComplet: false, etatDialogue: undefined }),
     }),
     { name: 'xp_dialogue' }
   )

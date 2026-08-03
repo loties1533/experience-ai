@@ -13,14 +13,14 @@ import type {
   Visibilite,
   Avis,
 } from '../../../server/domaine/parcours/index'
-import type { Brief, BriefPartiel } from '../../../server/agents/brief'
+import type { Brief, BriefPartiel, EtatDialogue } from '../../../server/agents/brief'
 import type { EtapeDialogue } from '../../../server/agents/intake'
 import type { ResumeParcours } from '../../../server/depots/depotParcours'
 import type { PreferencesParcours } from '../../../server/domaine/preferences'
 
 export type {
   Parcours, Element, DemandeSurElementClient, Participant, Role, Visibilite, Avis,
-  Brief, BriefPartiel, EtapeDialogue, ResumeParcours, PreferencesParcours,
+  Brief, BriefPartiel, EtatDialogue, EtapeDialogue, ResumeParcours, PreferencesParcours,
 }
 
 // En développement : Vite proxifie /api → localhost:3000
@@ -71,8 +71,13 @@ export const signup = (email: string, password: string, name: string) =>
   request<{ user: Utilisateur }>('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, name }) })
 
 // ---- Dialogue de cadrage (doc 05, étapes 1→4) ----
-export const avancerDialogue = (brief: BriefPartiel, message: string) =>
-  request<EtapeDialogue>('/parcours/dialogue', { method: 'POST', body: JSON.stringify({ brief, message }) })
+// `etatDialogue` : contexte transitoire de clarification (ex. une date en
+// attente de confirmation), retransmis tel quel — jamais fusionné au brief.
+export const avancerDialogue = (brief: BriefPartiel, message: string, etatDialogue?: EtatDialogue) =>
+  request<EtapeDialogue>('/parcours/dialogue', {
+    method: 'POST',
+    body: JSON.stringify({ brief, message, ...(etatDialogue ? { etatDialogue } : {}) }),
+  })
 
 // ---- Parcours ----
 export const genererParcours = (brief: Brief) =>

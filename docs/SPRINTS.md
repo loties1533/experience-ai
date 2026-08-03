@@ -421,6 +421,49 @@ modification, l'OpenAPI et le front.
   react react-dom zustand react-router-dom` (racine et `client-react`, une
   seule copie 18.3.1 dédupliquée par sous-projet).
 
+### Dialogue — confirmation de date perdue et intention écrasée par une précision (03/08)
+
+> Deux bugs distincts trouvés en testant le chat en conditions réelles,
+> partageant la même cause racine : `avancerDialogue` est stateless entre
+> deux tours HTTP, seul le Brief déjà validé transitait. Livré par la
+> [PR #71](https://github.com/loties1533/experience-ai/pull/71).
+
+- **Confirmation de date perdue.** Après une date approximative ("le 30
+  septembre"), le LLM demande parfois confirmation en prose ("c'est ta date
+  de départ ?") sans structurer cette date dans son JSON. Un "oui" qui suit
+  ne se rattachait alors à rien : le dialogue rebouclait et redemandait la
+  date depuis le début.
+- **Intention écrasée par une précision.** Une précision ultérieure
+  ("assister à des matchs en direct" après "vivre la NBA") pouvait faire
+  réécrire l'intention en entier par le LLM et effacer silencieusement ce
+  qui était déjà acquis, faute de fusion entre deux tours.
+- **Un état de dialogue transitoire, séparé du Brief.** `EtatDialogueSchema`
+  (`server/agents/brief.ts`, `{champ: 'dates', valeurCandidate}`) porte une
+  date candidate en attente de "oui"/"non" — jamais persisté dans
+  `BriefSchema`, jamais transmis à `CorpsGenerationSchema` (testé
+  explicitement). Transite à côté du brief dans le même échange `/dialogue`
+  et le même store front, sans session serveur ni DB.
+- **Confirmation déterministe, sans appel LLM inutile.** "oui"/"non" sur une
+  date candidate sont tranchés directement dans `avancerDialogue` ;
+  `confirmationPositive()` (déjà utilisée pour `transport.besoin`) est
+  étendue aux dates plutôt que dupliquée. Une nouvelle date explicite pendant
+  la clarification ("plutôt le 2 octobre") remplace la candidate via la
+  logique d'extraction existante.
+- **Intention : discriminant `nature: complement|remplacement` validé par
+  Zod.** Le LLM qualifie la seule information nouvelle du dernier message ;
+  la fusion réelle (compléter ou remplacer le texte acquis) est décidée et
+  appliquée côté serveur (`extraireIntention`), jamais confiée à sa
+  reformulation. Aucune heuristique sur des mots ("finalement", "NBA") : un
+  filet déterministe générique complète l'extraction pour une date isolée
+  écrite en toutes lettres (n'importe quel mois), sur le même principe que
+  le filet déjà existant pour une plage explicite JJ/MM.
+- **Aucune généralisation prématurée.** Seul le champ `dates` a aujourd'hui
+  besoin d'un état candidat ; domaine Parcours, génération,
+  résolution/confiance et fournisseurs externes non touchés.
+- Vérifications : `npx tsc --noEmit` (racine et `client-react`), `npm run
+  lint` (mêmes avertissements préexistants, aucune nouvelle erreur), `npx
+  vitest run` (1873 tests verts, 64 fichiers), `git diff --check` propre.
+
 ### Revue F9 — recette finale et robustesse produit (02/08)
 
 > Audit en lecture seule de F0 → F8 (Foursquare, Navitia, Amadeus, PredictHQ,

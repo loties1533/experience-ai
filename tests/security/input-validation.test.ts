@@ -139,6 +139,25 @@ describe('POST /api/parcours/dialogue — validation du message', () => {
       .send({ message: '{"$gt": ""} <img src=x onerror=alert(1)>' });
     expect(res.status).not.toBe(500);
   });
+
+  it('200 avec un état de dialogue valide (date candidate en attente)', async () => {
+    const res = await auth(request(app).post('/api/parcours/dialogue')).send({
+      message: 'oui',
+      etatDialogue: {
+        champ: 'dates',
+        valeurCandidate: { debut: '2026-09-30T00:00:00.000Z', fin: '2026-10-21T00:00:00.000Z' },
+      },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('400 si l\'état de dialogue est mal formé', async () => {
+    const res = await auth(request(app).post('/api/parcours/dialogue')).send({
+      message: 'oui',
+      etatDialogue: { champ: 'avecQui', valeurCandidate: 'solo' },
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 // ============================================================
@@ -383,6 +402,22 @@ describe('POST /api/parcours — validation du brief', () => {
     );
     const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF_VALIDE });
     expect(res.status).toBe(503);
+  });
+
+  it('un état de dialogue transitoire envoyé par erreur n’atteint jamais la génération', async () => {
+    vi.mocked(genererParcours).mockClear();
+    const res = await auth(request(app).post('/api/parcours')).send({
+      brief: BRIEF_VALIDE,
+      etatDialogue: {
+        champ: 'dates',
+        valeurCandidate: { debut: '2026-09-30T00:00:00.000Z', fin: '2026-10-21T00:00:00.000Z' },
+      },
+    });
+    expect(res.status).toBe(201);
+    expect(vi.mocked(genererParcours).mock.calls[0][0]).not.toHaveProperty('etatDialogue');
+    expect(vi.mocked(genererParcours).mock.calls[0][0]).toEqual(
+      expect.objectContaining({ intention: BRIEF_VALIDE.intention })
+    );
   });
 });
 

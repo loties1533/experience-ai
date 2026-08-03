@@ -4,6 +4,7 @@ import {
   NombreAdultesHebergementSchema,
   NombreChambresHebergementSchema,
   NombreEnfantsHebergementSchema,
+  PlageHoraireSchema,
   SejourHebergementSchema,
 } from '../domaine/parcours/index.js';
 import {
@@ -131,6 +132,26 @@ export const BriefSchema = z
   .strict();
 
 export const BriefPartielSchema = BriefSchema.partial();
+
+/**
+ * État transitoire du dialogue — jamais une information acquise (le Brief
+ * seul porte ça), seulement ce qu'il faut pour interpréter le tour suivant
+ * ("oui", "non", "plutôt le 2 octobre") pendant qu'une valeur reste à
+ * confirmer. Ne fuit jamais vers `BriefSchema` ni vers la génération : c'est
+ * un objet frère du brief, jamais un champ dedans.
+ *
+ * Un seul champ en a besoin aujourd'hui (une date approximative résolue à
+ * partir d'un seul point de départ). Pas de généralisation à d'autres champs
+ * tant qu'aucun autre n'a ce même besoin de confirmation en deux temps.
+ */
+export const EtatDialogueSchema = z
+  .object({
+    champ: z.literal('dates'),
+    valeurCandidate: PlageHoraireSchema,
+  })
+  .strict();
+
+export type EtatDialogue = z.infer<typeof EtatDialogueSchema>;
 
 export type Brief = z.infer<typeof BriefSchema>;
 export type BriefPartiel = z.infer<typeof BriefPartielSchema>;
@@ -492,7 +513,7 @@ const LIBELLES_AVEC_QUI = {
 } as const;
 
 /** Date affichable (« 12 juillet 2026 ») à partir d'un horodatage ISO. */
-function enFrancais(horodatageISO: string): string {
+export function enFrancais(horodatageISO: string): string {
   return new Date(horodatageISO).toLocaleDateString('fr-FR', {
     day: 'numeric',
     month: 'long',

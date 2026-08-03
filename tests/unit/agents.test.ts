@@ -147,7 +147,10 @@ describe('brief F7-B — état déterministe du dialogue de base', () => {
 describe('intake (IA de dialogue) — extraction validée, jamais de confiance aveugle', () => {
   it('fusionne l’extraction et pose la question suivante tant que le brief est incomplet', async () => {
     vi.mocked(callAI).mockResolvedValue(
-      JSON.stringify({ reponse: 'Avec qui partez-vous ?', brief: { intention: 'vivre la NBA' } })
+      JSON.stringify({
+        reponse: 'Avec qui partez-vous ?',
+        brief: { intention: { texte: 'vivre la NBA', nature: 'remplacement' } },
+      })
     );
     const etape = await avancerDialogue({}, 'je rêve de vivre la NBA');
     expect(etape.estComplet).toBe(false);
@@ -155,34 +158,86 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     expect(etape.reponse).toBe('Avec qui partez-vous ?');
   });
 
-  it('reformule pour validation dès que le brief est complet (doc 05, étape 4)', async () => {
-    vi.mocked(callAI).mockResolvedValue(
+  it('propose une date candidate en attente de confirmation, puis la commet sur "oui" (doc 05, étape 4)', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
       JSON.stringify({
         reponse: 'ok',
         brief: { duree: { valeur: 21, unite: 'jours' }, dateDebut: '2026-08-15T00:00:00Z' },
       })
     );
-    const etape = await avancerDialogue(
+    const propose = await avancerDialogue(
       { intention: 'vivre la NBA', avecQui: 'solo' },
       'trois semaines, à partir du 15 août'
     );
-    expect(etape.estComplet).toBe(true);
-    expect(etape.reponse).toContain('C’est bien ça ?'.replace('’', "'"));
-    expect(etape.brief.dates?.debut).toBe('2026-08-15T00:00:00.000Z');
+    expect(propose.estComplet).toBe(false);
+    expect(propose.brief.dates).toBeUndefined();
+    expect(propose.etatDialogue).toEqual({
+      champ: 'dates',
+      valeurCandidate: { debut: '2026-08-15T00:00:00.000Z', fin: '2026-09-05T00:00:00.000Z' },
+    });
+    expect(propose.reponse).toContain('15 août');
+
+    const confirme = await avancerDialogue(propose.brief, 'oui', propose.etatDialogue);
+    expect(confirme.estComplet).toBe(true);
+    expect(confirme.reponse).toContain('C’est bien ça ?'.replace('’', "'"));
+    expect(confirme.brief.dates?.debut).toBe('2026-08-15T00:00:00.000Z');
+    expect(confirme.etatDialogue).toBeUndefined();
   });
 
-  it('calcule la fin depuis le point de départ + la durée, sans jamais la confier au LLM', async () => {
-    vi.mocked(callAI).mockResolvedValue(
+  it('rejette la candidate sur "non" et redemande la date, sans toucher au brief', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
       JSON.stringify({ reponse: 'ok', brief: { dateDebut: '2026-08-15T00:00:00Z' } })
     );
-    const etape = await avancerDialogue(
+    const propose = await avancerDialogue(
       { intention: 'vivre la NBA', avecQui: 'solo', duree: { valeur: 2, unite: 'semaines' } },
       'à partir du 15 août'
     );
-    expect(etape.estComplet).toBe(true);
-    expect(etape.brief.dates).toEqual({
+    expect(propose.etatDialogue?.champ).toBe('dates');
+
+    const rejette = await avancerDialogue(propose.brief, 'non', propose.etatDialogue);
+    expect(rejette.brief.dates).toBeUndefined();
+    expect(rejette.estComplet).toBe(false);
+    expect(rejette.etatDialogue).toBeUndefined();
+    expect(callAI).toHaveBeenCalledTimes(1); // "non" ne déclenche aucun appel LLM
+  });
+
+  it('remplace la candidate quand l’utilisateur donne une autre date pendant la clarification', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({ reponse: 'ok', brief: { dateDebut: '2026-08-15T00:00:00Z' } })
+    );
+    const propose = await avancerDialogue(
+      { intention: 'vivre la NBA', avecQui: 'solo', duree: { valeur: 2, unite: 'semaines' } },
+      'à partir du 15 août'
+    );
+
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({ reponse: 'ok', brief: { dateDebut: '2026-09-01T00:00:00Z' } })
+    );
+    const remplace = await avancerDialogue(propose.brief, 'plutôt le 1er septembre', propose.etatDialogue);
+    expect(remplace.etatDialogue?.valeurCandidate.debut).toBe('2026-09-01T00:00:00.000Z');
+    expect(remplace.brief.dates).toBeUndefined();
+  });
+
+  it('calcule la fin depuis le point de départ + la durée, sans jamais la confier au LLM', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({ reponse: 'ok', brief: { dateDebut: '2026-08-15T00:00:00Z' } })
+    );
+    const propose = await avancerDialogue(
+      { intention: 'vivre la NBA', avecQui: 'solo', duree: { valeur: 2, unite: 'semaines' } },
+      'à partir du 15 août'
+    );
+    expect(propose.etatDialogue?.valeurCandidate).toEqual({
       debut: '2026-08-15T00:00:00.000Z',
       fin: '2026-08-29T00:00:00.000Z',
+    });
+
+    const confirme = await avancerDialogue(propose.brief, 'oui', propose.etatDialogue);
+    expect(confirme.estComplet).toBe(true);
+    // La fin posée à minuit est étendue à la fin de sa journée par
+    // `normaliserDatesBrief`, appliquée à la confirmation.
+    expect(confirme.brief.dates).toEqual({
+      debut: '2026-08-15T00:00:00.000Z',
+      fin: '2026-08-29T23:59:59.999Z',
     });
   });
 
@@ -237,6 +292,74 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     const etape = await avancerDialogue({ intention: 'vivre la NBA' }, 'peu importe');
     expect(etape.brief).toEqual({ intention: 'vivre la NBA' });
     expect(etape.estComplet).toBe(false);
+  });
+});
+
+describe('intake — fusion de l’intention (complément vs remplacement, discriminant validé par Zod)', () => {
+  it('A. une précision ("assister à des matchs en direct") enrichit l’intention sans effacer la NBA', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({
+        reponse: 'Tu pars combien de temps ?',
+        brief: {
+          intention: { texte: 'vivre la NBA', nature: 'remplacement' },
+          duree: { valeur: 3, unite: 'semaines' },
+        },
+      })
+    );
+    const tour1 = await avancerDialogue({}, 'Vivre la NBA pendant 3 semaines');
+    expect(tour1.brief.intention).toBe('vivre la NBA');
+
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({
+        reponse: 'Avec qui pars-tu ?',
+        brief: {
+          intention: { texte: 'assister à des matchs en direct', nature: 'complement' },
+        },
+      })
+    );
+    const tour2 = await avancerDialogue(tour1.brief, 'assister à des matchs en direct');
+    expect(tour2.brief.intention).toContain('vivre la NBA');
+    expect(tour2.brief.intention).toContain('assister à des matchs en direct');
+  });
+
+  it('B. une correction explicite ("finalement... voyage gastronomie") remplace l’ancienne intention', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({
+        reponse: 'Avec qui pars-tu ?',
+        brief: { intention: { texte: 'suivre la NBA', nature: 'remplacement' } },
+      })
+    );
+    const tour1 = await avancerDialogue({}, 'Je veux suivre la NBA');
+    expect(tour1.brief.intention).toBe('suivre la NBA');
+
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: { intention: { texte: 'un voyage gastronomie', nature: 'remplacement' } },
+      })
+    );
+    const tour2 = await avancerDialogue(tour1.brief, 'Finalement je veux un voyage gastronomie');
+    expect(tour2.brief.intention).toBe('un voyage gastronomie');
+    expect(tour2.brief.intention).not.toContain('NBA');
+  });
+
+  it('C. un message sans nouvelle information d’intention conserve l’intention existante', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({ reponse: 'Combien de temps ?', brief: { avecQui: 'solo' } })
+    );
+    const etape = await avancerDialogue({ intention: 'vivre la NBA' }, 'je suis seul');
+    expect(etape.brief.intention).toBe('vivre la NBA');
+  });
+
+  it('ignore un discriminant "nature" mal formé plutôt que de le propager', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({
+        reponse: 'ok',
+        brief: { intention: { texte: 'vivre la NBA', nature: 'peut-etre' } },
+      })
+    );
+    const etape = await avancerDialogue({}, 'je rêve de vivre la NBA');
+    expect(etape.brief.intention).toBeUndefined();
   });
 });
 
@@ -317,7 +440,10 @@ describe('intake F7-B — état déterministe du dialogue de base', () => {
 
   it('une réponse donnée une fois n’est jamais redemandée (intention conservée sur les tours suivants)', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
-      JSON.stringify({ reponse: 'Avec qui pars-tu ?', brief: { intention: 'vivre la NBA' } })
+      JSON.stringify({
+        reponse: 'Avec qui pars-tu ?',
+        brief: { intention: { texte: 'vivre la NBA', nature: 'remplacement' } },
+      })
     );
     const premierTour = await avancerDialogue({}, 'je rêve de vivre la NBA');
     expect(premierTour.brief.intention).toBe('vivre la NBA');
@@ -336,7 +462,11 @@ describe('intake F7-B — état déterministe du dialogue de base', () => {
     vi.mocked(callAI).mockResolvedValue(
       JSON.stringify({
         reponse: 'ok',
-        brief: { intention: 'vivre la NBA', avecQui: 'famille', duree: { valeur: 10, unite: 'jours' } },
+        brief: {
+          intention: { texte: 'vivre la NBA', nature: 'remplacement' },
+          avecQui: 'famille',
+          duree: { valeur: 10, unite: 'jours' },
+        },
       })
     );
     const etape = await avancerDialogue({}, 'On veut vivre la NBA en famille pendant 10 jours');
@@ -1656,7 +1786,7 @@ describe('extraction du brief tolérante aux champs invalides', () => {
       JSON.stringify({
         reponse: 'Vous partez combien de temps ?',
         brief: {
-          intention: 'organiser l’EVG de Max',
+          intention: { texte: 'organiser l’EVG de Max', nature: 'remplacement' },
           avecQui: 'groupe de 8', // invalide : l'enum attend "amis"/"groupe"…
           lieux: ['Bordeaux'],
           budgetTotal: 2800,
@@ -1680,7 +1810,7 @@ describe('extraction du brief tolérante aux champs invalides', () => {
     vi.mocked(callAI).mockResolvedValue(
       JSON.stringify({
         reponse: 'Avec qui partez-vous ?',
-        brief: { intention: 'une soirée', meteo: 'ensoleillé' },
+        brief: { intention: { texte: 'une soirée', nature: 'remplacement' }, meteo: 'ensoleillé' },
       })
     );
 
