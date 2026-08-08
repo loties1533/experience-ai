@@ -19,6 +19,7 @@ import {
   normaliserVillePourComparaison,
   type DemandeTransport,
 } from '../domaine/transport/index.js';
+import { EtatDialoguePreparationGenerationSchema } from './generation/contratPreparation.js';
 
 // Le brief : ce que le dialogue d'intake doit réunir avant de générer.
 // Intention + contexte sont co-égaux (ADR-0005). Le dialogue exige aussi des
@@ -140,16 +141,21 @@ export const BriefPartielSchema = BriefSchema.partial();
  * confirmer. Ne fuit jamais vers `BriefSchema` ni vers la génération : c'est
  * un objet frère du brief, jamais un champ dedans.
  *
- * Un seul champ en a besoin aujourd'hui (une date approximative résolue à
- * partir d'un seul point de départ). Pas de généralisation à d'autres champs
- * tant qu'aucun autre n'a ce même besoin de confirmation en deux temps.
+ * Les dates approximatives et le cadrage de préparation sont les deux seuls
+ * cas qui ont besoin d'un contexte sur le tour suivant. Pas de généralisation
+ * à d'autres champs tant qu'un besoin concret ne la justifie pas.
  */
-export const EtatDialogueSchema = z
+export const EtatDialogueDatesSchema = z
   .object({
     champ: z.literal('dates'),
     valeurCandidate: PlageHoraireSchema,
   })
   .strict();
+
+export const EtatDialogueSchema = z.discriminatedUnion('champ', [
+  EtatDialogueDatesSchema,
+  EtatDialoguePreparationGenerationSchema,
+]);
 
 export type EtatDialogue = z.infer<typeof EtatDialogueSchema>;
 

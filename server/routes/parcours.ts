@@ -18,6 +18,7 @@ import { PreferencesParcoursSchema } from '../domaine/preferences.js';
 import { BriefSchema, BriefPartielSchema, EtatDialogueSchema } from '../agents/brief.js';
 import { avancerDialogue } from '../agents/intake.js';
 import { genererParcours } from '../agents/generation.js';
+import { preparerGeneration } from '../agents/generation/preparation.js';
 import { interpreterDemande } from '../agents/modification.js';
 import { regenererModificationSurCopie } from '../agents/regenerationModification.js';
 import {
@@ -66,7 +67,7 @@ const CorpsDialogueSchema = z.object({
   brief: BriefPartielSchema.default({}),
   message: z.string().min(1).max(500),
   etatDialogue: EtatDialogueSchema.optional(),
-});
+}).strict();
 router.post(
   '/dialogue',
   requireAuth,
@@ -92,9 +93,18 @@ router.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { brief } = req.body as z.infer<typeof CorpsGenerationSchema>;
+      const cadrage = preparerGeneration(brief);
+      if (cadrage.type === 'clarification_requise') {
+        res.status(200).json(cadrage);
+        return;
+      }
+      if (cadrage.type === 'refus') {
+        throw new AppError(cadrage.refus.message, 422);
+      }
+
       const parcours = await genererParcours(brief, await chargerPreferences(req.user!.id));
       await sauvegarderParcours(req.user!.id, parcours);
-      res.status(201).json({ parcours });
+      res.status(201).json({ type: 'parcours_cree', parcours });
     } catch (err) {
       next(err);
     }

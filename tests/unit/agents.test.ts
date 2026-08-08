@@ -145,6 +145,31 @@ describe('brief F7-B — état déterministe du dialogue de base', () => {
 });
 
 describe('intake (IA de dialogue) — extraction validée, jamais de confiance aveugle', () => {
+  it('consomme une clarification de préparation dans l’intake sans la faire entrer dans le Brief', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({ reponse: 'Parfait, je note Paris.', brief: { lieux: ['Paris'] } })
+    );
+    const etape = await avancerDialogue(
+      {
+        intention: 'vivre la NBA',
+        avecQui: 'solo',
+        duree: { valeur: 3, unite: 'semaines' },
+        dates: { debut: '2026-10-01T00:00:00.000Z', fin: '2026-10-21T23:59:59.999Z' },
+      },
+      'Paris',
+      {
+        champ: 'preparation_generation',
+        code: 'zone_geographique_requise',
+        champCible: 'lieux',
+      }
+    );
+
+    expect(vi.mocked(callAI).mock.calls[0][0]).toContain('champ lieux demandé');
+    expect(etape.brief.lieux).toEqual(['Paris']);
+    expect(etape.etatDialogue).toBeUndefined();
+    expect(BriefSchema.safeParse(etape.brief).success).toBe(true);
+  });
+
   it('fusionne l’extraction et pose la question suivante tant que le brief est incomplet', async () => {
     vi.mocked(callAI).mockResolvedValue(
       JSON.stringify({

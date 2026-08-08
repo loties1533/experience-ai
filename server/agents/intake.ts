@@ -1116,6 +1116,10 @@ export async function avancerDialogue(
   const champsBaseValides = ORDRE_CHAMPS_BASE.filter(
     (champ) => briefActuel[champ] !== undefined
   );
+  const clarificationPreparation =
+    etatDialogueActuel?.champ === 'preparation_generation'
+      ? etatDialogueActuel
+      : undefined;
 
   const prompt = `Brief déjà établi : ${JSON.stringify(briefActuel)}
 Dernier message de l'utilisateur : "${sanitizeInput(messageUtilisateur)}"
@@ -1134,6 +1138,11 @@ Repère temporel : nous sommes le ${dateReferenceLisible(contexteTemporel)} (fus
     dateRelativeResolue
       ? `
 Dates déjà résolues pour l'expression temporelle de ce message : du ${dateRelativeResolue.debut} au ${dateRelativeResolue.fin}.`
+      : ''
+  }${
+    clarificationPreparation
+      ? `
+La réponse de l'utilisateur répond à une clarification de préparation. Extrais si possible uniquement le champ ${clarificationPreparation.champCible} demandé ; ne crée aucun état de dialogue et ne répète pas la question.`
       : ''
   }`;
 

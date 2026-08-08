@@ -17,10 +17,15 @@ import type { Brief, BriefPartiel, EtatDialogue } from '../../../server/agents/b
 import type { EtapeDialogue } from '../../../server/agents/intake'
 import type { ResumeParcours } from '../../../server/depots/depotParcours'
 import type { PreferencesParcours } from '../../../server/domaine/preferences'
+import type {
+  ClarificationGeneration,
+  EtatDialoguePreparationGeneration,
+} from '../../../server/agents/generation/contratPreparation'
 
 export type {
   Parcours, Element, DemandeSurElementClient, Participant, Role, Visibilite, Avis,
   Brief, BriefPartiel, EtatDialogue, EtapeDialogue, ResumeParcours, PreferencesParcours,
+  ClarificationGeneration, EtatDialoguePreparationGeneration,
 }
 
 // En développement : Vite proxifie /api → localhost:3000
@@ -80,8 +85,16 @@ export const avancerDialogue = (brief: BriefPartiel, message: string, etatDialog
   })
 
 // ---- Parcours ----
+export type ReponseGeneration =
+  | { type: 'parcours_cree'; parcours: Parcours }
+  | {
+      type: 'clarification_requise'
+      clarification: ClarificationGeneration
+      etatDialogue: EtatDialoguePreparationGeneration
+    }
+
 export const genererParcours = (brief: Brief) =>
-  request<{ parcours: Parcours }>('/parcours', { method: 'POST', body: JSON.stringify({ brief }) })
+  request<ReponseGeneration>('/parcours', { method: 'POST', body: JSON.stringify({ brief }) })
 
 export const listerParcours = () => request<{ parcours: ResumeParcours[] }>('/parcours')
 

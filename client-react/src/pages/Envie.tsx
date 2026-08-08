@@ -78,7 +78,14 @@ export default function Envie() {
     setErreurGeneration(null)
     try {
       // Le brief est complet (estComplet) : le serveur revalide de toute façon.
-      const { parcours } = await genererParcours(brief as Brief)
+      const resultat = await genererParcours(brief as Brief)
+      if (resultat.type === 'clarification_requise') {
+        mettreAJourBrief(brief, false, resultat.etatDialogue)
+        ajouterMessage('produit', resultat.clarification.question)
+        setGenerationEnCours(false)
+        return
+      }
+      const { parcours } = resultat
       reinitialiser()
       toast.success('Votre parcours est prêt')
       navigate(`/parcours/${parcours.id}`)

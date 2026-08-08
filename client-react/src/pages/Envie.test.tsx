@@ -13,12 +13,13 @@ vi.mock('../lib/api', async () => {
   const reel = await vi.importActual<typeof import('../lib/api')>('../lib/api')
   return { ...reel, genererParcours: vi.fn(), avancerDialogue: vi.fn() }
 })
-import { genererParcours } from '../lib/api'
+import { avancerDialogue, genererParcours } from '../lib/api'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 beforeEach(() => {
-  useDialogueStore.setState({ messages: [], brief: {}, estComplet: false })
+  Element.prototype.scrollIntoView = vi.fn()
+  useDialogueStore.setState({ messages: [], brief: {}, estComplet: false, etatDialogue: undefined })
   useAuthStore.setState({ user: { id: 'u1', email: 'a@b.fr' } })
 })
 
@@ -64,6 +65,46 @@ describe('Envie', () => {
     const banniere = await screen.findByRole('alert')
     expect(banniere).toHaveTextContent('Impossible de construire ce parcours en l’état.')
     expect(screen.getByRole('button', { name: 'Reformuler' })).toBeInTheDocument()
+  })
+
+  it('reçoit une clarification structurée dans le dialogue et transmet son état à la réponse suivante', async () => {
+    const brief = {
+      intention: 'Vivre la NBA',
+      avecQui: 'solo' as const,
+      duree: { valeur: 3, unite: 'semaines' as const },
+    }
+    const etatDialogue = {
+      champ: 'preparation_generation' as const,
+      code: 'zone_geographique_requise' as const,
+      champCible: 'lieux' as const,
+    }
+    useDialogueStore.setState({ brief, estComplet: true })
+    vi.mocked(genererParcours).mockResolvedValue({
+      type: 'clarification_requise',
+      clarification: {
+        code: 'zone_geographique_requise',
+        question: 'Tu préfères rester en Europe ou aller plus loin ?',
+        champCible: 'lieux',
+      },
+      etatDialogue,
+    })
+    vi.mocked(avancerDialogue).mockResolvedValue({
+      brief: { ...brief, lieux: ['Paris'] },
+      estComplet: true,
+      reponse: 'Parfait, Paris est noté.',
+    })
+    rendreEnvie()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Construire mon parcours' }))
+    expect(await screen.findByText('Tu préfères rester en Europe ou aller plus loin ?')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Décris ton envie' })).not.toBeDisabled()
+    expect(useDialogueStore.getState().etatDialogue).toEqual(etatDialogue)
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Décris ton envie' }), { target: { value: 'Paris' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }))
+    await waitFor(() => {
+      expect(avancerDialogue).toHaveBeenCalledWith(brief, 'Paris', etatDialogue)
+    })
   })
 
   it('n’affiche pas le pied de page — longueur inutile sur mobile alors que le formulaire doit rester la dernière chose atteignable', () => {
