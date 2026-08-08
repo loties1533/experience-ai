@@ -1,14 +1,13 @@
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { Brief } from '../brief.js';
+import {
+  ContextePlanifiableSchema,
+  type ContextePlanifiable,
+  type EtapePlanifiable,
+} from './contratPreparation.js';
 
-// --- F5 : plan de génération dérivé, puis génération progressive par lots ---
-//
-// Le plan (F5-A) découpe un parcours en lots par ville et par blocs de jours.
-// F5-B le branche réellement : chaque lot est généré par son propre appel IA,
-// restreint à sa ville et à sa plage, validé et namespacé, avant assemblage.
-// L'ancien appel IA unique a disparu — le cas mono-lot emprunte exactement le
-// même pipeline progressif.
+// --- PR2 : contexte préparé → plan déterministe de lots ---
+// Ce module ne connaît ni Brief, ni fournisseur, ni LLM. Les étapes y sont
+// déjà décidées par la préparation ; il ne fait que les découper en lots.
 
 const JOURS_MAX_PAR_LOT = 5;
 
@@ -24,16 +23,27 @@ const LotPrevuSchema = z
     id: z.string().min(1),
     ville: z.string().min(1).optional(),
     plage: PlageJoursSchema.optional(),
+    ancres: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+
+const TransitionPlanifieeSchema = z
+  .object({
+    origine: z.string().min(1),
+    destination: z.string().min(1),
   })
   .strict();
 
 const PlanGenerationSchema = z
-  .object({ lots: z.array(LotPrevuSchema).min(1) })
+  .object({
+    lots: z.array(LotPrevuSchema).min(1),
+    transitions: z.array(TransitionPlanifieeSchema).default([]),
+  })
   .strict();
 
 export type PlanGeneration = z.infer<typeof PlanGenerationSchema>;
-
 export type LotPrevu = PlanGeneration['lots'][number];
+export type TransitionPlanifiee = PlanGeneration['transitions'][number];
 
 // On raisonne en jours civils : seule la partie AAAA-MM-JJ compte, jamais
 // l'heure ni un fuseau. Le numéro de jour est un simple indice entier continu.
@@ -50,12 +60,14 @@ function dateCivileDepuisNumero(numero: number): string {
   return `${annee}-${mois}-${jour}`;
 }
 
-/**
- * Découpe une plage de jours civils inclusifs en blocs équilibrés de 2 à 5
- * jours, sans trou ni chevauchement. Un unique jour disponible reste un seul
- * bloc d'un jour (cas légitime) ; au-delà, aucun bloc orphelin d'un jour n'est
- * produit — la répartition la plus égale possible l'empêche.
- */
+function plagesDepuisEtape(
+  etape: EtapePlanifiable,
+  plageParDefaut: { debut: string; fin: string } | undefined
+): { debut: string; fin: string } | undefined {
+  return etape.plage ?? plageParDefaut;
+}
+
+/** Découpe une plage inclusive en blocs équilibrés de 2 à 5 jours. */
 function decouperEnBlocsDeJours(
   debut: string,
   fin: string
@@ -66,7 +78,6 @@ function decouperEnBlocsDeJours(
   const nombreLots = Math.max(1, Math.ceil(totalJours / JOURS_MAX_PAR_LOT));
   const base = Math.floor(totalJours / nombreLots);
   const reste = totalJours % nombreLots;
-
   const blocs: { debut: string; fin: string }[] = [];
   let curseur = premier;
   for (let index = 0; index < nombreLots; index += 1) {
@@ -81,64 +92,121 @@ function decouperEnBlocsDeJours(
   return blocs;
 }
 
+function transitionsDepuisEtapes(
+  etapes: EtapePlanifiable[]
+): TransitionPlanifiee[] {
+  const transitions: TransitionPlanifiee[] = [];
+  for (let index = 1; index < etapes.length; index += 1) {
+    const origine = etapes[index - 1].ville?.nom;
+    const destination = etapes[index].ville?.nom;
+    if (origine && destination && origine !== destination) {
+      transitions.push({ origine, destination });
+    }
+  }
+  return transitions;
+}
+
+function lotsSansPlage(etapes: EtapePlanifiable[]): PlanGeneration['lots'] {
+  return etapes.map((etape, index) => ({
+    id: `lot-${index}`,
+    ...(etape.ville ? { ville: etape.ville.nom } : {}),
+    ancres: etape.ancres,
+  }));
+}
+
 /**
- * Dérive le plan de génération à partir du seul brief, sans appel IA ni réseau.
- *
- * - Sans ville : un lot unique, sans étape géographique.
- * - Sans dates réelles : un lot par ville, sans plage (aucun jour attribuable).
- * - Une ville datée : la plage entière découpée en blocs de jours.
- * - Plusieurs villes datées : répartition contiguë et équilibrée des jours,
- *   puis blocs par ville — sauf si chaque ville ne peut recevoir deux jours,
- *   auquel cas on renonce aux plages plutôt que de créer un lot orphelin.
+ * Dérive les lots depuis les seules étapes préparées. Même entrée, même plan :
+ * les identifiants sont des positions stables, jamais des UUID aléatoires.
  */
-export function deriverPlan(brief: Brief): PlanGeneration {
-  const villes = brief.lieux;
+export function deriverPlan(contexteRecu: ContextePlanifiable): PlanGeneration {
+  const contexte = ContextePlanifiableSchema.parse(contexteRecu);
+  const etapes = contexte.etapes;
 
-  if (villes.length === 0) {
-    return PlanGenerationSchema.parse({ lots: [{ id: randomUUID() }] });
-  }
-
-  if (!brief.dates) {
+  // Dette PR2 explicitement limitée : ne pas inventer de localisation avant
+  // PR3/PR4. Le lot sans ville demeure compatible avec le moteur actuel.
+  if (contexte.strategie === 'compatibilite_sans_localisation') {
     return PlanGenerationSchema.parse({
-      lots: villes.map((ville) => ({ id: randomUUID(), ville })),
+      lots: [{ id: 'lot-0', ancres: [] }],
+      transitions: [],
     });
   }
 
-  const debut = brief.dates.debut.slice(0, 10);
-  const fin = brief.dates.fin.slice(0, 10);
-  const totalJours = numeroDeJour(fin) - numeroDeJour(debut) + 1;
+  const plageGlobale = contexte.contraintesConservees.dates
+    ? {
+        debut: contexte.contraintesConservees.dates.debut.slice(0, 10),
+        fin: contexte.contraintesConservees.dates.fin.slice(0, 10),
+      }
+    : undefined;
+  const transitions = transitionsDepuisEtapes(etapes);
+  const plagesExplicites = etapes.map((etape) =>
+    plagesDepuisEtape(etape, undefined)
+  );
+  if (plagesExplicites.some((plage) => plage !== undefined)) {
+    const lots: PlanGeneration['lots'] = [];
+    etapes.forEach((etape, index) => {
+      const plage = plagesExplicites[index] ?? plageGlobale;
+      if (!plage) {
+        lots.push({
+          id: `lot-${lots.length}`,
+          ...(etape.ville ? { ville: etape.ville.nom } : {}),
+          ancres: etape.ancres,
+        });
+        return;
+      }
+      for (const bloc of decouperEnBlocsDeJours(plage.debut, plage.fin)) {
+        lots.push({
+          id: `lot-${lots.length}`,
+          ville: etape.ville?.nom,
+          plage: bloc,
+          ancres: etape.ancres,
+        });
+      }
+    });
+    return PlanGenerationSchema.parse({ lots, transitions });
+  }
 
-  if (villes.length === 1) {
-    return PlanGenerationSchema.parse({
-      lots: decouperEnBlocsDeJours(debut, fin).map((plage) => ({
-        id: randomUUID(),
-        ville: villes[0],
+  if (!plageGlobale) {
+    return PlanGenerationSchema.parse({ lots: lotsSansPlage(etapes), transitions });
+  }
+
+  if (etapes.length === 1) {
+    const lots = decouperEnBlocsDeJours(plageGlobale.debut, plageGlobale.fin).map(
+      (plage, index) => ({
+        id: `lot-${index}`,
+        ville: etapes[0].ville?.nom,
         plage,
-      })),
-    });
+        ancres: etapes[0].ancres,
+      })
+    );
+    return PlanGenerationSchema.parse({ lots, transitions });
   }
 
-  if (totalJours < 2 * villes.length) {
-    return PlanGenerationSchema.parse({
-      lots: villes.map((ville) => ({ id: randomUUID(), ville })),
-    });
+  const totalJours =
+    numeroDeJour(plageGlobale.fin) - numeroDeJour(plageGlobale.debut) + 1;
+  if (totalJours < 2 * etapes.length) {
+    return PlanGenerationSchema.parse({ lots: lotsSansPlage(etapes), transitions });
   }
 
-  const premier = numeroDeJour(debut);
-  const base = Math.floor(totalJours / villes.length);
-  const reste = totalJours % villes.length;
+  const premier = numeroDeJour(plageGlobale.debut);
+  const base = Math.floor(totalJours / etapes.length);
+  const reste = totalJours % etapes.length;
   const lots: PlanGeneration['lots'] = [];
   let curseur = premier;
-  villes.forEach((ville, index) => {
+  etapes.forEach((etape, index) => {
     const taille = base + (index < reste ? 1 : 0);
     const finTranche = curseur + taille - 1;
     for (const plage of decouperEnBlocsDeJours(
       dateCivileDepuisNumero(curseur),
       dateCivileDepuisNumero(finTranche)
     )) {
-      lots.push({ id: randomUUID(), ville, plage });
+      lots.push({
+        id: `lot-${lots.length}`,
+        ville: etape.ville?.nom,
+        plage,
+        ancres: etape.ancres,
+      });
     }
     curseur = finTranche + 1;
   });
-  return PlanGenerationSchema.parse({ lots });
+  return PlanGenerationSchema.parse({ lots, transitions });
 }

@@ -27,6 +27,14 @@ import {
   type Brief,
 } from './brief.js';
 import { deriverPlan } from './generation/plan.js';
+import {
+  construireContextePlanifiable,
+  villesPlanifiees,
+} from './generation/preparation.js';
+import {
+  ContextePlanifiableSchema,
+  type ContextePlanifiable,
+} from './generation/contratPreparation.js';
 import type { MomentGenere } from './generation/contratLLM.js';
 import {
   momentDeTransition,
@@ -262,18 +270,20 @@ function ajouterLiensRechercheHebergement(parcours: Parcours): Parcours {
  * Génère chaque lot dans l'ordre du plan, avec reprise ciblée sur la seule
  * indisponibilité technique (503) et sans jamais régénérer un lot déjà validé.
  * Chaque TENTATIVE reçoit sa propre boîte à outils, restreinte à la seule
- * ville du lot (jamais aux autres villes du brief) : ni un échec ni une
+ * ville du lot (jamais aux autres villes du contexte) : ni un échec ni une
  * réussite précédente ne laissent de journal résiduel fuiter dans la
  * suivante. Seuls les candidats d'une tentative VALIDÉE rejoignent la boîte
  * d'agrégat utilisée pour la résolution finale des liens.
  */
 async function genererEtAssemblerLots(
   brief: Brief,
+  contextePlanifiable: ContextePlanifiable,
   blocPreferences: string,
   demandeTransport: DemandeTransport | undefined,
   options: OptionsGenerationParcours = {}
 ): Promise<{ moments: MomentGenere[]; ambiance?: string; boiteAgregat: BoiteAOutils }> {
-  const plan = deriverPlan(brief);
+  const plan = deriverPlan(contextePlanifiable);
+  const villesDuContexte = villesPlanifiees(contextePlanifiable);
   const momentsParLot: MomentGenere[][] = [];
   const candidatsValides: CandidatJournal[] = [];
   let ambiance: string | undefined;
@@ -282,7 +292,7 @@ async function genererEtAssemblerLots(
     const lot = plan.lots[index];
     const prompt = `Construis un parcours pour ce brief :
 ${JSON.stringify(briefPourLot(brief, lot, plan.lots.length === 1), null, 2)}${blocPreferences}`;
-    const villesAutoriseesDuLot = lot.ville ? [lot.ville] : brief.lieux;
+    const villesAutoriseesDuLot = lot.ville ? [lot.ville] : villesDuContexte;
 
     let tentative = 0;
     for (;;) {
@@ -333,17 +343,21 @@ ${JSON.stringify(briefPourLot(brief, lot, plan.lots.length === 1), null, 2)}${bl
       demandeTransport &&
       suivant?.ville &&
       villeCourante &&
-      cleTexte(villeCourante) !== cleTexte(suivant.ville)
+      plan.transitions.some(
+        (transition) =>
+          cleTexte(transition.origine) === cleTexte(villeCourante) &&
+          cleTexte(transition.destination) === cleTexte(suivant.ville as string)
+      )
     ) {
       momentsAssembles.push(momentDeTransition(index));
     }
   }
 
-  // Boîte d'agrégat : les villes autorisées couvrent tout le brief (la
+  // Boîte d'agrégat : les villes autorisées couvrent tout le contexte (la
   // résolution finale travaille sur l'ensemble des moments assemblés), mais
   // son journal ne contient QUE les candidats de tentatives déjà validées.
   const boiteAgregat = creerBoiteAOutils({
-    villesAutorisees: brief.lieux,
+    villesAutorisees: villesDuContexte,
     candidatsInitiaux: candidatsValides,
   });
 
@@ -363,7 +377,8 @@ ${JSON.stringify(briefPourLot(brief, lot, plan.lots.length === 1), null, 2)}${bl
 export async function genererParcours(
   briefRecu: Brief,
   preferences: PreferencesParcours | null = null,
-  options: OptionsGenerationParcours = {}
+  options: OptionsGenerationParcours = {},
+  contextePlanifiableRecu?: ContextePlanifiable
 ): Promise<Parcours> {
   const resultatBrief = BriefSchema.safeParse(briefRecu);
   if (!resultatBrief.success) {
@@ -374,6 +389,12 @@ export async function genererParcours(
   // aussi, et pas seulement à l'intake, car un brief peut arriver directement
   // par l'API sans être passé par le dialogue.
   const brief = normaliserDatesBrief(resultatBrief.data);
+  // Compatibilité temporaire des appels internes directs : la route publique
+  // transmet le contexte issu de préparerGeneration(). Dans les tests et les
+  // usages internes hérités, on dérive la même projection déterministe ici.
+  const contextePlanifiable = contextePlanifiableRecu
+    ? ContextePlanifiableSchema.parse(contextePlanifiableRecu)
+    : construireContextePlanifiable(brief);
   // Un refus métier local précède tout appel à l'IA ou à un fournisseur :
   // une occupation manquante n'est jamais une panne technique (503).
   validerDonneesHotelieresEssentielles(brief);
@@ -396,7 +417,13 @@ ${JSON.stringify(preferences, null, 2)}`
     moments: momentsAssembles,
     ambiance: ambianceGeneree,
     boiteAgregat,
-  } = await genererEtAssemblerLots(brief, blocPreferences, demandeTransport, options);
+  } = await genererEtAssemblerLots(
+    brief,
+    contextePlanifiable,
+    blocPreferences,
+    demandeTransport,
+    options
+  );
   const momentsNettoyes = nettoyerMomentsTransport(
     momentsAssembles,
     demandeTransport
@@ -416,7 +443,7 @@ ${JSON.stringify(preferences, null, 2)}`
   const preparation = preparerMomentsPourResolution(
     momentsNettoyes,
     boiteAgregat,
-    brief.lieux,
+    villesPlanifiees(contextePlanifiable),
   );
   const resolutionsLien = await resoudreDemandesLien(
     preparation.demandes,
