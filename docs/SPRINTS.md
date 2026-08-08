@@ -42,12 +42,18 @@
   reste une panne technique (`503`) ; une prose LLM hors contrat reste `502` ;
 - les transitions entre villes découvertes restent des transports génériques à
   organiser, sans trajet, opérateur ni horaire inventé.
+- correction de recette avant merge : dans le seul vertical slice NBA,
+  `États-Unis`, `Etats-Unis`, `USA` et `US` présents dans `Brief.lieux` sont
+  interprétés comme le filtre fournisseur `US`, jamais comme une ville ; une
+  vraie ville restante (par exemple Boston) conserve le chemin
+  `villes_du_brief`, sans mutation du Brief.
 
 `compatibilite_sans_localisation` reste réservée aux intentions non
 événementielles ou non encore couvertes ; elle est interdite pour le cas NBA
-event-first. Cette PR ne généralise pas encore la stratégie aux autres envies.
+event-first. Cette PR ne généralise pas encore la stratégie aux autres envies
+et ne modifie pas la dette hôtelière identifiée en recette.
 
-Validation locale : 69 fichiers / 1 919 tests, TypeScript serveur et client,
+Validation locale : 69 fichiers / 1 924 tests, TypeScript serveur et client,
 lint et build client.
 
 **Préparation de génération — PR3 : recherche PredictHQ event-first** *(à relire)*

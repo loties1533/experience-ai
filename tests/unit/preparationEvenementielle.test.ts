@@ -10,6 +10,7 @@ vi.mock('../../server/services/predictHQ.js', () => ({
 const { BriefSchema } = await import('../../server/agents/brief.js');
 const {
   construireEtapesEvenementielles,
+  estDemandeNBAEvenementielle,
   preparerGeneration,
   selectionnerEvenementsEventFirst,
 } = await import('../../server/agents/generation/preparation.js');
@@ -40,6 +41,18 @@ const BRIEF_NBA = BriefSchema.parse({
   duree: { valeur: 3, unite: 'semaines' },
   dates: { debut: '2027-01-15T00:00:00.000Z', fin: '2027-02-10T23:59:59.999Z' },
   contraintes: ['aux États-Unis'],
+});
+
+const BRIEF_RECETTE = BriefSchema.parse({
+  intention: 'Vivre la NBA ; voir des matchs en direct',
+  avecQui: 'solo',
+  duree: { valeur: 3, unite: 'semaines' },
+  dates: {
+    debut: '2027-01-15T00:00:00.000Z',
+    fin: '2027-02-10T00:00:00.000Z',
+  },
+  lieux: ['États-Unis'],
+  budgetTotal: 9000,
 });
 
 describe('préparation événementielle NBA', () => {
@@ -77,6 +90,83 @@ describe('préparation événementielle NBA', () => {
       },
     });
     expect(BRIEF_NBA.lieux).toEqual([]);
+  });
+
+  it('interprète le pays du Brief réel comme filtre US sans le projeter en ville', async () => {
+    rechercherEvenementsPredictHQEventFirst.mockResolvedValue({
+      statut: 'ok',
+      recupereLe: '2026-08-08T12:00:00.000Z',
+      resultats: [evenement('evt-boston', 'Boston', '2027-01-18T00:30:00.000Z')],
+    });
+
+    const resultat = await preparerGeneration(BRIEF_RECETTE);
+
+    expect(estDemandeNBAEvenementielle(BRIEF_RECETTE)).toBe(true);
+    expect(rechercherEvenementsPredictHQEventFirst).toHaveBeenCalledWith({
+      requete: 'NBA',
+      dateDebut: '2027-01-15',
+      dateFin: '2027-02-10',
+      categorie: 'sports',
+      pays: 'US',
+    });
+    expect(resultat).toMatchObject({
+      type: 'planifiable',
+      contexte: {
+        strategie: 'decouverte_evenementielle',
+        etapes: [{ ville: { nom: 'Boston', origine: 'fournisseur' } }],
+      },
+    });
+    if (resultat.type === 'planifiable') {
+      expect(resultat.contexte.etapes.map((etape) => etape.ville?.nom)).not.toContain(
+        'États-Unis'
+      );
+    }
+    expect(BRIEF_RECETTE.lieux).toEqual(['États-Unis']);
+  });
+
+  it.each(['Etats-Unis', 'USA', 'US'])(
+    'reconnaît %s comme zone US pour la seule stratégie NBA',
+    async (zone) => {
+      rechercherEvenementsPredictHQEventFirst.mockResolvedValue({
+        statut: 'ok',
+        recupereLe: '2026-08-08T12:00:00.000Z',
+        resultats: [evenement('evt-boston', 'Boston', '2027-01-18T00:30:00.000Z')],
+      });
+      const brief = BriefSchema.parse({ ...BRIEF_RECETTE, lieux: [zone] });
+
+      const resultat = await preparerGeneration(brief);
+
+      expect(rechercherEvenementsPredictHQEventFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ pays: 'US' })
+      );
+      expect(resultat).toMatchObject({
+        type: 'planifiable',
+        contexte: { strategie: 'decouverte_evenementielle' },
+      });
+      expect(brief.lieux).toEqual([zone]);
+    }
+  );
+
+  it('conserve Boston explicite et exclut la zone US des étapes du chemin villes', async () => {
+    const brief = BriefSchema.parse({
+      ...BRIEF_RECETTE,
+      lieux: ['États-Unis', 'Boston'],
+    });
+
+    const resultat = await preparerGeneration(brief);
+
+    expect(rechercherEvenementsPredictHQEventFirst).not.toHaveBeenCalled();
+    expect(resultat).toMatchObject({
+      type: 'planifiable',
+      contexte: {
+        strategie: 'villes_du_brief',
+        etapes: [{ ville: { nom: 'Boston', origine: 'utilisateur' } }],
+      },
+    });
+    if (resultat.type === 'planifiable') {
+      expect(resultat.contexte.etapes).toHaveLength(1);
+    }
+    expect(brief.lieux).toEqual(['États-Unis', 'Boston']);
   });
 
   it('conserve le chemin villes du brief et ignore les intentions non événementielles', async () => {

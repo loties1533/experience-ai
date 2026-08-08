@@ -25,8 +25,19 @@ export function estDemandeNBAEvenementielle(brief: Brief): boolean {
   return /\bnba\b/.test(normaliserTexte(brief.intention));
 }
 
+/** Périmètre volontairement NBA/US : aucun classifieur géographique général. */
+function estZonePaysUSNBA(lieu: string): boolean {
+  return /^(?:etats unis|usa|us)$/.test(normaliserTexte(lieu));
+}
+
+function villesExplicitesNBA(brief: Brief): string[] {
+  return brief.lieux.filter((lieu) => !estZonePaysUSNBA(lieu));
+}
+
 function paysNBAConfirme(brief: Brief): 'US' | undefined {
-  const texte = normaliserTexte([brief.intention, ...brief.contraintes].join(' '));
+  const texte = normaliserTexte(
+    [brief.intention, ...brief.contraintes, ...brief.lieux].join(' ')
+  );
   return /\b(etats unis|usa|us)\b/.test(texte) ? 'US' : undefined;
 }
 
@@ -125,16 +136,19 @@ export function villesPlanifiees(contexte: ContextePlanifiable): string[] {
 }
 
 /** Projection déterministe du brief confirmé hors stratégie événementielle. */
-export function construireContextePlanifiable(brief: Brief): ContextePlanifiable {
+function construireContextePlanifiableDepuisVilles(
+  brief: Brief,
+  villes: string[]
+): ContextePlanifiable {
   const contraintesConservees = {
     ...(brief.dates ? { dates: brief.dates } : {}),
     ...(brief.budgetTotal === undefined ? {} : { budgetTotal: brief.budgetTotal }),
   };
 
-  if (brief.lieux.length > 0) {
+  if (villes.length > 0) {
     return ContextePlanifiableSchema.parse({
       strategie: 'villes_du_brief',
-      etapes: brief.lieux.map((nom) => ({
+      etapes: villes.map((nom) => ({
         ville: { nom, origine: 'utilisateur' },
         ancres: [],
       })),
@@ -149,15 +163,27 @@ export function construireContextePlanifiable(brief: Brief): ContextePlanifiable
   });
 }
 
+export function construireContextePlanifiable(brief: Brief): ContextePlanifiable {
+  return construireContextePlanifiableDepuisVilles(brief, brief.lieux);
+}
+
 /**
  * Prépare le seul vertical slice event-first PR4. Les intentions non NBA ou
  * les villes explicitement demandées conservent la projection PR2 inchangée.
  */
 export async function preparerGeneration(brief: Brief): Promise<ResultatCadrageGeneration> {
-  if (!estDemandeNBAEvenementielle(brief) || brief.lieux.length > 0 || !brief.dates) {
+  if (!estDemandeNBAEvenementielle(brief)) {
     return ResultatCadrageGenerationSchema.parse({
       type: 'planifiable',
       contexte: construireContextePlanifiable(brief),
+    });
+  }
+
+  const villesExplicites = villesExplicitesNBA(brief);
+  if (villesExplicites.length > 0 || !brief.dates) {
+    return ResultatCadrageGenerationSchema.parse({
+      type: 'planifiable',
+      contexte: construireContextePlanifiableDepuisVilles(brief, villesExplicites),
     });
   }
 
