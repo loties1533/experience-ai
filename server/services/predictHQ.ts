@@ -7,12 +7,16 @@ import {
   estTimeout,
   rechercheIndisponible,
   resultatVide,
+  type CandidatEvenementEventFirst,
   type CandidatEvenementExterne,
   type ResultatRecherche,
 } from './rechercheExterne.js';
 
 const URL_BASE_PREDICTHQ = 'https://api.predicthq.com/v1';
 const SOURCE_PREDICTHQ = `${URL_BASE_PREDICTHQ}/events/`;
+const LIMITE_EVENT_FIRST_DEFAUT = 12;
+const LIMITE_EVENT_FIRST_MAX = 12;
+const NOMBRE_MAX_PAGES_EVENT_FIRST = 2;
 
 // Catégories PredictHQ selon le mode de voyage
 const CATEGORIES_PAR_MODE: Record<TravelMode, string> = {
@@ -39,6 +43,15 @@ const EntitePredictHQSchema = z.object({
   formatted_address: z.string().optional(),
 });
 
+const AdresseGeoPredictHQSchema = z.object({
+  locality: z.string().min(1).optional(),
+  country_code: z.string().regex(/^[A-Za-z]{2}$/).optional(),
+});
+
+const GeoPredictHQSchema = z.object({
+  address: AdresseGeoPredictHQSchema.optional(),
+});
+
 const EvenementPredictHQSchema = z
   .object({
     id: z.string().min(1),
@@ -50,6 +63,7 @@ const EvenementPredictHQSchema = z
     entities: z.array(EntitePredictHQSchema).optional(),
     local_rank: z.number().optional(),
     rank: z.number().optional(),
+    geo: GeoPredictHQSchema.optional(),
   })
   .refine(
     (evenement) => !evenement.end || Date.parse(evenement.end) >= Date.parse(evenement.start),
@@ -59,6 +73,24 @@ const EvenementPredictHQSchema = z
 const ReponseEvenementsPredictHQSchema = z.object({
   results: z.array(EvenementPredictHQSchema),
 });
+
+export const DemandeRechercheEvenementsEventFirstSchema = z
+  .object({
+    requete: z.string().trim().min(1),
+    dateDebut: z.iso.date(),
+    dateFin: z.iso.date(),
+    categorie: z.literal('sports').optional(),
+    pays: z.string().regex(/^[A-Z]{2}$/).optional(),
+    limite: z.number().int().min(1).max(LIMITE_EVENT_FIRST_MAX).optional(),
+  })
+  .strict()
+  .refine((demande) => demande.dateDebut <= demande.dateFin, {
+    message: 'La date de début doit précéder ou égaler la date de fin.',
+  });
+
+export type DemandeRechercheEvenementsEventFirst = z.infer<
+  typeof DemandeRechercheEvenementsEventFirstSchema
+>;
 
 interface VillePredictHQ {
   identifiantExterne: string;
@@ -103,6 +135,141 @@ function evenementDansPeriode(
 ): boolean {
   const jourEvenement = dateEvenement.slice(0, 10);
   return jourEvenement >= dateDebut && jourEvenement <= dateFin;
+}
+
+function evenementCorrespondCategorie(
+  evenement: z.infer<typeof EvenementPredictHQSchema>,
+  categorie: 'sports' | undefined
+): boolean {
+  return categorie === undefined || evenement.category === categorie;
+}
+
+function villeFournieParEvenement(
+  evenement: z.infer<typeof EvenementPredictHQSchema>
+): { ville: string; codePays?: string } | undefined {
+  const adresse = evenement.geo?.address;
+  const ville = adresse?.locality?.trim();
+  if (!ville) return undefined;
+  return {
+    ville,
+    ...(adresse?.country_code
+      ? { codePays: adresse.country_code.toUpperCase() }
+      : {}),
+  };
+}
+
+function salleFournieParEvenement(
+  evenement: z.infer<typeof EvenementPredictHQSchema>
+): string | undefined {
+  return evenement.entities?.find((entite) => entite.type === 'venue')?.name;
+}
+
+function evenementCorrespondPays(
+  codePays: string | undefined,
+  paysDemande: string | undefined
+): boolean {
+  return paysDemande === undefined || codePays === paysDemande;
+}
+
+/**
+ * Recherche directe dans Events, sans appel Places ni ville préalable.
+ * La fenêtre est stricte : seul le jour de début de l'événement doit être
+ * compris dans les dates demandées, même si l'API renvoie un chevauchement.
+ */
+export async function rechercherEvenementsPredictHQEventFirst(
+  demandeRecue: unknown
+): Promise<ResultatRecherche<CandidatEvenementEventFirst>> {
+  const demande = DemandeRechercheEvenementsEventFirstSchema.parse(demandeRecue);
+  const clePredictHQ = process.env.PREDICTHQ_API_KEY;
+  if (!clePredictHQ) {
+    console.warn('PredictHQ event-first ignoré (PREDICTHQ_API_KEY manquante).');
+    return rechercheIndisponible('PredictHQ', 'configuration_absente');
+  }
+
+  const limite = demande.limite ?? LIMITE_EVENT_FIRST_DEFAUT;
+  const candidats: CandidatEvenementEventFirst[] = [];
+  let resultatsFournisseur = 0;
+  let recupereLe: string | undefined;
+
+  try {
+    for (
+      let page = 0;
+      page < NOMBRE_MAX_PAGES_EVENT_FIRST && candidats.length < limite;
+      page += 1
+    ) {
+      const parametresRequete = new URLSearchParams({
+        q: demande.requete,
+        'active.gte': demande.dateDebut,
+        'active.lte': demande.dateFin,
+        limit: String(limite),
+        offset: String(page * limite),
+      });
+      if (demande.categorie) parametresRequete.set('category', demande.categorie);
+      if (demande.pays) parametresRequete.set('country', demande.pays);
+
+      const reponse = await fetch(`${SOURCE_PREDICTHQ}?${parametresRequete}`, {
+        headers: { Authorization: `Bearer ${clePredictHQ}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!reponse.ok) {
+        console.warn(`[predicthq.event-first] http=${reponse.status}`);
+        return rechercheIndisponible('PredictHQ', causeErreurHttp(reponse.status));
+      }
+
+      recupereLe ??= new Date().toISOString();
+      let contenu: unknown;
+      try {
+        contenu = await reponse.json();
+      } catch {
+        return rechercheIndisponible('PredictHQ', 'reponse_invalide');
+      }
+      const validation = ReponseEvenementsPredictHQSchema.safeParse(contenu);
+      if (!validation.success) {
+        console.warn('[predicthq.event-first] réponse API invalide.');
+        return rechercheIndisponible('PredictHQ', 'reponse_invalide');
+      }
+
+      const evenements = validation.data.results;
+      resultatsFournisseur += evenements.length;
+      for (const evenement of evenements) {
+        if (!evenementDansPeriode(evenement.start, demande.dateDebut, demande.dateFin)) continue;
+        if (!evenementCorrespondCategorie(evenement, demande.categorie)) continue;
+        const localisation = villeFournieParEvenement(evenement);
+        if (!localisation) continue;
+        if (!evenementCorrespondPays(localisation.codePays, demande.pays)) continue;
+        const salle = salleFournieParEvenement(evenement);
+
+        candidats.push({
+          identifiantExterne: evenement.id,
+          nom: evenement.title,
+          ville: localisation.ville,
+          ...(localisation.codePays ? { codePays: localisation.codePays } : {}),
+          dateDebut: evenement.start,
+          ...(evenement.end ? { dateFin: evenement.end } : {}),
+          ...(salle ? { salle } : {}),
+          fournisseur: 'PredictHQ',
+          source: SOURCE_PREDICTHQ,
+          recupereLe,
+        });
+        if (candidats.length === limite) break;
+      }
+
+      if (evenements.length < limite) break;
+    }
+  } catch (erreur) {
+    const raison = estTimeout(erreur) ? 'timeout' : 'reseau';
+    console.warn('[predicthq.event-first] indisponible :', (erreur as Error).message);
+    return rechercheIndisponible('PredictHQ', raison);
+  }
+
+  const recupere = recupereLe ?? new Date().toISOString();
+  console.info(
+    `[predicthq.event-first] query=${demande.requete} dates=${demande.dateDebut}..${demande.dateFin} ` +
+      `country=${demande.pays ?? '-'} results=${resultatsFournisseur} usable=${candidats.length}`
+  );
+  return candidats.length > 0
+    ? { statut: 'ok', resultats: candidats, recupereLe: recupere }
+    : resultatVide(recupere);
 }
 
 /** Étape 1 : récupère l'identifiant PredictHQ de la ville, s'il existe. */

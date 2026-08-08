@@ -28,6 +28,23 @@
 
 ### Board — avancement du chantier
 
+**Préparation de génération — PR3 : recherche PredictHQ event-first** *(à relire)*
+
+> Proposée par la [PR #74](https://github.com/loties1533/experience-ai/pull/74).
+
+- recherche directe dans `Events`, sans ville préalable ni appel `Places` ;
+- contrat strict : requête, dates civiles, catégorie `sports` optionnelle,
+  pays ISO optionnel et limite bornée ;
+- seuls les événements dont `geo.address.locality` est fourni par PredictHQ
+  deviennent des candidats ; aucune ville n'est inférée depuis une salle ou
+  une adresse textuelle ;
+- filtres serveur sur date de début, catégorie et pays ; pagination bornée ;
+- le chemin PredictHQ city-first reste inchangé ; aucune intégration au
+  `ContextePlanifiable` n'est encore réalisée.
+
+Validation locale : 66 fichiers / 1 908 tests, TypeScript serveur et client,
+lint et build client.
+
 **F0 — Audit du portage**
 
 - [x] Inventorier les services, types, utilitaires et tests de TripGenie
