@@ -4,6 +4,7 @@ import {
   type BoiteAOutils,
   type CandidatJournal,
 } from '../services/claude/outils.js';
+import { adapterEvenementEventFirstPourJournal } from '../services/rechercheExterne.js';
 import { AppError } from '../lib/AppError.js';
 import {
   ParcoursSchema,
@@ -35,9 +36,11 @@ import {
   ContextePlanifiableSchema,
   type ContextePlanifiable,
 } from './generation/contratPreparation.js';
+import { estDemandeNBAEvenementielle } from './generation/demandeNBA.js';
 import type { MomentGenere } from './generation/contratLLM.js';
 import {
   momentDeTransition,
+  momentDeTransitionSansDemande,
   nettoyerMomentsTransport,
 } from './generation/transport.js';
 import {
@@ -50,6 +53,7 @@ import { tracerLieuReel } from './generation/confiance.js';
 import {
   briefPourLot,
   genererLot,
+  integrerAncresLot,
   namespacerLot,
   validerScopeLot,
   TENTATIVES_MAX_PAR_LOT,
@@ -85,7 +89,20 @@ export type { OptionsGenerationParcours } from './generation/lot.js';
 // des connecteurs, et le parcours final repasse par les invariants du domaine
 // avant de sortir.
 
-function validerDonneesHotelieresEssentielles(brief: Brief): void {
+function estContexteNBAEvenementiel(
+  brief: Brief,
+  contextePlanifiable: ContextePlanifiable
+): boolean {
+  return (
+    contextePlanifiable.strategie === 'decouverte_evenementielle' &&
+    estDemandeNBAEvenementielle(brief)
+  );
+}
+
+function validerDonneesHotelieresEssentielles(
+  brief: Brief,
+  contextePlanifiable: ContextePlanifiable
+): void {
   if (brief.hebergement?.necessaire !== true) return;
 
   if (brief.hebergement.occupation.statut !== 'declaree') {
@@ -95,13 +112,19 @@ function validerDonneesHotelieresEssentielles(brief: Brief): void {
     );
   }
   if (brief.hebergement.sejours.length === 0) {
+    if (estContexteNBAEvenementiel(brief, contextePlanifiable)) return;
     throw new AppError(
       'La ville et les dates du séjour hôtelier doivent être confirmées avant la génération.',
       422
     );
   }
 
-  const villesAutorisees = new Set(brief.lieux.map(cleTexte));
+  const villesAutorisees = new Set(
+    (estContexteNBAEvenementiel(brief, contextePlanifiable)
+      ? villesPlanifiees(contextePlanifiable)
+      : brief.lieux
+    ).map(cleTexte)
+  );
   if (
     brief.hebergement.sejours.some(
       (sejour) => !villesAutorisees.has(cleTexte(sejour.ville))
@@ -130,10 +153,14 @@ function validerDonneesHotelieresEssentielles(brief: Brief): void {
 }
 
 function validerDonneesTransportEssentielles(
-  brief: Brief
+  brief: Brief,
+  contextePlanifiable: ContextePlanifiable
 ): DemandeTransport | undefined {
   if (!brief.transport) {
-    if (estParcoursMultiVille(brief)) {
+    if (
+      estParcoursMultiVille(brief) &&
+      contextePlanifiable.strategie !== 'decouverte_evenementielle'
+    ) {
       throw new AppError(
         'Le besoin de transport entre les villes doit être confirmé avant la génération.',
         422
@@ -283,15 +310,35 @@ async function genererEtAssemblerLots(
   options: OptionsGenerationParcours = {}
 ): Promise<{ moments: MomentGenere[]; ambiance?: string; boiteAgregat: BoiteAOutils }> {
   const plan = deriverPlan(contextePlanifiable);
+  console.info(
+    `[plan] strategy=${contextePlanifiable.strategie} steps=${contextePlanifiable.etapes.length} lots=${plan.lots.length}`
+  );
   const villesDuContexte = villesPlanifiees(contextePlanifiable);
   const momentsParLot: MomentGenere[][] = [];
   const candidatsValides: CandidatJournal[] = [];
   let ambiance: string | undefined;
+  const autoriserBesoinHotelierSansSejour = estContexteNBAEvenementiel(
+    brief,
+    contextePlanifiable
+  );
 
   for (let index = 0; index < plan.lots.length; index += 1) {
     const lot = plan.lots[index];
+    const consigneAncres =
+      lot.ancres.length > 0
+        ? '\nLes ancres fournies dans le brief sont des événements vérifiés : conserve leurs identifiants, noms, villes et dates ; ne les remplace jamais.'
+        : '';
     const prompt = `Construis un parcours pour ce brief :
-${JSON.stringify(briefPourLot(brief, lot, plan.lots.length === 1), null, 2)}${blocPreferences}`;
+${JSON.stringify(
+  briefPourLot(
+    brief,
+    lot,
+    plan.lots.length === 1,
+    autoriserBesoinHotelierSansSejour
+  ),
+  null,
+  2
+)}${consigneAncres}${blocPreferences}`;
     const villesAutoriseesDuLot = lot.ville ? [lot.ville] : villesDuContexte;
 
     let tentative = 0;
@@ -301,11 +348,15 @@ ${JSON.stringify(briefPourLot(brief, lot, plan.lots.length === 1), null, 2)}${bl
       // peut techniquement porter que sur la ville de CE lot.
       const boiteLot = creerBoiteAOutils({
         villesAutorisees: villesAutoriseesDuLot,
+        candidatsInitiaux: lot.ancres.map(adapterEvenementEventFirstPourJournal),
       });
       const debut = Date.now();
       try {
         const sortie = await genererLot(prompt, boiteLot, options);
-        const moments = namespacerLot(lot, sortie.moments);
+        const moments = namespacerLot(
+          lot,
+          integrerAncresLot(lot, sortie.moments)
+        );
         validerScopeLot(lot, moments);
         // La première ambiance proposée par le modèle habille l'ensemble ; à
         // défaut, celle du brief prend le relais plus loin.
@@ -340,7 +391,7 @@ ${JSON.stringify(briefPourLot(brief, lot, plan.lots.length === 1), null, 2)}${bl
     const suivant = plan.lots[index + 1];
     const villeCourante = plan.lots[index].ville;
     if (
-      demandeTransport &&
+      (demandeTransport || contextePlanifiable.strategie === 'decouverte_evenementielle') &&
       suivant?.ville &&
       villeCourante &&
       plan.transitions.some(
@@ -349,7 +400,11 @@ ${JSON.stringify(briefPourLot(brief, lot, plan.lots.length === 1), null, 2)}${bl
           cleTexte(transition.destination) === cleTexte(suivant.ville as string)
       )
     ) {
-      momentsAssembles.push(momentDeTransition(index));
+      momentsAssembles.push(
+        demandeTransport
+          ? momentDeTransition(index)
+          : momentDeTransitionSansDemande(index)
+      );
     }
   }
 
@@ -397,8 +452,11 @@ export async function genererParcours(
     : construireContextePlanifiable(brief);
   // Un refus métier local précède tout appel à l'IA ou à un fournisseur :
   // une occupation manquante n'est jamais une panne technique (503).
-  validerDonneesHotelieresEssentielles(brief);
-  const demandeTransport = validerDonneesTransportEssentielles(brief);
+  validerDonneesHotelieresEssentielles(brief, contextePlanifiable);
+  const demandeTransport = validerDonneesTransportEssentielles(
+    brief,
+    contextePlanifiable
+  );
 
   // Mémoire simple (sprint R5) : les préférences orientent, le brief prime.
   const blocPreferences = preferences
@@ -459,7 +517,9 @@ ${JSON.stringify(preferences, null, 2)}`
       avecQui: brief.avecQui,
       duree: brief.duree,
       dates: brief.dates,
-      lieux: brief.lieux,
+      // Le Brief reste la déclaration utilisateur ; le contexte du Parcours
+      // reflète les villes effectivement retenues par la préparation.
+      lieux: villesPlanifiees(contextePlanifiable),
       occupationHebergement:
         brief.hebergement?.necessaire === true
           ? brief.hebergement.occupation

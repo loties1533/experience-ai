@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PlageHoraireSchema } from '../../domaine/parcours/index.js';
+import { CandidatEvenementEventFirstSchema } from '../../services/rechercheExterne.js';
 
 // Frontière métier placée avant la génération des lots. Elle ne décrit ni un
 // plan détaillé ni une sortie de LLM : seulement si le brief peut poursuivre,
@@ -42,7 +43,7 @@ const PlageJoursPlanifieeSchema = z
 export const VillePlanifieeSchema = z
   .object({
     nom: z.string().min(1),
-    origine: z.literal('utilisateur'),
+    origine: z.enum(['utilisateur', 'fournisseur']),
   })
   .strict();
 
@@ -50,7 +51,7 @@ export const EtapePlanifiableSchema = z
   .object({
     ville: VillePlanifieeSchema.optional(),
     plage: PlageJoursPlanifieeSchema.optional(),
-    ancres: z.array(z.string().min(1)).default([]),
+    ancres: z.array(CandidatEvenementEventFirstSchema).default([]),
   })
   .strict();
 
@@ -70,6 +71,7 @@ export const ContextePlanifiableSchema = z
   .object({
     strategie: z.enum([
       'villes_du_brief',
+      'decouverte_evenementielle',
       'compatibilite_sans_localisation',
     ]),
     etapes: z.array(EtapePlanifiableSchema).min(1),
@@ -89,6 +91,39 @@ export const ContextePlanifiableSchema = z
           code: 'custom',
           message: 'les étapes des villes du brief exigent une ville',
         });
+      }
+    }
+    if (contexte.strategie === 'decouverte_evenementielle') {
+      if (
+        contexte.etapes.some(
+          (etape) =>
+            etape.ville?.origine !== 'fournisseur' ||
+            etape.plage === undefined ||
+            etape.ancres.length === 0
+        )
+      ) {
+        ajout.addIssue({
+          code: 'custom',
+          message:
+            'la découverte événementielle exige une ville fournisseur, une plage et une ancre par étape',
+        });
+      }
+      for (const etape of contexte.etapes) {
+        if (!etape.ville || !etape.plage) continue;
+        for (const ancre of etape.ancres) {
+          const jourAncre = ancre.dateDebut.slice(0, 10);
+          if (
+            ancre.ville !== etape.ville.nom ||
+            jourAncre < etape.plage.debut ||
+            jourAncre > etape.plage.fin
+          ) {
+            ajout.addIssue({
+              code: 'custom',
+              message:
+                'une ancre événementielle doit appartenir à la ville et à la plage de son étape',
+            });
+          }
+        }
       }
     }
     if (contexte.strategie === 'compatibilite_sans_localisation') {

@@ -28,6 +28,43 @@
 
 ### Board — avancement du chantier
 
+**Préparation de génération — PR4 : NBA event-first de bout en bout** *(à relire)*
+
+> Proposée par la [PR #75](https://github.com/loties1533/experience-ai/pull/75).
+
+- une intention NBA sans ville explicite interroge PredictHQ event-first ; les
+  événements sélectionnés restent des preuves fournisseur, pas des données LLM ;
+- leurs villes deviennent des étapes planifiables d'origine fournisseur, sans
+  muter `Brief.lieux`, puis alimentent le contexte du Parcours ;
+- les ancres datées ne rejoignent que le lot qui contient leur jour, bornes
+  inclusives ; elles sont réhydratées et vérifiées même si le modèle les omet ;
+- zéro événement est un refus métier (`422`) et une indisponibilité PredictHQ
+  reste une panne technique (`503`) ; une prose LLM hors contrat reste `502` ;
+- les transitions entre villes découvertes restent des transports génériques à
+  organiser, sans trajet, opérateur ni horaire inventé.
+- correction de recette avant merge : dans le seul vertical slice NBA,
+  `États-Unis`, `Etats-Unis`, `USA` et `US` présents dans `Brief.lieux` sont
+  interprétés comme le filtre fournisseur `US`, jamais comme une ville ; une
+  vraie ville restante (par exemple Boston) conserve le chemin
+  `villes_du_brief`, sans mutation du Brief ;
+- seconde correction de recette : pour NBA event-first sans ville explicite,
+  l'intake exige toujours adultes, enfants et chambres mais diffère la saisie
+  des séjours précis ; chaque lot reçoit le besoin hôtelier et cette occupation
+  avec la ville décidée par le moteur, sans écrire cette ville dans le Brief ;
+- sans séjour utilisateur exact, un hôtel Foursquare peut rester une suggestion
+  vérifiée dans la ville planifiée, mais aucun `SejourHebergement`, aucune date
+  hôtelière et aucun lien Booking de disponibilité ne sont synthétisés ; un
+  séjour explicite valide conserve le rattachement et le lien historiques.
+
+`compatibilite_sans_localisation` reste réservée aux intentions non
+événementielles ou non encore couvertes ; elle est interdite pour le cas NBA
+event-first. Cette PR ne généralise pas encore la stratégie aux autres envies
+et laisse à un chantier ultérieur la confirmation de séjours exacts après la
+découverte des villes, nécessaire avant toute recherche de disponibilité datée.
+
+Validation locale : 69 fichiers / 1 931 tests, TypeScript serveur et client,
+lint et build client.
+
 **Préparation de génération — PR3 : recherche PredictHQ event-first** *(à relire)*
 
 > Proposée par la [PR #74](https://github.com/loties1533/experience-ai/pull/74).

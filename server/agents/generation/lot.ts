@@ -44,7 +44,12 @@ export const TENTATIVES_MAX_PAR_LOT = 2;
  * lot n'y couvre qu'une sous-plage de jours du brief, dont le brief ne porte
  * pas les heures.
  */
-export function briefPourLot(brief: Brief, lot: LotPrevu, lotUniqueDuPlan: boolean): Record<string, unknown> {
+export function briefPourLot(
+  brief: Brief,
+  lot: LotPrevu,
+  lotUniqueDuPlan: boolean,
+  autoriserBesoinHotelierSansSejour = false
+): Record<string, unknown> {
   // La ville projetée ici vient du PlanGeneration, lui-même dérivé du
   // ContextePlanifiable. Le Brief reste la déclaration utilisateur intacte,
   // jamais une seconde source de vérité pour la géographie du lot.
@@ -60,10 +65,19 @@ export function briefPourLot(brief: Brief, lot: LotPrevu, lotUniqueDuPlan: boole
           (sejour) => cleTexte(sejour.ville) === cleTexte(lot.ville as string)
         )
       : [];
-  const hebergement =
-    brief.hebergement?.necessaire === true && sejoursDuLot.length > 0
-      ? { ...brief.hebergement, sejours: sejoursDuLot }
-      : undefined;
+  let hebergement: Brief['hebergement'];
+  if (brief.hebergement?.necessaire === true) {
+    if (sejoursDuLot.length > 0) {
+      hebergement = { ...brief.hebergement, sejours: sejoursDuLot };
+    } else if (
+      autoriserBesoinHotelierSansSejour &&
+      brief.hebergement.sejours.length === 0
+    ) {
+      // Le lot connaît alors uniquement le besoin et l'occupation déclarés.
+      // Sa ville vient du plan ; aucun séjour hôtelier n'est synthétisé.
+      hebergement = brief.hebergement;
+    }
+  }
 
   return {
     intention: brief.intention,
@@ -74,8 +88,81 @@ export function briefPourLot(brief: Brief, lot: LotPrevu, lotUniqueDuPlan: boole
     ...(brief.budgetTotal === undefined ? {} : { budgetTotal: brief.budgetTotal }),
     ...(brief.ambiance ? { ambiance: brief.ambiance } : {}),
     contraintes: brief.contraintes,
+    ...(lot.ancres.length > 0 ? { ancres: lot.ancres } : {}),
     ...(hebergement ? { hebergement } : {}),
   };
+}
+
+function plageAncre(ancre: LotPrevu['ancres'][number]) {
+  return ancre.dateFin && Date.parse(ancre.dateFin) > Date.parse(ancre.dateDebut)
+    ? { debut: ancre.dateDebut, fin: ancre.dateFin }
+    : undefined;
+}
+
+/**
+ * Réhydrate les ancres fournisseur dans le lot, même si le modèle les omet
+ * ou les reformule. Une ancre peut être reprise une fois par son identifiant,
+ * puis ses champs observés remplacent ceux du modèle.
+ */
+export function integrerAncresLot(
+  lot: LotPrevu,
+  moments: MomentGenere[]
+): MomentGenere[] {
+  const ancreParIdentifiant = new Map(
+    lot.ancres.map((ancre) => [ancre.identifiantExterne, ancre])
+  );
+  const ancresIntegrees = new Set<string>();
+  const momentsNormalises = moments
+    .map((moment) => ({
+      ...moment,
+      elements: moment.elements.flatMap((element) => {
+        const ancre =
+          element.type === 'evenement' && element.identifiantExterne
+            ? ancreParIdentifiant.get(element.identifiantExterne)
+            : undefined;
+        if (!ancre) return [element];
+        if (ancresIntegrees.has(ancre.identifiantExterne)) return [];
+        ancresIntegrees.add(ancre.identifiantExterne);
+        const { lieu: _lieuModele, plage: _plageModele, ...elementSansObservation } = element;
+        const plage = plageAncre(ancre);
+        return [
+          {
+            ...elementSansObservation,
+            identifiantExterne: ancre.identifiantExterne,
+            nom: ancre.nom,
+            ...(ancre.salle ? { lieu: ancre.salle } : {}),
+            ...(plage ? { plage } : {}),
+            estAncre: true,
+          },
+        ];
+      }),
+    }))
+    .filter((moment) => moment.elements.length > 0);
+
+  const ancresManquantes = lot.ancres.filter(
+    (ancre) => !ancresIntegrees.has(ancre.identifiantExterne)
+  );
+  return [
+    ...momentsNormalises,
+    ...ancresManquantes.map((ancre, index) => ({
+      ...(plageAncre(ancre) ? { plage: plageAncre(ancre) } : {}),
+      titre: `Événement vérifié : ${ancre.nom}`,
+      ville: ancre.ville,
+      elements: [
+        {
+          ref: `ancre-evenement-${index}`,
+          type: 'evenement' as const,
+          identifiantExterne: ancre.identifiantExterne,
+          nom: ancre.nom,
+          ...(ancre.salle ? { lieu: ancre.salle } : {}),
+          ...(plageAncre(ancre) ? { plage: plageAncre(ancre) } : {}),
+          justification: 'Événement vérifié retenu comme ancre du parcours.',
+          dependDe: [],
+          estAncre: true,
+        },
+      ],
+    })),
+  ];
 }
 
 /**

@@ -6,15 +6,15 @@ import {
 import { preparerGeneration } from '../../server/agents/generation/preparation.js';
 
 const BRIEF = BriefSchema.parse({
-  intention: 'vivre la NBA',
+  intention: 'découvrir les Alpes',
   avecQui: 'solo',
   duree: { valeur: 3, unite: 'semaines' },
   dates: { debut: '2026-10-01T00:00:00.000Z', fin: '2026-10-21T23:59:59.999Z' },
 });
 
 describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
-  it('accepte un brief planifiable, y compris sans ville imposée', () => {
-    expect(preparerGeneration(BRIEF)).toEqual({
+  it('accepte un brief planifiable, y compris sans ville imposée', async () => {
+    expect(await preparerGeneration(BRIEF)).toEqual({
       type: 'planifiable',
       contexte: {
         strategie: 'compatibilite_sans_localisation',
@@ -27,7 +27,10 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
     expect(
       ResultatCadrageGenerationSchema.safeParse({
         type: 'planifiable',
-        contexte: preparerGeneration(BRIEF).contexte,
+        contexte: (await preparerGeneration(BRIEF) as Extract<
+          Awaited<ReturnType<typeof preparerGeneration>>,
+          { type: 'planifiable' }
+        >).contexte,
       }).success
     ).toBe(true);
   });
@@ -155,13 +158,13 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
     expect(ResultatCadrageGenerationSchema.safeParse(resultat).success).toBe(false);
   });
 
-  it('projette les villes déclarées sans les modifier dans le Brief', () => {
+  it('projette les villes déclarées sans les modifier dans le Brief', async () => {
     const avecVilles = BriefSchema.parse({
       ...BRIEF,
       lieux: ['Bordeaux', 'Paris'],
     });
 
-    expect(preparerGeneration(avecVilles)).toMatchObject({
+    expect(await preparerGeneration(avecVilles)).toMatchObject({
       type: 'planifiable',
       contexte: {
         strategie: 'villes_du_brief',
@@ -174,14 +177,14 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
     expect(avecVilles.lieux).toEqual(['Bordeaux', 'Paris']);
   });
 
-  it('projette un brief mono-ville en une étape utilisateur', () => {
+  it('projette un brief mono-ville en une étape utilisateur', async () => {
     const monoVille = BriefSchema.parse({
       ...BRIEF,
       lieux: ['Chamonix'],
       budgetTotal: 1_200,
     });
 
-    expect(preparerGeneration(monoVille)).toMatchObject({
+    expect(await preparerGeneration(monoVille)).toMatchObject({
       type: 'planifiable',
       contexte: {
         strategie: 'villes_du_brief',

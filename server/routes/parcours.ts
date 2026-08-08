@@ -93,7 +93,7 @@ router.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { brief } = req.body as z.infer<typeof CorpsGenerationSchema>;
-      const cadrage = preparerGeneration(brief);
+      const cadrage = await preparerGeneration(brief);
       if (cadrage.type === 'clarification_requise') {
         res.status(200).json(cadrage);
         return;

@@ -52,6 +52,7 @@ import {
   contexteTemporelParDefaut,
   dateReferenceLisible,
 } from './resolutionDatesRelatives.js';
+import { doitDiffererSejoursHebergementNBA } from './generation/demandeNBA.js';
 
 // Agent d'intake : mène le dialogue d'entrée, extrait le brief au fil des
 // réponses et ne pose QUE les questions nécessaires. Il ne génère rien —
@@ -1026,12 +1027,13 @@ function finaliserEtape(
   reponseSiIncomplet: string
 ): { reponse: string; estComplet: boolean } {
   const complet = BriefSchema.safeParse(brief);
+  const differerSejoursHebergement = doitDiffererSejoursHebergementNBA(brief);
   // « Complet » exige aussi un point de départ (dates) : une durée seule
   // n'ancre le parcours à aucune vraie date, et les connecteurs chercheraient
   // alors sur une date inventée, sans rapport avec le vrai séjour.
   const dialogueTermine =
     complet.success &&
-    champsManquants(brief).length === 0 &&
+    champsManquants(brief, differerSejoursHebergement).length === 0 &&
     champInvalideHebergement === undefined &&
     champInvalideTransport === undefined;
   if (dialogueTermine) {
@@ -1041,7 +1043,11 @@ function finaliserEtape(
     // confirmation mot pour mot donnerait l'impression qu'on l'ignore — on le
     // dit plutôt franchement, sans reformuler le contenu passé sous silence.
     const briefActuelDejaTermine =
-      BriefSchema.safeParse(briefActuel).success && champsManquants(briefActuel).length === 0;
+      BriefSchema.safeParse(briefActuel).success &&
+      champsManquants(
+        briefActuel,
+        doitDiffererSejoursHebergementNBA(briefActuel)
+      ).length === 0;
     if (!auMoinsUnChampNouveau && briefActuelDejaTermine) {
       return {
         reponse: "Je n'ai pas compris ce changement — peux-tu préciser autrement (ex. une date au format JJ/MM/AAAA) ?",
@@ -1056,7 +1062,11 @@ function finaliserEtape(
   return {
     reponse:
       prochainChampBase(brief) === undefined
-        ? questionHebergement(brief, champInvalideHebergement) ??
+        ? questionHebergement(
+            brief,
+            champInvalideHebergement,
+            differerSejoursHebergement
+          ) ??
           questionTransport(brief, champInvalideTransport) ??
           reponseSiIncomplet
         : reponseSiIncomplet,
@@ -1120,10 +1130,12 @@ export async function avancerDialogue(
     etatDialogueActuel?.champ === 'preparation_generation'
       ? etatDialogueActuel
       : undefined;
+  const differerSejoursHebergement =
+    doitDiffererSejoursHebergementNBA(briefActuel);
 
   const prompt = `Brief déjà établi : ${JSON.stringify(briefActuel)}
 Dernier message de l'utilisateur : "${sanitizeInput(messageUtilisateur)}"
-Champs requis encore manquants : ${champsManquants(briefActuel).join(', ') || 'aucun'}
+Champs requis encore manquants : ${champsManquants(briefActuel, differerSejoursHebergement).join(', ') || 'aucun'}
 Champs de base déjà validés (ne jamais les redemander) : ${
     champsBaseValides.length > 0
       ? champsBaseValides.map(libelleChampBase).join(', ')

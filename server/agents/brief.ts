@@ -386,7 +386,10 @@ export function calculerDates(
 }
 
 /** Les champs requis encore absents — le dialogue ne pose que ces questions. */
-export function champsManquants(brief: BriefPartiel): string[] {
+export function champsManquants(
+  brief: BriefPartiel,
+  differerSejoursHebergement = false
+): string[] {
   const manquants = ORDRE_CHAMPS_BASE
     .filter((champ) => brief[champ] === undefined)
     .map((champ) => LIBELLES_MANQUANTS[champ]);
@@ -398,7 +401,10 @@ export function champsManquants(brief: BriefPartiel): string[] {
       if (occupation.enfants === undefined) manquants.push(LIBELLES_HEBERGEMENT.enfants);
       if (occupation.chambres === undefined) manquants.push(LIBELLES_HEBERGEMENT.chambres);
     }
-    if (brief.hebergement.sejours.length === 0) {
+    if (
+      brief.hebergement.sejours.length === 0 &&
+      !differerSejoursHebergement
+    ) {
       manquants.push(LIBELLES_HEBERGEMENT.sejours);
     }
   }
@@ -429,7 +435,8 @@ export type ChampHebergement =
 /** Question déterministe : le modèle n'invente ni l'ordre ni les valeurs. */
 export function questionHebergement(
   brief: BriefPartiel,
-  champInvalide?: ChampHebergement
+  champInvalide?: ChampHebergement,
+  differerSejoursHebergement = false
 ): string | undefined {
   if (brief.hebergement?.necessaire !== true) return undefined;
 
@@ -453,7 +460,11 @@ export function questionHebergement(
     else if (occupation.enfants === undefined) champAttendu = 'enfants';
     else if (occupation.chambres === undefined) champAttendu = 'chambres';
   }
-  if (!champAttendu && brief.hebergement.sejours.length === 0) {
+  if (
+    !champAttendu &&
+    brief.hebergement.sejours.length === 0 &&
+    !differerSejoursHebergement
+  ) {
     champAttendu = 'sejours';
   }
 
