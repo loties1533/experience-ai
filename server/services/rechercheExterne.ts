@@ -81,6 +81,24 @@ export interface CandidatEvenementExterne extends CandidatExterne {
   description: string;
 }
 
+/**
+ * Événement trouvé sans ville demandée au préalable. Cette observation reste
+ * hors du journal de génération tant que PR4 ne décide pas de l'utiliser pour
+ * préparer un contexte géographique.
+ */
+export interface CandidatEvenementEventFirst {
+  identifiantExterne: string;
+  nom: string;
+  ville: string;
+  codePays?: string;
+  dateDebut: string;
+  dateFin?: string;
+  salle?: string;
+  fournisseur: 'PredictHQ';
+  source: string;
+  recupereLe: string;
+}
+
 export function resultatVide<T>(recupereLe: string): ResultatRecherche<T> {
   return { statut: 'vide', resultats: [], recupereLe };
 }
