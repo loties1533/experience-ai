@@ -45,7 +45,10 @@ export const TENTATIVES_MAX_PAR_LOT = 2;
  * pas les heures.
  */
 export function briefPourLot(brief: Brief, lot: LotPrevu, lotUniqueDuPlan: boolean): Record<string, unknown> {
-  const lieux = lot.ville ? [lot.ville] : brief.lieux;
+  // La ville projetée ici vient du PlanGeneration, lui-même dérivé du
+  // ContextePlanifiable. Le Brief reste la déclaration utilisateur intacte,
+  // jamais une seconde source de vérité pour la géographie du lot.
+  const lieux = lot.ville ? [lot.ville] : [];
   const dates =
     lot.plage && !lotUniqueDuPlan
       ? { debut: `${lot.plage.debut}T00:00:00.000Z`, fin: `${lot.plage.fin}T23:59:59.999Z` }

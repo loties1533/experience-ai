@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { deriverPlan } from '../../server/agents/generation.js';
 import { BriefSchema, type Brief } from '../../server/agents/brief.js';
+import { ContextePlanifiableSchema } from '../../server/agents/generation/contratPreparation.js';
+import { construireContextePlanifiable } from '../../server/agents/generation/preparation.js';
 
 const BASE = {
   intention: 'un séjour à préparer',
@@ -22,6 +24,10 @@ function brief(options: {
   });
 }
 
+function planDuBrief(br: Brief) {
+  return deriverPlan(construireContextePlanifiable(br));
+}
+
 // Numéro de jour civil, réplique locale de la logique interne pour vérifier la
 // couverture et la taille des blocs sans dépendre de l'heure ni d'un fuseau.
 function numeroDeJour(dateCivile: string): number {
@@ -35,20 +41,69 @@ function tailleEnJours(plage: { debut: string; fin: string }): number {
 
 describe('deriverPlan — découpage pur par ville et par jours', () => {
   it('rend un lot unique et sans ville quand aucune ville n’est connue', () => {
-    const plan = deriverPlan(brief({ lieux: [] }));
+    const plan = planDuBrief(brief({ lieux: [] }));
     expect(plan.lots).toHaveLength(1);
     expect(plan.lots[0].ville).toBeUndefined();
     expect(plan.lots[0].plage).toBeUndefined();
   });
 
   it('rend un lot par ville et sans plage quand aucune date n’est fournie', () => {
-    const plan = deriverPlan(brief({ lieux: ['Bordeaux', 'Paris', 'Lyon'] }));
+    const plan = planDuBrief(brief({ lieux: ['Bordeaux', 'Paris', 'Lyon'] }));
     expect(plan.lots.map((lot) => lot.ville)).toEqual([
       'Bordeaux',
       'Paris',
       'Lyon',
     ]);
     expect(plan.lots.every((lot) => lot.plage === undefined)).toBe(true);
+    expect(plan.transitions).toEqual([
+      { origine: 'Bordeaux', destination: 'Paris' },
+      { origine: 'Paris', destination: 'Lyon' },
+    ]);
+  });
+
+  it('reste déterministe à contexte identique, y compris pour les identifiants', () => {
+    const contexte = construireContextePlanifiable(
+      brief({
+        lieux: ['Bordeaux', 'Paris'],
+        debut: '2026-09-01T00:00:00Z',
+        fin: '2026-09-10T23:59:59Z',
+      })
+    );
+
+    expect(deriverPlan(contexte)).toEqual(deriverPlan(contexte));
+  });
+
+  it('respecte une plage déjà décidée par étape, même sans dates globales', () => {
+    const contexte = ContextePlanifiableSchema.parse({
+      strategie: 'villes_du_brief',
+      etapes: [
+        {
+          ville: { nom: 'Chamonix', origine: 'utilisateur' },
+          plage: { debut: '2026-09-03', fin: '2026-09-07' },
+          ancres: [],
+        },
+        {
+          ville: { nom: 'Grenoble', origine: 'utilisateur' },
+          plage: { debut: '2026-09-08', fin: '2026-09-10' },
+          ancres: [],
+        },
+      ],
+      contraintesConservees: {},
+    });
+
+    const plan = deriverPlan(contexte);
+
+    expect(plan.lots.map((lot) => lot.ville)).toEqual([
+      'Chamonix',
+      'Grenoble',
+    ]);
+    expect(plan.lots.map((lot) => lot.plage)).toEqual([
+      { debut: '2026-09-03', fin: '2026-09-07' },
+      { debut: '2026-09-08', fin: '2026-09-10' },
+    ]);
+    expect(plan.transitions).toEqual([
+      { origine: 'Chamonix', destination: 'Grenoble' },
+    ]);
   });
 
   it.each([
@@ -66,7 +121,7 @@ describe('deriverPlan — découpage pur par ville et par jours', () => {
     (jours, taillesAttendues) => {
       const debut = '2026-09-01T08:00:00Z';
       const fin = `2026-09-${String(jours).padStart(2, '0')}T20:00:00Z`;
-      const plan = deriverPlan(brief({ lieux: ['Bordeaux'], debut, fin }));
+      const plan = planDuBrief(brief({ lieux: ['Bordeaux'], debut, fin }));
 
       expect(
         plan.lots.map((lot) => tailleEnJours(lot.plage!))
@@ -80,7 +135,7 @@ describe('deriverPlan — découpage pur par ville et par jours', () => {
     (jours) => {
       const debut = '2026-09-01T00:00:00Z';
       const fin = `2026-09-${String(jours).padStart(2, '0')}T23:59:59Z`;
-      const plan = deriverPlan(brief({ lieux: ['Bordeaux'], debut, fin }));
+      const plan = planDuBrief(brief({ lieux: ['Bordeaux'], debut, fin }));
       const plages = plan.lots.map((lot) => lot.plage!);
 
       // Couverture contiguë : premier jour, dernier jour, aucun trou ni recouvrement.
@@ -105,7 +160,7 @@ describe('deriverPlan — découpage pur par ville et par jours', () => {
   );
 
   it('répartit les jours entre plusieurs villes datées, puis découpe chaque tranche', () => {
-    const plan = deriverPlan(
+    const plan = planDuBrief(
       brief({
         lieux: ['Bordeaux', 'Paris'],
         debut: '2026-09-01T00:00:00Z',
@@ -137,7 +192,7 @@ describe('deriverPlan — découpage pur par ville et par jours', () => {
   it('renonce aux plages plutôt que de créer un lot orphelin quand les jours manquent', () => {
     // 4 jours pour 3 villes : impossible de donner deux jours à chacune sans
     // orphelin. On garde un lot par ville, sans plage.
-    const plan = deriverPlan(
+    const plan = planDuBrief(
       brief({
         lieux: ['Bordeaux', 'Paris', 'Lyon'],
         debut: '2026-09-01T00:00:00Z',

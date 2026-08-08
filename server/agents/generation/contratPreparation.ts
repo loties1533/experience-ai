@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PlageHoraireSchema } from '../../domaine/parcours/index.js';
 
 // Frontière métier placée avant la génération des lots. Elle ne décrit ni un
 // plan détaillé ni une sortie de LLM : seulement si le brief peut poursuivre,
@@ -28,6 +29,84 @@ export const EtatDialoguePreparationGenerationSchema = z
   })
   .strict();
 
+const PlageJoursPlanifieeSchema = z
+  .object({
+    debut: z.iso.date(),
+    fin: z.iso.date(),
+  })
+  .strict()
+  .refine((plage) => plage.debut <= plage.fin, {
+    message: 'le début doit précéder ou égaler la fin',
+  });
+
+export const VillePlanifieeSchema = z
+  .object({
+    nom: z.string().min(1),
+    origine: z.literal('utilisateur'),
+  })
+  .strict();
+
+export const EtapePlanifiableSchema = z
+  .object({
+    ville: VillePlanifieeSchema.optional(),
+    plage: PlageJoursPlanifieeSchema.optional(),
+    ancres: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+
+const ContraintesConserveesSchema = z
+  .object({
+    dates: PlageHoraireSchema.optional(),
+    budgetTotal: z.number().positive().optional(),
+  })
+  .strict();
+
+/**
+ * Décisions de préparation, séparées des données déclarées dans le Brief.
+ * La seconde stratégie est une compatibilité temporaire : elle conserve le
+ * lot sans ville actuel jusqu'aux stratégies de découverte de PR3/PR4.
+ */
+export const ContextePlanifiableSchema = z
+  .object({
+    strategie: z.enum([
+      'villes_du_brief',
+      'compatibilite_sans_localisation',
+    ]),
+    etapes: z.array(EtapePlanifiableSchema).min(1),
+    contraintesConservees: ContraintesConserveesSchema,
+  })
+  .strict()
+  .superRefine((contexte, ajout) => {
+    if (contexte.strategie === 'villes_du_brief') {
+      if (contexte.etapes.some((etape) => etape.ville?.origine !== 'utilisateur')) {
+        ajout.addIssue({
+          code: 'custom',
+          message: 'les étapes des villes du brief doivent avoir une origine utilisateur',
+        });
+      }
+      if (contexte.etapes.some((etape) => etape.ville === undefined)) {
+        ajout.addIssue({
+          code: 'custom',
+          message: 'les étapes des villes du brief exigent une ville',
+        });
+      }
+    }
+    if (contexte.strategie === 'compatibilite_sans_localisation') {
+      const [etape] = contexte.etapes;
+      if (
+        contexte.etapes.length !== 1 ||
+        etape.ville !== undefined ||
+        etape.plage !== undefined ||
+        etape.ancres.length !== 0
+      ) {
+        ajout.addIssue({
+          code: 'custom',
+          message: 'la compatibilité sans localisation ne porte aucun lieu, plage ou ancre',
+        });
+      }
+    }
+  });
+
 export const RefusPreparationGenerationSchema = z
   .discriminatedUnion('code', [
     z
@@ -45,7 +124,12 @@ export const RefusPreparationGenerationSchema = z
   ]);
 
 export const ResultatCadrageGenerationSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('planifiable') }).strict(),
+  z
+    .object({
+      type: z.literal('planifiable'),
+      contexte: ContextePlanifiableSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal('clarification_requise'),
@@ -67,6 +151,8 @@ export type ClarificationGeneration = z.infer<
 export type EtatDialoguePreparationGeneration = z.infer<
   typeof EtatDialoguePreparationGenerationSchema
 >;
+export type EtapePlanifiable = z.infer<typeof EtapePlanifiableSchema>;
+export type ContextePlanifiable = z.infer<typeof ContextePlanifiableSchema>;
 export type ResultatCadrageGeneration = z.infer<
   typeof ResultatCadrageGenerationSchema
 >;

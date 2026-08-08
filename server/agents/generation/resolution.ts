@@ -48,13 +48,16 @@ export function cleTexte(texte: string): string {
     .trim();
 }
 
-function villeDuMoment(villeProposee: string | undefined, villesDuBrief: string[]): string | undefined {
+function villeDuMoment(
+  villeProposee: string | undefined,
+  villesPlanifiees: string[]
+): string | undefined {
   if (villeProposee) {
     const cleVille = cleTexte(villeProposee);
-    const villeValidee = villesDuBrief.find((ville) => cleTexte(ville) === cleVille);
+    const villeValidee = villesPlanifiees.find((ville) => cleTexte(ville) === cleVille);
     if (villeValidee) return villeValidee;
   }
-  return villesDuBrief.length === 1 ? villesDuBrief[0] : undefined;
+  return villesPlanifiees.length === 1 ? villesPlanifiees[0] : undefined;
 }
 
 function typeRecherchePour(typeElement: TypeElement): TypeMetierRecherche | undefined {
@@ -139,14 +142,14 @@ function construireDemandeResolutionLien(
 export function preparerMomentsPourResolution(
   moments: z.infer<typeof SortieGenerationSchema>['moments'],
   boite: BoiteAOutils,
-  villesDuBrief: string[],
+  villesPlanifiees: string[],
 ): {
   moments: MomentPrepare[];
   demandes: Map<string, DemandeResolutionLien>;
 } {
   const demandes = new Map<string, DemandeResolutionLien>();
   const momentsPrepares = moments.map((moment) => {
-    const ville = villeDuMoment(moment.ville, villesDuBrief);
+    const ville = villeDuMoment(moment.ville, villesPlanifiees);
     const elements = moment.elements.map((element): ElementPrepare => {
       const typeMetierRecherche = typeRecherchePour(element.type);
       const candidat =

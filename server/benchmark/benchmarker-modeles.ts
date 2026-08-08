@@ -19,6 +19,7 @@ import 'dotenv/config';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { deriverPlan, genererParcours } from '../agents/generation.js';
+import { construireContextePlanifiable } from '../agents/generation/preparation.js';
 import type { MetriquesAppelOutils } from '../services/claude/core.js';
 import {
   CHAMPS_EXECUTION_AUTORISES,
@@ -50,7 +51,9 @@ async function executerUnEssai(
   modele: string,
   repetition: number
 ): Promise<ResultatExecution> {
-  const lotsPrevus = deriverPlan(scenario.brief).lots.length;
+  const lotsPrevus = deriverPlan(
+    construireContextePlanifiable(scenario.brief)
+  ).lots.length;
   const evenements: MetriquesAppelOutils[] = [];
   const debut = Date.now();
 

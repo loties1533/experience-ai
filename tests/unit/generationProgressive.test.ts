@@ -25,8 +25,15 @@ const { genererParcours, deriverPlan } = await import(
   '../../server/agents/generation.js'
 );
 const { BriefSchema } = await import('../../server/agents/brief.js');
+const { construireContextePlanifiable } = await import(
+  '../../server/agents/generation/preparation.js'
+);
 
 type Brief = import('../../server/agents/brief.js').Brief;
+
+function planDuBrief(brief: Brief) {
+  return deriverPlan(construireContextePlanifiable(brief));
+}
 
 // Numéro de jour civil, réplique locale de la logique interne (cf.
 // planGeneration.test.ts) pour vérifier une plage sans dépendre de l'heure.
@@ -142,7 +149,7 @@ describe('F5-B — un appel IA par lot', () => {
     const parcours = await genererParcours(briefMono);
 
     expect(callAIAvecOutils).toHaveBeenCalledTimes(1);
-    expect(deriverPlan(briefMono).lots).toHaveLength(1);
+    expect(planDuBrief(briefMono).lots).toHaveLength(1);
     expect(parcours.timeline).toHaveLength(1);
     // Sans candidat vérifié, le nom inventé cède la place à une suggestion
     // générique — qui mentionne bien la ville du lot.
@@ -172,7 +179,7 @@ describe('F5-B — un appel IA par lot', () => {
       lieux: ['Bordeaux'],
       dates: { debut: '2026-09-01T00:00:00Z', fin: '2026-09-11T23:59:59Z' },
     });
-    const lots = deriverPlan(brief).lots;
+    const lots = planDuBrief(brief).lots;
     expect(lots.length).toBeGreaterThan(1);
 
     vi.mocked(callAIAvecOutils).mockImplementation(
@@ -373,7 +380,7 @@ describe('F5-B — validation technique du scope d’un lot', () => {
       lieux: ['Bordeaux'],
       dates: { debut: '2026-09-01T00:00:00Z', fin: '2026-09-11T23:59:59Z' },
     });
-    const lots = deriverPlan(brief).lots;
+    const lots = planDuBrief(brief).lots;
     expect(lots.length).toBeGreaterThan(1);
     // Le premier lot couvre le début du séjour (jours 1 à ~4) : une plage au
     // 10 septembre y est nécessairement hors bornes.
@@ -449,7 +456,7 @@ describe('F6-F — bornes temporelles d’un lot mono-bloc (ex. soirée courte)'
   }
 
   it('conserve les heures précises du brief pour un lot unique, sans les élargir au jour civil plein', async () => {
-    expect(deriverPlan(briefSoiree).lots).toHaveLength(1);
+    expect(planDuBrief(briefSoiree).lots).toHaveLength(1);
     let datesRecues: { debut: string; fin: string } | undefined;
     vi.mocked(callAIAvecOutils).mockImplementation(
       llmParLot(({ ville, dates }) => {
@@ -547,7 +554,7 @@ describe('F6-F — bornes temporelles d’un lot mono-bloc (ex. soirée courte)'
       lieux: ['Bordeaux'],
       dates: { debut: '2026-09-01T00:00:00Z', fin: '2026-09-11T23:59:59Z' },
     });
-    expect(deriverPlan(brief).lots.length).toBeGreaterThan(1);
+    expect(planDuBrief(brief).lots.length).toBeGreaterThan(1);
 
     const datesParAppel: { debut: string; fin: string }[] = [];
     vi.mocked(callAIAvecOutils).mockImplementation(
@@ -684,7 +691,7 @@ describe('F5-B — transport et enrichissements sur l’agrégat', () => {
         occupation: { statut: 'declaree', adultes: 3, enfants: 0 },
       },
     });
-    const lots = deriverPlan(brief).lots;
+    const lots = planDuBrief(brief).lots;
     expect(lots.length).toBeGreaterThanOrEqual(3);
 
     vi.mocked(callAIAvecOutils).mockImplementation(

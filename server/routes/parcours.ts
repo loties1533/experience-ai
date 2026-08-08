@@ -102,7 +102,12 @@ router.post(
         throw new AppError(cadrage.refus.message, 422);
       }
 
-      const parcours = await genererParcours(brief, await chargerPreferences(req.user!.id));
+      const parcours = await genererParcours(
+        brief,
+        await chargerPreferences(req.user!.id),
+        {},
+        cadrage.contexte
+      );
       await sauvegarderParcours(req.user!.id, parcours);
       res.status(201).json({ type: 'parcours_cree', parcours });
     } catch (err) {
