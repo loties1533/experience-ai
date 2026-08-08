@@ -46,14 +46,23 @@
   `États-Unis`, `Etats-Unis`, `USA` et `US` présents dans `Brief.lieux` sont
   interprétés comme le filtre fournisseur `US`, jamais comme une ville ; une
   vraie ville restante (par exemple Boston) conserve le chemin
-  `villes_du_brief`, sans mutation du Brief.
+  `villes_du_brief`, sans mutation du Brief ;
+- seconde correction de recette : pour NBA event-first sans ville explicite,
+  l'intake exige toujours adultes, enfants et chambres mais diffère la saisie
+  des séjours précis ; chaque lot reçoit le besoin hôtelier et cette occupation
+  avec la ville décidée par le moteur, sans écrire cette ville dans le Brief ;
+- sans séjour utilisateur exact, un hôtel Foursquare peut rester une suggestion
+  vérifiée dans la ville planifiée, mais aucun `SejourHebergement`, aucune date
+  hôtelière et aucun lien Booking de disponibilité ne sont synthétisés ; un
+  séjour explicite valide conserve le rattachement et le lien historiques.
 
 `compatibilite_sans_localisation` reste réservée aux intentions non
 événementielles ou non encore couvertes ; elle est interdite pour le cas NBA
 event-first. Cette PR ne généralise pas encore la stratégie aux autres envies
-et ne modifie pas la dette hôtelière identifiée en recette.
+et laisse à un chantier ultérieur la confirmation de séjours exacts après la
+découverte des villes, nécessaire avant toute recherche de disponibilité datée.
 
-Validation locale : 69 fichiers / 1 924 tests, TypeScript serveur et client,
+Validation locale : 69 fichiers / 1 931 tests, TypeScript serveur et client,
 lint et build client.
 
 **Préparation de génération — PR3 : recherche PredictHQ event-first** *(à relire)*

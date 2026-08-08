@@ -8,31 +8,15 @@ import {
   type ContextePlanifiable,
   type ResultatCadrageGeneration,
 } from './contratPreparation.js';
+import {
+  estDemandeNBAEvenementielle,
+  normaliserTexteNBA as normaliserTexte,
+  villesExplicitesNBA,
+} from './demandeNBA.js';
+
+export { estDemandeNBAEvenementielle } from './demandeNBA.js';
 
 const NOMBRE_MAX_ANCRES_EVENEMENTIELLES = 3;
-
-function normaliserTexte(texte: string): string {
-  return texte
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-/** Le périmètre PR4 reste volontairement NBA, sans classifieur universel. */
-export function estDemandeNBAEvenementielle(brief: Brief): boolean {
-  return /\bnba\b/.test(normaliserTexte(brief.intention));
-}
-
-/** Périmètre volontairement NBA/US : aucun classifieur géographique général. */
-function estZonePaysUSNBA(lieu: string): boolean {
-  return /^(?:etats unis|usa|us)$/.test(normaliserTexte(lieu));
-}
-
-function villesExplicitesNBA(brief: Brief): string[] {
-  return brief.lieux.filter((lieu) => !estZonePaysUSNBA(lieu));
-}
 
 function paysNBAConfirme(brief: Brief): 'US' | undefined {
   const texte = normaliserTexte(
@@ -179,7 +163,7 @@ export async function preparerGeneration(brief: Brief): Promise<ResultatCadrageG
     });
   }
 
-  const villesExplicites = villesExplicitesNBA(brief);
+  const villesExplicites = villesExplicitesNBA(brief.lieux);
   if (villesExplicites.length > 0 || !brief.dates) {
     return ResultatCadrageGenerationSchema.parse({
       type: 'planifiable',

@@ -44,7 +44,12 @@ export const TENTATIVES_MAX_PAR_LOT = 2;
  * lot n'y couvre qu'une sous-plage de jours du brief, dont le brief ne porte
  * pas les heures.
  */
-export function briefPourLot(brief: Brief, lot: LotPrevu, lotUniqueDuPlan: boolean): Record<string, unknown> {
+export function briefPourLot(
+  brief: Brief,
+  lot: LotPrevu,
+  lotUniqueDuPlan: boolean,
+  autoriserBesoinHotelierSansSejour = false
+): Record<string, unknown> {
   // La ville projetée ici vient du PlanGeneration, lui-même dérivé du
   // ContextePlanifiable. Le Brief reste la déclaration utilisateur intacte,
   // jamais une seconde source de vérité pour la géographie du lot.
@@ -60,10 +65,19 @@ export function briefPourLot(brief: Brief, lot: LotPrevu, lotUniqueDuPlan: boole
           (sejour) => cleTexte(sejour.ville) === cleTexte(lot.ville as string)
         )
       : [];
-  const hebergement =
-    brief.hebergement?.necessaire === true && sejoursDuLot.length > 0
-      ? { ...brief.hebergement, sejours: sejoursDuLot }
-      : undefined;
+  let hebergement: Brief['hebergement'];
+  if (brief.hebergement?.necessaire === true) {
+    if (sejoursDuLot.length > 0) {
+      hebergement = { ...brief.hebergement, sejours: sejoursDuLot };
+    } else if (
+      autoriserBesoinHotelierSansSejour &&
+      brief.hebergement.sejours.length === 0
+    ) {
+      // Le lot connaît alors uniquement le besoin et l'occupation déclarés.
+      // Sa ville vient du plan ; aucun séjour hôtelier n'est synthétisé.
+      hebergement = brief.hebergement;
+    }
+  }
 
   return {
     intention: brief.intention,

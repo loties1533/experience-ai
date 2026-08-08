@@ -36,6 +36,7 @@ import {
   ContextePlanifiableSchema,
   type ContextePlanifiable,
 } from './generation/contratPreparation.js';
+import { estDemandeNBAEvenementielle } from './generation/demandeNBA.js';
 import type { MomentGenere } from './generation/contratLLM.js';
 import {
   momentDeTransition,
@@ -88,7 +89,20 @@ export type { OptionsGenerationParcours } from './generation/lot.js';
 // des connecteurs, et le parcours final repasse par les invariants du domaine
 // avant de sortir.
 
-function validerDonneesHotelieresEssentielles(brief: Brief): void {
+function estContexteNBAEvenementiel(
+  brief: Brief,
+  contextePlanifiable: ContextePlanifiable
+): boolean {
+  return (
+    contextePlanifiable.strategie === 'decouverte_evenementielle' &&
+    estDemandeNBAEvenementielle(brief)
+  );
+}
+
+function validerDonneesHotelieresEssentielles(
+  brief: Brief,
+  contextePlanifiable: ContextePlanifiable
+): void {
   if (brief.hebergement?.necessaire !== true) return;
 
   if (brief.hebergement.occupation.statut !== 'declaree') {
@@ -98,13 +112,19 @@ function validerDonneesHotelieresEssentielles(brief: Brief): void {
     );
   }
   if (brief.hebergement.sejours.length === 0) {
+    if (estContexteNBAEvenementiel(brief, contextePlanifiable)) return;
     throw new AppError(
       'La ville et les dates du séjour hôtelier doivent être confirmées avant la génération.',
       422
     );
   }
 
-  const villesAutorisees = new Set(brief.lieux.map(cleTexte));
+  const villesAutorisees = new Set(
+    (estContexteNBAEvenementiel(brief, contextePlanifiable)
+      ? villesPlanifiees(contextePlanifiable)
+      : brief.lieux
+    ).map(cleTexte)
+  );
   if (
     brief.hebergement.sejours.some(
       (sejour) => !villesAutorisees.has(cleTexte(sejour.ville))
@@ -297,6 +317,10 @@ async function genererEtAssemblerLots(
   const momentsParLot: MomentGenere[][] = [];
   const candidatsValides: CandidatJournal[] = [];
   let ambiance: string | undefined;
+  const autoriserBesoinHotelierSansSejour = estContexteNBAEvenementiel(
+    brief,
+    contextePlanifiable
+  );
 
   for (let index = 0; index < plan.lots.length; index += 1) {
     const lot = plan.lots[index];
@@ -305,7 +329,16 @@ async function genererEtAssemblerLots(
         ? '\nLes ancres fournies dans le brief sont des événements vérifiés : conserve leurs identifiants, noms, villes et dates ; ne les remplace jamais.'
         : '';
     const prompt = `Construis un parcours pour ce brief :
-${JSON.stringify(briefPourLot(brief, lot, plan.lots.length === 1), null, 2)}${consigneAncres}${blocPreferences}`;
+${JSON.stringify(
+  briefPourLot(
+    brief,
+    lot,
+    plan.lots.length === 1,
+    autoriserBesoinHotelierSansSejour
+  ),
+  null,
+  2
+)}${consigneAncres}${blocPreferences}`;
     const villesAutoriseesDuLot = lot.ville ? [lot.ville] : villesDuContexte;
 
     let tentative = 0;
@@ -419,7 +452,7 @@ export async function genererParcours(
     : construireContextePlanifiable(brief);
   // Un refus métier local précède tout appel à l'IA ou à un fournisseur :
   // une occupation manquante n'est jamais une panne technique (503).
-  validerDonneesHotelieresEssentielles(brief);
+  validerDonneesHotelieresEssentielles(brief, contextePlanifiable);
   const demandeTransport = validerDonneesTransportEssentielles(
     brief,
     contextePlanifiable

@@ -791,6 +791,70 @@ describe('intake hôtelier F3-C1 — questions explicites sans déduction', () =
     expect(etape.reponse).toContain('dates d’arrivée et de départ');
   });
 
+  it('diffère les séjours précis pour NBA sans ville mais exige toujours l’occupation', async () => {
+    vi.mocked(callAI).mockResolvedValue(
+      JSON.stringify({ reponse: 'Question du modèle', brief: {} })
+    );
+    const baseNBA = {
+      intention: 'Vivre la NBA ; voir des matchs en direct',
+      avecQui: 'solo' as const,
+      duree: { valeur: 3, unite: 'semaines' as const },
+      dates: {
+        debut: '2027-01-15T00:00:00.000Z',
+        fin: '2027-02-10T00:00:00.000Z',
+      },
+      lieux: ['États-Unis'],
+      budgetTotal: 9000,
+    };
+
+    const occupationManquante = await avancerDialogue(
+      {
+        ...baseNBA,
+        hebergement: {
+          necessaire: true as const,
+          occupation: { statut: 'a_confirmer' as const },
+          sejours: [],
+        },
+      },
+      'oui, il me faut un hôtel'
+    );
+    expect(occupationManquante.estComplet).toBe(false);
+    expect(occupationManquante.reponse).toBe(
+      'Combien d’adultes séjourneront à l’hôtel ?'
+    );
+
+    const occupationDeclaree = await avancerDialogue(
+      {
+        ...baseNBA,
+        hebergement: {
+          necessaire: true as const,
+          occupation: {
+            statut: 'declaree' as const,
+            adultes: 1,
+            enfants: 0,
+            chambres: 1,
+          },
+          sejours: [],
+        },
+      },
+      'voilà'
+    );
+    expect(occupationDeclaree.estComplet).toBe(true);
+    expect(occupationDeclaree.reponse).not.toContain(
+      'ville et quelles sont les dates'
+    );
+    expect(occupationDeclaree.brief.hebergement).toMatchObject({
+      necessaire: true,
+      occupation: {
+        statut: 'declaree',
+        adultes: 1,
+        enfants: 0,
+        chambres: 1,
+      },
+      sejours: [],
+    });
+  });
+
   it('promeut en declaree seulement après les trois valeurs explicites', async () => {
     vi.mocked(callAI).mockResolvedValue(
       JSON.stringify({

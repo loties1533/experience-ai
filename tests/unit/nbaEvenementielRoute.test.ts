@@ -116,6 +116,88 @@ describe('POST /api/parcours — NBA event-first de bout en bout', () => {
     expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(1);
   });
 
+  it('génère le Brief NBA hôtelier réel sans faux séjour ni lien daté', async () => {
+    const brief = {
+      intention: 'Vivre la NBA ; voir des matchs en direct',
+      avecQui: 'solo',
+      duree: { valeur: 3, unite: 'semaines' },
+      dates: {
+        debut: '2027-01-15T00:00:00.000Z',
+        fin: '2027-02-10T00:00:00.000Z',
+      },
+      lieux: ['États-Unis'],
+      budgetTotal: 9000,
+      hebergement: {
+        necessaire: true,
+        occupation: {
+          statut: 'declaree',
+          adultes: 1,
+          enfants: 0,
+          chambres: 1,
+        },
+        sejours: [],
+      },
+    };
+    const avant = JSON.stringify(brief);
+    vi.mocked(callAIAvecOutils).mockImplementation(async (prompt) => {
+      const debut = prompt.indexOf('{');
+      const fin = prompt.lastIndexOf('}');
+      const briefLot = JSON.parse(prompt.slice(debut, fin + 1)) as {
+        lieux: string[];
+      };
+      const ville = briefLot.lieux[0];
+      return JSON.stringify({
+        moments: [
+          {
+            titre: `Nuit à ${ville}`,
+            ville,
+            elements: [
+              {
+                ref: 'hotel',
+                type: 'hebergement',
+                nom: 'Un hébergement à choisir',
+                justification: 'Dormir dans la ville retenue par le moteur.',
+              },
+            ],
+          },
+        ],
+      });
+    });
+
+    const res = await request(app)
+      .post('/api/parcours')
+      .set('Authorization', `Bearer ${TOKEN}`)
+      .send({ brief });
+
+    expect(res.status).toBe(201);
+    expect(rechercherEvenementsPredictHQEventFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ pays: 'US' })
+    );
+    expect(res.body.parcours.contexte.lieux).toEqual([
+      'Boston',
+      'New York',
+      'Chicago',
+    ]);
+    expect(res.body.parcours.contexte.occupationHebergement).toEqual(
+      brief.hebergement.occupation
+    );
+    const hotels = res.body.parcours.timeline.flatMap(
+      (moment: { elements: Array<Record<string, unknown>> }) =>
+        moment.elements.filter((element) => element.type === 'hebergement')
+    );
+    expect(hotels.length).toBeGreaterThan(0);
+    expect(
+      hotels.every(
+        (hotel: Record<string, unknown>) =>
+          hotel.sejourHebergement === undefined &&
+          hotel.lienRechercheHebergement === undefined &&
+          hotel.reservation === undefined
+      )
+    ).toBe(true);
+    expect(JSON.stringify(brief)).toBe(avant);
+    expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(1);
+  });
+
   it('refuse le benchmark NBA septembre/octobre vide sans générer ni persister', async () => {
     rechercherEvenementsPredictHQEventFirst.mockResolvedValueOnce({
       statut: 'vide', resultats: [], recupereLe: '2026-08-08T12:00:00.000Z',
