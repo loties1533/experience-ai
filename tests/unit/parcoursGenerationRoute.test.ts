@@ -1,6 +1,7 @@
 // =============================================
 // EXPERIENCE AI — tests/unit/parcoursGenerationRoute.test.ts
-// F9 : POST /api/parcours ne doit persister QUE si genererParcours réussit.
+// PR1 : POST /api/parcours ne persiste QUE si le cadrage est planifiable puis
+// si genererParcours réussit.
 // Un refus (422), une panne technique (503) ou une sortie inexploitable (502)
 // ne doivent produire aucune écriture — vérifié ici au niveau de la route
 // HTTP, pas seulement par construction du code. On mocke genererParcours et
@@ -31,6 +32,12 @@ vi.mock('../../server/middleware/limiter.js', () => {
 
 const { genererParcours } = vi.hoisted(() => ({ genererParcours: vi.fn() }));
 vi.mock('../../server/agents/generation.js', () => ({ genererParcours }));
+
+const { preparerGeneration } = vi.hoisted(() => ({ preparerGeneration: vi.fn() }));
+vi.mock('../../server/agents/generation/preparation.js', () => ({ preparerGeneration }));
+
+const { avancerDialogue } = vi.hoisted(() => ({ avancerDialogue: vi.fn() }));
+vi.mock('../../server/agents/intake.js', () => ({ avancerDialogue }));
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
@@ -66,6 +73,7 @@ const BRIEF = {
 describe('POST /api/parcours — F9, aucune écriture sans génération réussie', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    preparerGeneration.mockReturnValue({ type: 'planifiable' });
     prismaMock.preferenceParcours.findUnique.mockResolvedValue(null);
     prismaMock.parcours.findUnique.mockResolvedValue(null);
   });
@@ -77,7 +85,52 @@ describe('POST /api/parcours — F9, aucune écriture sans génération réussie
     const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF });
 
     expect(res.status).toBe(201);
+    expect(res.body.type).toBe('parcours_cree');
     expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('clarification requise : 200 structuré, sans lot ni persistance', async () => {
+    preparerGeneration.mockReturnValue({
+      type: 'clarification_requise',
+      clarification: {
+        code: 'zone_geographique_requise',
+        question: 'Tu préfères rester en Europe ou aller plus loin ?',
+        champCible: 'lieux',
+      },
+      etatDialogue: {
+        champ: 'preparation_generation',
+        code: 'zone_geographique_requise',
+        champCible: 'lieux',
+      },
+    });
+
+    const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      type: 'clarification_requise',
+      clarification: { code: 'zone_geographique_requise', champCible: 'lieux' },
+      etatDialogue: { champ: 'preparation_generation' },
+    });
+    expect(genererParcours).not.toHaveBeenCalled();
+    expect(prismaMock.preferenceParcours.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.parcours.upsert).not.toHaveBeenCalled();
+  });
+
+  it('refus du cadrage : 422, sans lot ni persistance', async () => {
+    preparerGeneration.mockReturnValue({
+      type: 'refus',
+      refus: {
+        code: 'hors_perimetre_produit',
+        message: 'Cette demande dépasse le périmètre du produit.',
+      },
+    });
+
+    const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF });
+
+    expect(res.status).toBe(422);
+    expect(genererParcours).not.toHaveBeenCalled();
+    expect(prismaMock.parcours.upsert).not.toHaveBeenCalled();
   });
 
   it('refus métier (donnée essentielle manquante) : 422, aucune écriture', async () => {
@@ -98,12 +151,13 @@ describe('POST /api/parcours — F9, aucune écriture sans génération réussie
     expect(prismaMock.parcours.upsert).not.toHaveBeenCalled();
   });
 
-  it('sortie IA inexploitable : 502, aucune écriture', async () => {
+  it('prose LLM hors contrat : 502, jamais une clarification, aucune écriture', async () => {
     genererParcours.mockRejectedValue(new AppError('Sortie inexploitable', 502));
 
     const res = await auth(request(app).post('/api/parcours')).send({ brief: BRIEF });
 
     expect(res.status).toBe(502);
+    expect(res.body.type).toBeUndefined();
     expect(prismaMock.parcours.upsert).not.toHaveBeenCalled();
   });
 
@@ -114,5 +168,67 @@ describe('POST /api/parcours — F9, aucune écriture sans génération réussie
 
     expect(res.status).not.toBe(201);
     expect(prismaMock.parcours.upsert).not.toHaveBeenCalled();
+  });
+
+  it('ignore un état de dialogue envoyé par erreur : il n’atteint pas la préparation ni la génération', async () => {
+    genererParcours.mockResolvedValue(parcoursDeTest());
+    prismaMock.parcours.upsert.mockResolvedValue({});
+    const res = await auth(request(app).post('/api/parcours')).send({
+      brief: BRIEF,
+      etatDialogue: { champ: 'preparation_generation', code: 'zone_geographique_requise', champCible: 'lieux' },
+    });
+
+    expect(res.status).toBe(201);
+    expect(preparerGeneration.mock.calls[0][0]).not.toHaveProperty('etatDialogue');
+    expect(genererParcours.mock.calls[0][0]).not.toHaveProperty('etatDialogue');
+  });
+});
+
+describe('POST /api/parcours/dialogue — clarification de préparation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('accepte l’état de préparation et le transmet à l’intake, qui le consomme', async () => {
+    const etatDialogue = {
+      champ: 'preparation_generation',
+      code: 'zone_geographique_requise',
+      champCible: 'lieux',
+    };
+    avancerDialogue.mockResolvedValue({
+      brief: { ...BRIEF, lieux: ['Paris'] },
+      reponse: 'Parfait, Paris est noté.',
+      estComplet: true,
+    });
+
+    const res = await auth(request(app).post('/api/parcours/dialogue')).send({
+      brief: BRIEF,
+      message: 'Paris',
+      etatDialogue,
+    });
+
+    expect(res.status).toBe(200);
+    expect(avancerDialogue).toHaveBeenCalledWith(
+      expect.objectContaining(BRIEF),
+      'Paris',
+      etatDialogue
+    );
+    expect(res.body.etatDialogue).toBeUndefined();
+    expect(res.body.brief.lieux).toEqual(['Paris']);
+  });
+
+  it('rejette un état de préparation invalide avant tout appel intake', async () => {
+    const res = await auth(request(app).post('/api/parcours/dialogue')).send({
+      brief: BRIEF,
+      message: 'Paris',
+      etatDialogue: {
+        champ: 'preparation_generation',
+        code: 'zone_geographique_requise',
+        champCible: 'dates',
+      },
+    });
+
+    expect(res.status).toBe(400);
+    expect(avancerDialogue).not.toHaveBeenCalled();
   });
 });

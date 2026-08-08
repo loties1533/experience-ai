@@ -419,6 +419,70 @@ const schemas = {
     additionalProperties: false,
     properties: proprietesBrief,
   },
+  EtatDialogue: {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['champ', 'valeurCandidate'],
+        additionalProperties: false,
+        properties: {
+          champ: { type: 'string', enum: ['dates'] },
+          valeurCandidate: { $ref: '#/components/schemas/PlageHoraire' },
+        },
+      },
+      {
+        type: 'object',
+        required: ['champ', 'code', 'champCible'],
+        additionalProperties: false,
+        properties: {
+          champ: { type: 'string', enum: ['preparation_generation'] },
+          code: { type: 'string', enum: ['zone_geographique_requise'] },
+          champCible: { type: 'string', enum: ['lieux'] },
+        },
+      },
+    ],
+    discriminator: { propertyName: 'champ' },
+    description: 'Contexte transitoire du dialogue, jamais une propriété du brief ni du parcours.',
+  },
+  ClarificationGeneration: {
+    type: 'object',
+    required: ['code', 'question', 'champCible'],
+    additionalProperties: false,
+    properties: {
+      code: { type: 'string', enum: ['zone_geographique_requise'] },
+      question: { type: 'string', minLength: 1 },
+      champCible: { type: 'string', enum: ['lieux'] },
+    },
+  },
+  EtatDialoguePreparationGeneration: {
+    type: 'object',
+    required: ['champ', 'code', 'champCible'],
+    additionalProperties: false,
+    properties: {
+      champ: { type: 'string', enum: ['preparation_generation'] },
+      code: { type: 'string', enum: ['zone_geographique_requise'] },
+      champCible: { type: 'string', enum: ['lieux'] },
+    },
+  },
+  ReponseClarificationGeneration: {
+    type: 'object',
+    required: ['type', 'clarification', 'etatDialogue'],
+    additionalProperties: false,
+    properties: {
+      type: { type: 'string', enum: ['clarification_requise'] },
+      clarification: { $ref: '#/components/schemas/ClarificationGeneration' },
+      etatDialogue: { $ref: '#/components/schemas/EtatDialoguePreparationGeneration' },
+    },
+  },
+  ReponseParcoursCree: {
+    type: 'object',
+    required: ['type', 'parcours'],
+    additionalProperties: false,
+    properties: {
+      type: { type: 'string', enum: ['parcours_cree'] },
+      parcours: { $ref: '#/components/schemas/Parcours' },
+    },
+  },
   Reservation: {
     type: 'object',
     required: ['lienExterne', 'fournisseur', 'typeLien'],
@@ -937,9 +1001,11 @@ export const openapiSpec = {
               schema: {
                 type: 'object',
                 required: ['message'],
+                additionalProperties: false,
                 properties: {
                   brief:   { $ref: '#/components/schemas/BriefPartiel', description: 'Brief partiel de l\'échange précédent' },
                   message: { type: 'string', minLength: 1, maxLength: 500, example: 'Un EVG à Lisbonne, six personnes, un week-end de juin' },
+                  etatDialogue: { $ref: '#/components/schemas/EtatDialogue', description: 'Contexte transitoire renvoyé par l\'étape précédente, jamais fusionné au brief' },
                 },
               },
             },
@@ -958,7 +1024,7 @@ export const openapiSpec = {
         tags: ['Parcours'],
         summary: 'Générer un parcours depuis un brief confirmé',
         description:
-          'Étape 4 du doc 05. Le brief et les données essentielles sont validés avant l’appel au modèle. ' +
+          'Étape 4 du doc 05. Le brief passe d’abord par un cadrage métier : il peut poursuivre, demander une clarification structurée sans écrire de parcours, ou refuser. Le brief et les données essentielles sont validés avant l’appel au modèle. ' +
           'Sans fournisseur transport, seuls la demande utilisateur et des transports génériques estimés peuvent être persistés : aucun horaire vérifié, lien, réservation ou disponibilité.',
         security: [{ cookieAuth: [] }, { bearerAuth: [] }],
         requestBody: {
@@ -966,7 +1032,8 @@ export const openapiSpec = {
           content: { 'application/json': { schema: { type: 'object', required: ['brief'], properties: { brief: { $ref: '#/components/schemas/Brief' } } } } },
         },
         responses: {
-          201: { description: 'Parcours généré et sauvegardé', content: { 'application/json': { schema: { type: 'object', properties: { parcours: { $ref: '#/components/schemas/Parcours' } } } } } },
+          200: { description: 'Clarification métier requise : aucune génération ni persistance', content: { 'application/json': { schema: { $ref: '#/components/schemas/ReponseClarificationGeneration' } } } },
+          201: { description: 'Parcours généré et sauvegardé', content: { 'application/json': { schema: { $ref: '#/components/schemas/ReponseParcoursCree' } } } },
           400: badRequest,
           401: unauthorized,
           429: { description: 'Trop de générations (rate-limit)', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },

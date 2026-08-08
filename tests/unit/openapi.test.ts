@@ -294,13 +294,14 @@ describe('OpenAPI F4-B2 — demande transport sans preuve fournisseur', () => {
     );
   });
 
-  it('documente 400 et 422 avant génération', () => {
+  it('documente clarification 200, 400 et 422 avant génération', () => {
     const reponses = chemin(
       'paths',
       '/api/parcours',
       'post',
       'responses'
     );
+    expect(propriete(reponses, '200')).toBeDefined();
     expect(propriete(reponses, '400')).toBeDefined();
     expect(propriete(reponses, '422')).toBeDefined();
     expect(
