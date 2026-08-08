@@ -1,4 +1,6 @@
 import {
+  JUSTIFICATION_TRANSPORT_GENERIQUE,
+  LIBELLE_TRANSPORT_GENERIQUE,
   justificationTransportDemande,
   libelleTransportDemande,
   type DemandeTransport,
@@ -63,6 +65,14 @@ export function nettoyerMomentsTransport(
   // ses éléments transport, en ne conservant du placeholder que sa place —
   // jamais son nom, son prix ou sa référence.
   for (const moment of moments) {
+    const transitionGeneriqueServeur =
+      !demandeTransport &&
+      moment.elements.length === 1 &&
+      moment.elements[0].ref.startsWith('__transition-generique-');
+    if (transitionGeneriqueServeur) {
+      nettoyes.push(moment);
+      continue;
+    }
     const autresElements = moment.elements
       .filter((element) => element.type !== 'transport')
       .map((element) => ({
@@ -125,6 +135,27 @@ export function momentDeTransition(index: number): MomentGenere {
         type: 'transport' as const,
         nom: 'Transition',
         justification: 'Transition entre deux villes du parcours.',
+        dependDe: [],
+        estAncre: false,
+      },
+    ],
+  };
+}
+
+/**
+ * Une ville découverte impose de signaler une transition, sans inventer de
+ * tronçon, d'opérateur, d'horaire ou de réservation que l'utilisateur n'a pas
+ * encore demandés.
+ */
+export function momentDeTransitionSansDemande(index: number): MomentGenere {
+  return {
+    titre: 'Transports à organiser',
+    elements: [
+      {
+        ref: `__transition-generique-${index}`,
+        type: 'transport' as const,
+        nom: LIBELLE_TRANSPORT_GENERIQUE,
+        justification: JUSTIFICATION_TRANSPORT_GENERIQUE,
         dependDe: [],
         estAncre: false,
       },

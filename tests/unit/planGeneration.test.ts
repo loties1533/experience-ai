@@ -39,6 +39,22 @@ function tailleEnJours(plage: { debut: string; fin: string }): number {
   return numeroDeJour(plage.fin) - numeroDeJour(plage.debut) + 1;
 }
 
+function ancre(identifiantExterne: string, dateDebut: string) {
+  return {
+    identifiantExterne,
+    nom: `Match ${identifiantExterne}`,
+    ville: 'Boston',
+    codePays: 'US',
+    dateDebut,
+    dateFin: dateDebut.replace('00:30:00.000Z', '03:00:00.000Z'),
+    salle: 'TD Garden',
+    categorieFournisseur: 'sports',
+    fournisseur: 'PredictHQ' as const,
+    source: 'https://api.predicthq.com/v1/events/',
+    recupereLe: '2026-08-08T12:00:00.000Z',
+  };
+}
+
 describe('deriverPlan — découpage pur par ville et par jours', () => {
   it('rend un lot unique et sans ville quand aucune ville n’est connue', () => {
     const plan = planDuBrief(brief({ lieux: [] }));
@@ -103,6 +119,38 @@ describe('deriverPlan — découpage pur par ville et par jours', () => {
     ]);
     expect(plan.transitions).toEqual([
       { origine: 'Chamonix', destination: 'Grenoble' },
+    ]);
+  });
+
+  it('affecte chaque ancre au seul lot dont la plage inclusive contient sa date', () => {
+    const contexte = ContextePlanifiableSchema.parse({
+      strategie: 'decouverte_evenementielle',
+      etapes: [
+        {
+          ville: { nom: 'Boston', origine: 'fournisseur' },
+          plage: { debut: '2027-01-15', fin: '2027-01-24' },
+          ancres: [
+            ancre('evt-borne-debut', '2027-01-15T00:30:00.000Z'),
+            ancre('evt-premier-lot', '2027-01-18T00:30:00.000Z'),
+            ancre('evt-second-lot', '2027-01-21T00:30:00.000Z'),
+            ancre('evt-borne-fin', '2027-01-24T00:30:00.000Z'),
+          ],
+        },
+      ],
+      contraintesConservees: {
+        dates: { debut: '2027-01-15T00:00:00.000Z', fin: '2027-01-24T23:59:59.999Z' },
+      },
+    });
+
+    const plan = deriverPlan(contexte);
+
+    expect(plan.lots.map((lot) => lot.plage)).toEqual([
+      { debut: '2027-01-15', fin: '2027-01-19' },
+      { debut: '2027-01-20', fin: '2027-01-24' },
+    ]);
+    expect(plan.lots.map((lot) => lot.ancres.map((ancre) => ancre.identifiantExterne))).toEqual([
+      ['evt-borne-debut', 'evt-premier-lot'],
+      ['evt-second-lot', 'evt-borne-fin'],
     ]);
   });
 

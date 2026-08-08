@@ -28,6 +28,28 @@
 
 ### Board — avancement du chantier
 
+**Préparation de génération — PR4 : NBA event-first de bout en bout** *(à relire)*
+
+> Proposée par la [PR #75](https://github.com/loties1533/experience-ai/pull/75).
+
+- une intention NBA sans ville explicite interroge PredictHQ event-first ; les
+  événements sélectionnés restent des preuves fournisseur, pas des données LLM ;
+- leurs villes deviennent des étapes planifiables d'origine fournisseur, sans
+  muter `Brief.lieux`, puis alimentent le contexte du Parcours ;
+- les ancres datées ne rejoignent que le lot qui contient leur jour, bornes
+  inclusives ; elles sont réhydratées et vérifiées même si le modèle les omet ;
+- zéro événement est un refus métier (`422`) et une indisponibilité PredictHQ
+  reste une panne technique (`503`) ; une prose LLM hors contrat reste `502` ;
+- les transitions entre villes découvertes restent des transports génériques à
+  organiser, sans trajet, opérateur ni horaire inventé.
+
+`compatibilite_sans_localisation` reste réservée aux intentions non
+événementielles ou non encore couvertes ; elle est interdite pour le cas NBA
+event-first. Cette PR ne généralise pas encore la stratégie aux autres envies.
+
+Validation locale : 69 fichiers / 1 919 tests, TypeScript serveur et client,
+lint et build client.
+
 **Préparation de génération — PR3 : recherche PredictHQ event-first** *(à relire)*
 
 > Proposée par la [PR #74](https://github.com/loties1533/experience-ai/pull/74).

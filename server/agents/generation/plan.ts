@@ -4,6 +4,10 @@ import {
   type ContextePlanifiable,
   type EtapePlanifiable,
 } from './contratPreparation.js';
+import {
+  CandidatEvenementEventFirstSchema,
+  type CandidatEvenementEventFirst,
+} from '../../services/rechercheExterne.js';
 
 // --- PR2 : contexte préparé → plan déterministe de lots ---
 // Ce module ne connaît ni Brief, ni fournisseur, ni LLM. Les étapes y sont
@@ -23,7 +27,7 @@ const LotPrevuSchema = z
     id: z.string().min(1),
     ville: z.string().min(1).optional(),
     plage: PlageJoursSchema.optional(),
-    ancres: z.array(z.string().min(1)).default([]),
+    ancres: z.array(CandidatEvenementEventFirstSchema).default([]),
   })
   .strict();
 
@@ -115,6 +119,22 @@ function lotsSansPlage(etapes: EtapePlanifiable[]): PlanGeneration['lots'] {
 }
 
 /**
+ * Une ancre datée est rattachée à un unique lot : les deux bornes civiles
+ * sont inclusives. Une ancre au premier ou au dernier jour appartient donc à
+ * ce lot, jamais au voisin.
+ */
+function ancresDuLot(
+  ancres: CandidatEvenementEventFirst[],
+  plage: { debut: string; fin: string } | undefined
+): CandidatEvenementEventFirst[] {
+  if (!plage) return ancres;
+  return ancres.filter((ancre) => {
+    const jour = ancre.dateDebut.slice(0, 10);
+    return jour >= plage.debut && jour <= plage.fin;
+  });
+}
+
+/**
  * Dérive les lots depuis les seules étapes préparées. Même entrée, même plan :
  * les identifiants sont des positions stables, jamais des UUID aléatoires.
  */
@@ -158,7 +178,7 @@ export function deriverPlan(contexteRecu: ContextePlanifiable): PlanGeneration {
           id: `lot-${lots.length}`,
           ville: etape.ville?.nom,
           plage: bloc,
-          ancres: etape.ancres,
+          ancres: ancresDuLot(etape.ancres, bloc),
         });
       }
     });
@@ -175,7 +195,7 @@ export function deriverPlan(contexteRecu: ContextePlanifiable): PlanGeneration {
         id: `lot-${index}`,
         ville: etapes[0].ville?.nom,
         plage,
-        ancres: etapes[0].ancres,
+        ancres: ancresDuLot(etapes[0].ancres, plage),
       })
     );
     return PlanGenerationSchema.parse({ lots, transitions });
@@ -203,7 +223,7 @@ export function deriverPlan(contexteRecu: ContextePlanifiable): PlanGeneration {
         id: `lot-${lots.length}`,
         ville: etape.ville?.nom,
         plage,
-        ancres: etape.ancres,
+        ancres: ancresDuLot(etape.ancres, plage),
       });
     }
     curseur = finTranche + 1;

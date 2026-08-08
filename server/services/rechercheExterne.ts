@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export type CauseIndisponibilite =
   | 'configuration_absente'
   | 'authentification'
@@ -86,17 +88,49 @@ export interface CandidatEvenementExterne extends CandidatExterne {
  * hors du journal de génération tant que PR4 ne décide pas de l'utiliser pour
  * préparer un contexte géographique.
  */
-export interface CandidatEvenementEventFirst {
-  identifiantExterne: string;
-  nom: string;
-  ville: string;
-  codePays?: string;
-  dateDebut: string;
-  dateFin?: string;
-  salle?: string;
-  fournisseur: 'PredictHQ';
-  source: string;
-  recupereLe: string;
+export const CandidatEvenementEventFirstSchema = z
+  .object({
+    identifiantExterne: z.string().min(1),
+    nom: z.string().min(1),
+    ville: z.string().min(1),
+    codePays: z.string().regex(/^[A-Z]{2}$/).optional(),
+    dateDebut: z.iso.datetime({ offset: true }),
+    dateFin: z.iso.datetime({ offset: true }).optional(),
+    salle: z.string().min(1).optional(),
+    categorieFournisseur: z.string().min(1),
+    fournisseur: z.literal('PredictHQ'),
+    source: z.string().url(),
+    recupereLe: z.iso.datetime({ offset: true }),
+  })
+  .strict();
+
+/**
+ * Observation PredictHQ sans ville demandée au préalable. Sa ville est une
+ * donnée fournisseur : elle ne remonte jamais dans `Brief.lieux`.
+ */
+export type CandidatEvenementEventFirst = z.infer<
+  typeof CandidatEvenementEventFirstSchema
+>;
+
+/** Adapte une ancre event-first au journal historique de résolution. */
+export function adapterEvenementEventFirstPourJournal(
+  candidat: CandidatEvenementEventFirst
+): CandidatEvenementExterne {
+  return {
+    identifiantExterne: candidat.identifiantExterne,
+    nom: candidat.nom,
+    villeDemandee: candidat.ville,
+    villeConfirmee: candidat.ville,
+    categorieFournisseur: candidat.categorieFournisseur,
+    typeMetierRecherche: 'evenement',
+    fournisseur: 'PredictHQ',
+    source: candidat.source,
+    recupereLe: candidat.recupereLe,
+    dateDebut: candidat.dateDebut,
+    ...(candidat.dateFin ? { dateFin: candidat.dateFin } : {}),
+    ...(candidat.salle ? { salle: candidat.salle } : {}),
+    description: candidat.nom,
+  };
 }
 
 export function resultatVide<T>(recupereLe: string): ResultatRecherche<T> {

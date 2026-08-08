@@ -198,6 +198,7 @@ export async function rechercherEvenementsPredictHQEventFirst(
       page += 1
     ) {
       const parametresRequete = new URLSearchParams({
+        // `q` = recherche textuelle PredictHQ (ex. « NBA »).
         q: demande.requete,
         'active.gte': demande.dateDebut,
         'active.lte': demande.dateFin,
@@ -247,6 +248,7 @@ export async function rechercherEvenementsPredictHQEventFirst(
           dateDebut: evenement.start,
           ...(evenement.end ? { dateFin: evenement.end } : {}),
           ...(salle ? { salle } : {}),
+          categorieFournisseur: evenement.category,
           fournisseur: 'PredictHQ',
           source: SOURCE_PREDICTHQ,
           recupereLe,
