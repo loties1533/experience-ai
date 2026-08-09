@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BriefSchema, EtatDialogueSchema } from '../../server/agents/brief.js';
 import {
   ResultatCadrageGenerationSchema,
@@ -349,6 +349,81 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
       },
     });
   });
+
+  it('conserve Paris explicite sur le chemin ville historique', async () => {
+    const demande = BriefSchema.parse({ ...BRIEF, lieux: ['Paris'] });
+    const decouvrirDestinations = vi.fn(async () =>
+      ResultatCadrageGenerationSchema.parse({
+        type: 'refus',
+        refus: {
+          code: 'donnees_essentielles_insuffisantes',
+          message: 'ne doit pas être appelé',
+        },
+      })
+    );
+
+    const resultat = await preparerGeneration(demande, {
+      decouvrirDestinations,
+    });
+
+    expect(resultat).toMatchObject({
+      type: 'planifiable',
+      contexte: {
+        strategie: 'villes_du_brief',
+        etapes: [
+          { ville: { nom: 'Paris', origine: 'utilisateur' } },
+        ],
+      },
+    });
+    expect(decouvrirDestinations).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['Alpes', 'Grenoble'],
+    ['Toscane', 'Florence'],
+  ])(
+    'ne transforme jamais la zone %s en VillePlanifiee',
+    async (zone, villeResolue) => {
+      const demande = BriefSchema.parse({ ...BRIEF, lieux: [zone] });
+      const decouvrirDestinations = vi.fn(async () =>
+        ResultatCadrageGenerationSchema.parse({
+          type: 'planifiable',
+          contexte: {
+            strategie: 'decouverte_destinations',
+            etapes: [
+              {
+                ville: {
+                  nom: villeResolue,
+                  origine: 'selection_moteur',
+                },
+                ancres: [],
+              },
+            ],
+            contraintesConservees: { dates: demande.dates },
+          },
+        })
+      );
+
+      const resultat = await preparerGeneration(demande, {
+        decouvrirDestinations,
+      });
+
+      expect(decouvrirDestinations).toHaveBeenCalledWith(demande);
+      expect(resultat).toMatchObject({
+        type: 'planifiable',
+        contexte: {
+          strategie: 'decouverte_destinations',
+          etapes: [{ ville: { nom: villeResolue } }],
+        },
+      });
+      if (resultat.type === 'planifiable') {
+        expect(resultat.contexte.etapes.map((etape) => etape.ville?.nom)).not.toContain(
+          zone
+        );
+      }
+      expect(demande.lieux).toEqual([zone]);
+    }
+  );
 
   it('conserve l’état dates, rejette un état de préparation invalide et ne laisse aucun état entrer dans le Brief', () => {
     expect(

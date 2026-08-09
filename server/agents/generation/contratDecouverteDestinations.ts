@@ -30,7 +30,10 @@ function normaliserNomCandidat(nom: string): string {
 export const PropositionDecouverteDestinationsSchema = z
   .object({
     format: FormatDecouverteDestinationsSchema,
-    facettesObligatoires: z.array(FacetteDestinationSchema).min(1).max(6),
+    // Zéro est structurellement valide : le schéma ne doit jamais pousser le
+    // modèle à fabriquer une facette. Le pipeline métier clarifie ces Briefs
+    // avant l'appel LLM et vérifie ensuite chaque facette contre le Brief.
+    facettesObligatoires: z.array(FacetteDestinationSchema).max(6),
     facettesSouples: z.array(FacetteDestinationSchema).max(6),
     candidats: z.array(CandidatDestinationProposeSchema).min(1).max(5),
   })

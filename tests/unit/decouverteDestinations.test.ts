@@ -27,8 +27,8 @@ function sortieLLM(
 ): string {
   return JSON.stringify({
     format: 'itineraire',
-    facettesObligatoires: ['sports_hiver', 'nature'],
-    facettesSouples: ['detente'],
+    facettesObligatoires: ['nature'],
+    facettesSouples: [],
     candidats: [
       { nom: 'Chamonix', codePaysSuggere: 'FR' },
       { nom: 'Innsbruck', codePaysSuggere: 'AT' },
@@ -54,8 +54,8 @@ function resolutionOk(
         recupereLe: '2026-08-09T15:00:00.000Z',
       },
       signauxParFacette: {},
-      facettesObligatoiresCouvertes: 2,
-      facettesSouplesCouvertes: 1,
+      facettesObligatoiresCouvertes: 1,
+      facettesSouplesCouvertes: 0,
       minimumSignauxPlafonne: 3,
     })),
     rejets: [],
@@ -79,15 +79,17 @@ describe('proposeur LLM borné', () => {
 
     expect(proposition).toEqual({
       format: 'itineraire',
-      facettesObligatoires: ['sports_hiver', 'nature'],
-      facettesSouples: ['detente'],
+      facettesObligatoires: ['nature'],
+      facettesSouples: [],
       candidats: [
         { nom: 'Chamonix', codePaysSuggere: 'FR' },
         { nom: 'Innsbruck', codePaysSuggere: 'AT' },
       ],
     });
     expect(appelerIA).toHaveBeenCalledWith(
-      expect.any(String),
+      expect.stringContaining(
+        'Facettes objectivables explicitement autorisées par le Brief : ["nature"]'
+      ),
       expect.stringContaining('aucune justification, preuve, note, score, prix'),
       'destinations'
     );
@@ -103,6 +105,41 @@ describe('proposeur LLM borné', () => {
 
     await expect(proposerDestinations(brief(), appelerIA)).rejects.toMatchObject(
       { statusCode: 502 }
+    );
+  });
+
+  it('rejette toute facette LLM qui ne vient pas explicitement du Brief', async () => {
+    const appelerIA = vi.fn().mockResolvedValue(
+      sortieLLM({
+        facettesObligatoires: ['culture'],
+        facettesSouples: [],
+      })
+    );
+
+    await expect(proposerDestinations(brief(), appelerIA)).rejects.toMatchObject(
+      { statusCode: 502 }
+    );
+  });
+
+  it('permet au contrat LLM de répondre sans facette à un besoin non objectivable', async () => {
+    const appelerIA = vi.fn().mockResolvedValue(
+      sortieLLM({
+        format: 'sejour',
+        facettesObligatoires: [],
+        facettesSouples: [],
+        candidats: [{ nom: 'Paris', codePaysSuggere: 'FR' }],
+      })
+    );
+
+    const proposition = await proposerDestinations(
+      brief({ intention: 'Je veux un week-end romantique en couple' }),
+      appelerIA
+    );
+
+    expect(proposition.facettesObligatoires).toEqual([]);
+    expect(proposition.facettesSouples).toEqual([]);
+    expect(appelerIA.mock.calls[0][0]).toContain(
+      'Facettes objectivables explicitement autorisées par le Brief : []'
     );
   });
 });
@@ -182,6 +219,33 @@ describe('préconditions et décision de découverte', () => {
     expect(deps.resoudre).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'Je veux un week-end romantique en couple',
+    'Je veux quelque chose de calme et dépaysant',
+    'Je veux partir sans trop dépenser',
+    'Je veux de beaux paysages',
+  ])(
+    'clarifie l’intention précise non objectivable « %s » sans inventer de facette',
+    async (intention) => {
+      const deps = dependances();
+
+      const resultat = await decouvrirDestinations(
+        brief({ intention }),
+        deps
+      );
+
+      expect(resultat).toMatchObject({
+        type: 'clarification_requise',
+        clarification: {
+          code: 'intention_a_preciser',
+          champCible: 'intention',
+        },
+      });
+      expect(deps.appelerIA).not.toHaveBeenCalled();
+      expect(deps.resoudre).not.toHaveBeenCalled();
+    }
+  );
+
   it('clarifie la période avant le proposeur', async () => {
     const deps = dependances();
     const resultat = await decouvrirDestinations(
@@ -245,6 +309,14 @@ describe('préconditions et décision de découverte', () => {
 
   it('ignore le soleil souple et continue sur les seules facettes prouvables', async () => {
     const deps = dependances(resolutionOk(['Lisbonne']));
+    deps.appelerIA.mockResolvedValue(
+      sortieLLM({
+        format: 'sejour',
+        facettesObligatoires: ['detente'],
+        facettesSouples: [],
+        candidats: [{ nom: 'Lisbonne', codePaysSuggere: 'PT' }],
+      })
+    );
     const resultat = await decouvrirDestinations(
       brief({
         intention:

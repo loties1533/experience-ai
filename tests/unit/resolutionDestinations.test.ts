@@ -135,6 +135,26 @@ describe('contraintes et prédicats de destination', () => {
     expect(destinationsAResoudreApresIntake(brief)).toBe(false);
   });
 
+  it.each([
+    ['Europe', 'FR'],
+    ['France', 'FR'],
+    ['Alpes', 'CH'],
+    ['Toscane', 'IT'],
+  ])(
+    'conserve %s comme contrainte géographique, jamais comme ville',
+    (zone, codePresent) => {
+      const brief = BriefSchema.parse({ ...BRIEF, lieux: [zone] });
+
+      const analyse = analyserContraintesGeographiques(brief);
+
+      expect(analyse.villesExplicites).toEqual([]);
+      expect(analyse.zonesDeclarees).toEqual([zone]);
+      expect(analyse.codesPaysAutorises?.has(codePresent)).toBe(true);
+      expect(destinationsAResoudreApresIntake(brief)).toBe(true);
+      expect(brief.lieux).toEqual([zone]);
+    }
+  );
+
   it('reconnaît les deux stratégies génériques résolues après intake', () => {
     expect(
       destinationsResoluesParPreparation({

@@ -56,6 +56,16 @@ const CODES_OCEANIE = new Set([
   'VU', 'WS',
 ]);
 
+// Garde-fou fermé PR5-B : ces valeurs courantes sont des zones, pas des
+// villes. Il évite un moteur géographique universel et conserve le chemin
+// historique des villes explicites comme Paris.
+const CODES_ZONES_REGIONALES_SUPPORTEES = new Map<string, readonly string[]>([
+  ['alpes', ['AT', 'CH', 'DE', 'FR', 'IT', 'LI', 'SI']],
+  ['toscane', ['IT']],
+  ['bretagne', ['FR']],
+  ['provence', ['FR']],
+]);
+
 function normaliserTexte(texte: string): string {
   return texte
     .toLowerCase()
@@ -102,6 +112,8 @@ function codesPourContrainte(lieu: string): Set<string> | undefined {
   if (normalise === 'amerique du nord') return new Set(CODES_AMERIQUE_NORD);
   if (normalise === 'amerique du sud') return new Set(CODES_AMERIQUE_SUD);
   if (normalise === 'oceanie') return new Set(CODES_OCEANIE);
+  const codesRegion = CODES_ZONES_REGIONALES_SUPPORTEES.get(normalise);
+  if (codesRegion) return new Set(codesRegion);
   const codePays = construireCodesPaysParNom().get(normalise);
   return codePays ? new Set([codePays]) : undefined;
 }
@@ -113,8 +125,9 @@ export interface ContraintesGeographiquesBrief {
 }
 
 /**
- * Les pays et continents restent des contraintes du Brief, jamais des villes
- * planifiées. Les autres lieux conservent le chemin historique utilisateur.
+ * Les pays, continents et régions explicitement supportées restent des
+ * contraintes du Brief, jamais des villes planifiées. Les autres lieux
+ * conservent le chemin historique utilisateur sans géocodage généralisé.
  */
 export function analyserContraintesGeographiques(
   brief: Brief

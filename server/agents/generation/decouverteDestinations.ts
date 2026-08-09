@@ -1,5 +1,6 @@
 import { AppError } from '../../lib/AppError.js';
 import { callAI, parseJSON, sanitizeInput } from '../../services/claude/core.js';
+import type { FacetteDestination } from '../../services/destinations/index.js';
 import type { Brief } from '../brief.js';
 import {
   PropositionDecouverteDestinationsSchema,
@@ -23,7 +24,8 @@ Réponds UNIQUEMENT avec un objet JSON strict de cette forme :
 Règles absolues :
 - 1 à 5 candidats, sans doublon de nom ;
 - facettes autorisées uniquement : sports_hiver, nature, plage, gastronomie, culture, detente ;
-- au moins une facette obligatoire ;
+- utilise uniquement les facettes explicitement autorisées dans le prompt utilisateur ;
+- si aucune facette n'est autorisée, laisse les deux listes vides au lieu d'en inventer une ;
 - codePaysSuggere est un code ISO alpha-2 majuscule, seulement si pertinent ;
 - aucune justification, preuve, note, score, prix, disponibilité ou affirmation marketing ;
 - ne prétends jamais qu'une destination est supérieure, ensoleillée ou adaptée au budget ;
@@ -38,20 +40,50 @@ function normaliserTexte(texte: string): string {
     .trim();
 }
 
-const MOTIFS_FACETTES = [
-  /\b(ski|snowboard|neige|sport(?:s)? d hiver|montagne en hiver)\b/,
-  /\b(nature|montagne|trek|randonnee|alpinisme|foret|parc)\b/,
-  /\b(plage|mer|ocean|surf)\b/,
-  /\b(gastronom|culinaire|cuisine|restaurant|vin|vignoble)\b/,
-  /\b(culture|musee|patrimoine|histoire|architecture|musique|concert)\b/,
-  /\b(detente|bien etre|spa|relax|repos|massage|sauna)\b/,
-] as const;
+const DETECTIONS_FACETTES = [
+  {
+    facette: 'sports_hiver',
+    motif: /\b(ski|snowboard|neige|sport(?:s)? d hiver|montagne en hiver)\b/,
+  },
+  {
+    facette: 'nature',
+    motif: /\b(nature|montagne|trek|randonnee|alpinisme|foret|parc)\b/,
+  },
+  { facette: 'plage', motif: /\b(plage|mer|ocean|surf)\b/ },
+  {
+    facette: 'gastronomie',
+    motif: /\b(gastronom|culinaire|cuisine|restaurant|vin|vignoble)\b/,
+  },
+  {
+    facette: 'culture',
+    motif: /\b(culture|musee|patrimoine|histoire|architecture|musique|concert)\b/,
+  },
+  {
+    facette: 'detente',
+    motif: /\b(detente|bien etre|spa|relax|repos|massage|sauna)\b/,
+  },
+] as const satisfies readonly {
+  facette: FacetteDestination;
+  motif: RegExp;
+}[];
+
+/** Facettes fermées explicitement exprimées, jamais déduites d'un thème voisin. */
+export function facettesObjectivablesDuBrief(
+  brief: Brief
+): FacetteDestination[] {
+  const texte = normaliserTexte(
+    [brief.intention, ...brief.contraintes].join(' ')
+  );
+  return DETECTIONS_FACETTES.flatMap(({ facette, motif }) =>
+    motif.test(texte) ? [facette] : []
+  );
+}
 
 function intentionTropVague(brief: Brief): boolean {
   const texte = normaliserTexte(
     [brief.intention, ...brief.contraintes].join(' ')
   );
-  if (MOTIFS_FACETTES.some((motif) => motif.test(texte))) return false;
+  if (facettesObjectivablesDuBrief(brief).length > 0) return false;
   return (
     texte.length < 24 ||
     /^(je veux |j aimerais )?(partir|voyager)( quelque part)?( de bien)?$/.test(
@@ -131,6 +163,7 @@ export async function proposerDestinations(
   brief: Brief,
   appelerIA: DependancesDecouverteDestinations['appelerIA'] = callAI
 ): Promise<PropositionDecouverteDestinations> {
+  const facettesDuBrief = facettesObjectivablesDuBrief(brief);
   const prompt = `Brief confirmé, à interpréter sans le compléter :
 ${JSON.stringify({
   intention: sanitizeInput(brief.intention),
@@ -140,6 +173,8 @@ ${JSON.stringify({
   contraintes: brief.contraintes.map(sanitizeInput),
 })}
 
+Facettes objectivables explicitement autorisées par le Brief : ${JSON.stringify(facettesDuBrief)}.
+N'ajoute aucune autre facette. Si cette liste est vide, garde facettesObligatoires et facettesSouples vides.
 Propose uniquement des localités peuplées plausibles à faire vérifier par le serveur. Le soleil n'est pas une facette disponible et ne doit produire aucune promesse météo.`;
   let contenu: unknown;
   try {
@@ -159,6 +194,21 @@ Propose uniquement des localités peuplées plausibles à faire vérifier par le
       502
     );
   }
+  const facettesAutorisees = new Set(facettesDuBrief);
+  const facettesProposees = [
+    ...proposition.data.facettesObligatoires,
+    ...proposition.data.facettesSouples,
+  ];
+  if (
+    (facettesDuBrief.length > 0 &&
+      proposition.data.facettesObligatoires.length === 0) ||
+    facettesProposees.some((facette) => !facettesAutorisees.has(facette))
+  ) {
+    throw new AppError(
+      'La proposition de destinations a produit une sortie inexploitable.',
+      502
+    );
+  }
   return proposition.data;
 }
 
@@ -171,7 +221,15 @@ export async function decouvrirDestinations(
   brief: Brief,
   dependances: DependancesDecouverteDestinations = DEPENDANCES_PAR_DEFAUT
 ): Promise<ResultatCadrageGeneration> {
+  const facettesDuBrief = facettesObjectivablesDuBrief(brief);
   if (intentionTropVague(brief)) {
+    return clarification(
+      'intention_a_preciser',
+      'Tu recherches plutôt nature, culture, gastronomie ou détente ?',
+      'intention'
+    );
+  }
+  if (facettesDuBrief.length === 0) {
     return clarification(
       'intention_a_preciser',
       'Tu recherches plutôt nature, culture, gastronomie ou détente ?',

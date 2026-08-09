@@ -22,6 +22,16 @@ describe('contrat LLM de découverte des destinations', () => {
     ).toBe(true);
   });
 
+  it('autorise zéro facette afin de ne jamais en imposer une au LLM', () => {
+    expect(
+      PropositionDecouverteDestinationsSchema.safeParse({
+        ...propositionValide(),
+        facettesObligatoires: [],
+        facettesSouples: [],
+      }).success
+    ).toBe(true);
+  });
+
   it.each([
     ['score', { score: 83 }],
     ['preuve', { preuve: 'Destination réputée' }],
