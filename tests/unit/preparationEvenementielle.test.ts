@@ -202,6 +202,31 @@ describe('préparation événementielle NBA', () => {
     await expect(preparerGeneration(BRIEF_NBA)).rejects.toMatchObject({ statusCode: 503 });
   });
 
+  it('refuse métier si tous les candidats reçus ont une plage temporelle inutilisable', async () => {
+    const dateDebut = '2027-01-18T00:30:00.000Z';
+    const { dateFin: _dateFin, ...sansFin } = evenement('evt-sans-fin', 'Boston', dateDebut);
+    rechercherEvenementsPredictHQEventFirst.mockResolvedValue({
+      statut: 'ok',
+      recupereLe: '2026-08-08T12:00:00.000Z',
+      resultats: [
+        sansFin,
+        { ...evenement('evt-fin-egale', 'Boston', dateDebut), dateFin: dateDebut },
+        {
+          ...evenement('evt-fin-avant', 'Boston', dateDebut),
+          dateFin: '2027-01-18T00:29:59.999Z',
+        },
+      ],
+    });
+
+    await expect(preparerGeneration(BRIEF_NBA)).resolves.toMatchObject({
+      type: 'refus',
+      refus: {
+        code: 'donnees_essentielles_insuffisantes',
+        message: 'Aucun événement NBA vérifiable n’a été trouvé sur les dates et la zone demandées.',
+      },
+    });
+  });
+
   it('sélectionne uniquement des IDs fournisseur existants, sans doublon et de façon bornée', () => {
     const candidats = [
       evenement('evt-boston', 'Boston', '2027-01-18T00:30:00.000Z'),

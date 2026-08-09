@@ -83,10 +83,28 @@ export interface CandidatEvenementExterne extends CandidatExterne {
   description: string;
 }
 
+const DateEvenementPlanifiableSchema = z.iso.datetime({ offset: true });
+
+export function estPlageEvenementiellePlanifiable(
+  dateDebut: string,
+  dateFin: string | undefined
+): dateFin is string {
+  if (!dateFin) return false;
+  if (
+    !DateEvenementPlanifiableSchema.safeParse(dateDebut).success ||
+    !DateEvenementPlanifiableSchema.safeParse(dateFin).success
+  ) {
+    return false;
+  }
+  const debut = Date.parse(dateDebut);
+  const fin = Date.parse(dateFin);
+  return fin > debut;
+}
+
 /**
- * Événement trouvé sans ville demandée au préalable. Cette observation reste
- * hors du journal de génération tant que PR4 ne décide pas de l'utiliser pour
- * préparer un contexte géographique.
+ * Événement trouvé sans ville demandée au préalable. Sa plage stricte est un
+ * invariant du contexte planifiable : aucune fin absente ou synthétique ne
+ * peut être propagée comme ancre.
  */
 export const CandidatEvenementEventFirstSchema = z
   .object({
@@ -95,14 +113,19 @@ export const CandidatEvenementEventFirstSchema = z
     ville: z.string().min(1),
     codePays: z.string().regex(/^[A-Z]{2}$/).optional(),
     dateDebut: z.iso.datetime({ offset: true }),
-    dateFin: z.iso.datetime({ offset: true }).optional(),
+    dateFin: z.iso.datetime({ offset: true }),
     salle: z.string().min(1).optional(),
     categorieFournisseur: z.string().min(1),
     fournisseur: z.literal('PredictHQ'),
     source: z.string().url(),
     recupereLe: z.iso.datetime({ offset: true }),
   })
-  .strict();
+  .strict()
+  .refine(
+    (candidat) =>
+      estPlageEvenementiellePlanifiable(candidat.dateDebut, candidat.dateFin),
+    { message: 'La fin de l’événement doit être strictement postérieure à son début' }
+  );
 
 /**
  * Observation PredictHQ sans ville demandée au préalable. Sa ville est une
@@ -127,7 +150,7 @@ export function adapterEvenementEventFirstPourJournal(
     source: candidat.source,
     recupereLe: candidat.recupereLe,
     dateDebut: candidat.dateDebut,
-    ...(candidat.dateFin ? { dateFin: candidat.dateFin } : {}),
+    dateFin: candidat.dateFin,
     ...(candidat.salle ? { salle: candidat.salle } : {}),
     description: candidat.nom,
   };
