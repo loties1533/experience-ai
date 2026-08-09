@@ -72,6 +72,31 @@ describe('OpenAPI — localisations déclarées typées', () => {
         }),
       ])
     );
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'ClarificationGeneration',
+        'properties',
+        'code',
+        'enum'
+      )
+    ).toEqual([
+      'zone_geographique_requise',
+      'periode_requise',
+      'intention_a_preciser',
+      'localisation_a_preciser',
+    ]);
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'ClarificationGeneration',
+        'properties',
+        'champCible',
+        'enum'
+      )
+    ).toEqual(['lieux', 'dates', 'intention']);
   });
 });
 
