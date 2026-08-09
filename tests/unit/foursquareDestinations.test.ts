@@ -14,13 +14,40 @@ const COORDONNEES_CHAMONIX = {
   longitude: 6.86933,
 };
 
+const IDS_LEGACY_INTERDITS = [
+  '10004',
+  '10027',
+  '10028',
+  '10030',
+  '10031',
+  '11070',
+  '11073',
+  '13065',
+  '16003',
+  '16005',
+  '16019',
+  '16020',
+  '16026',
+  '16032',
+  '16034',
+  '16035',
+  '16038',
+  '18058',
+  '18059',
+  '18060',
+  '18061',
+  '18081',
+  '18083',
+  '18084',
+];
+
 function poiFoursquare(changements: Record<string, unknown> = {}) {
   return {
     fsq_place_id: 'fsq-ski-001',
     name: 'Domaine skiable des Grands Montets',
     categories: [
       {
-        fsq_category_id: '18061',
+        fsq_category_id: '4bf58dd8d48988d1e9941735',
         name: 'Ski Resort and Area',
       },
     ],
@@ -75,7 +102,10 @@ describe('preuve Foursquare par coordonnées', () => {
           identifiantExterne: 'fsq-ski-001',
           nom: 'Domaine skiable des Grands Montets',
           categories: [
-            { identifiant: '18061', nom: 'Ski Resort and Area' },
+            {
+              identifiant: '4bf58dd8d48988d1e9941735',
+              nom: 'Ski Resort and Area',
+            },
           ],
           adresse: 'Les Grands Montets',
           localite: 'Chamonix-Mont-Blanc',
@@ -108,6 +138,48 @@ describe('preuve Foursquare par coordonnées', () => {
 
     const url = new URL(String(requeteFetch.mock.calls[0][0]));
     expect(url.searchParams.get('fsq_category_ids')).toBe(ids.join(','));
+  });
+
+  it('emploie uniquement les IDs BSON actuels, jamais les IDs numériques legacy', () => {
+    const ids = Object.values(CATEGORIES_FOURSQUARE_PAR_FACETTE).flat();
+
+    expect(CATEGORIES_FOURSQUARE_PAR_FACETTE).toEqual({
+      sports_hiver: [
+        '63be6904847c3692a84b9c19',
+        '4bf58dd8d48988d1ec941735',
+        '4bf58dd8d48988d1eb941735',
+        '4bf58dd8d48988d1e9941735',
+        '4eb1c0ed3b7b52c0e1adc2ea',
+        '4eb1c0f63b7b52c0e1adc2eb',
+      ],
+      nature: [
+        '52e81612bcbc57f1066b7a22',
+        '4bf58dd8d48988d159941735',
+        '4bf58dd8d48988d163941735',
+        '52e81612bcbc57f1066b7a21',
+        '63be6904847c3692a84b9be0',
+        '5bae9231bedf3950379f89d0',
+      ],
+      plage: ['4bf58dd8d48988d1e2941735'],
+      gastronomie: ['4d4b7105d754a06374d81259'],
+      culture: [
+        '4bf58dd8d48988d1e2931735',
+        '4bf58dd8d48988d181941735',
+        '4bf58dd8d48988d18f941735',
+        '4bf58dd8d48988d190941735',
+        '4bf58dd8d48988d191941735',
+        '4deefb944765f83613cdba6e',
+        '4bf58dd8d48988d12d941735',
+      ],
+      detente: [
+        '52f2ab2ebcbc57f1066b8b3c',
+        '4bf58dd8d48988d1ed941735',
+        '58daa1558bbb0b01f18ec1ae',
+      ],
+    });
+    expect(ids).toHaveLength(24);
+    expect(ids.every((id) => /^[a-f0-9]{24}$/.test(id))).toBe(true);
+    expect(ids).not.toEqual(expect.arrayContaining(IDS_LEGACY_INTERDITS));
   });
 
   it('interdit une catégorie ou requête libre supplémentaire', async () => {
@@ -159,7 +231,10 @@ describe('preuve Foursquare par coordonnées', () => {
       reponseOk([
         poiFoursquare({
           categories: [
-            { fsq_category_id: '13065', name: 'Restaurant' },
+            {
+              fsq_category_id: '4d4b7105d754a06374d81259',
+              name: 'Restaurant',
+            },
           ],
         }),
       ])
@@ -178,8 +253,14 @@ describe('preuve Foursquare par coordonnées', () => {
       reponseOk([
         poiFoursquare({
           categories: [
-            { fsq_category_id: '18061', name: 'Ski Resort and Area' },
-            { fsq_category_id: '13065', name: 'Restaurant' },
+            {
+              fsq_category_id: '4bf58dd8d48988d1e9941735',
+              name: 'Ski Resort and Area',
+            },
+            {
+              fsq_category_id: '4d4b7105d754a06374d81259',
+              name: 'Restaurant',
+            },
           ],
         }),
       ])
@@ -195,7 +276,10 @@ describe('preuve Foursquare par coordonnées', () => {
       resultats: [
         {
           categories: [
-            { identifiant: '18061', nom: 'Ski Resort and Area' },
+            {
+              identifiant: '4bf58dd8d48988d1e9941735',
+              nom: 'Ski Resort and Area',
+            },
           ],
         },
       ],
@@ -262,6 +346,7 @@ describe('indisponibilités Foursquare destinations', () => {
   });
 
   it.each([
+    [400, 'fournisseur'],
     [401, 'authentification'],
     [429, 'quota'],
     [500, 'fournisseur'],
