@@ -1,6 +1,8 @@
+import type { LocalisationDeclareeEnCours } from '../localisationDeclaree.js';
+
 interface BriefNBAMinimal {
   intention?: string;
-  lieux?: string[];
+  lieux?: LocalisationDeclareeEnCours[];
   hebergement?: {
     necessaire: boolean;
     sejours?: unknown[];
@@ -22,12 +24,20 @@ export function estDemandeNBAEvenementielle(brief: BriefNBAMinimal): boolean {
 }
 
 /** Périmètre volontairement NBA/US : aucun classifieur géographique général. */
-export function estZonePaysUSNBA(lieu: string): boolean {
-  return /^(?:etats unis|usa|us)$/.test(normaliserTexteNBA(lieu));
+export function estZonePaysUSNBA(
+  lieu: LocalisationDeclareeEnCours
+): boolean {
+  return (
+    lieu.type === 'pays' &&
+    (lieu.codePays === 'US' ||
+      /^(?:etats unis|usa|us)$/.test(normaliserTexteNBA(lieu.nom)))
+  );
 }
 
-export function villesExplicitesNBA(lieux: string[]): string[] {
-  return lieux.filter((lieu) => !estZonePaysUSNBA(lieu));
+export function villesExplicitesNBA(
+  lieux: LocalisationDeclareeEnCours[]
+): string[] {
+  return lieux.flatMap((lieu) => (lieu.type === 'ville' ? [lieu.nom] : []));
 }
 
 /**

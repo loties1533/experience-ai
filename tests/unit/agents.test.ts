@@ -21,7 +21,7 @@ const briefComplet = BriefSchema.parse({
   intention: 'vivre la NBA',
   avecQui: 'solo',
   duree: { valeur: 21, unite: 'jours' },
-  lieux: ['Boston'],
+  lieux: [{ nom: 'Boston', type: 'ville' }],
   budgetTotal: 5000,
 });
 
@@ -147,7 +147,10 @@ describe('brief F7-B — état déterministe du dialogue de base', () => {
 describe('intake (IA de dialogue) — extraction validée, jamais de confiance aveugle', () => {
   it('consomme une clarification de préparation dans l’intake sans la faire entrer dans le Brief', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
-      JSON.stringify({ reponse: 'Parfait, je note Paris.', brief: { lieux: ['Paris'] } })
+      JSON.stringify({
+        reponse: 'Parfait, je note Paris.',
+        brief: { lieux: [{ nom: 'Paris', type: 'ville' }] },
+      })
     );
     const etape = await avancerDialogue(
       {
@@ -165,7 +168,7 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     );
 
     expect(vi.mocked(callAI).mock.calls[0][0]).toContain('champ lieux demandé');
-    expect(etape.brief.lieux).toEqual(['Paris']);
+    expect(etape.brief.lieux).toEqual([{ nom: 'Paris', type: 'ville' }]);
     expect(etape.etatDialogue).toBeUndefined();
     expect(BriefSchema.safeParse(etape.brief).success).toBe(true);
   });
@@ -589,7 +592,7 @@ describe('intake hôtelier F3-C1 — questions explicites sans déduction', () =
       debut: '2026-08-10T00:00:00.000Z',
       fin: '2026-08-13T23:59:59.999Z',
     },
-    lieux: ['Bordeaux'],
+    lieux: [{ nom: 'Bordeaux', type: 'ville' }],
   };
   const sejour = {
     ville: 'Bordeaux',
@@ -803,7 +806,7 @@ describe('intake hôtelier F3-C1 — questions explicites sans déduction', () =
         debut: '2027-01-15T00:00:00.000Z',
         fin: '2027-02-10T00:00:00.000Z',
       },
-      lieux: ['États-Unis'],
+      lieux: [{ nom: 'États-Unis', type: 'pays', codePays: 'US' }],
       budgetTotal: 9000,
     };
 
@@ -1101,7 +1104,10 @@ describe('intake transport F4-B2 — demande explicite et questions déterminist
       debut: '2026-09-10T00:00:00.000Z',
       fin: '2026-09-14T23:59:59.999Z',
     },
-    lieux: ['Bordeaux', 'Paris'],
+    lieux: [
+      { nom: 'Bordeaux', type: 'ville' },
+      { nom: 'Paris', type: 'ville' },
+    ],
   };
 
   function reponseIntake(brief: unknown = {}): string {
@@ -1209,7 +1215,7 @@ describe('intake transport F4-B2 — demande explicite et questions déterminist
         })
       );
       const etape = await avancerDialogue(
-        { ...baseTransport, lieux: ['Bordeaux'] },
+        { ...baseTransport, lieux: [{ nom: 'Bordeaux', type: 'ville' }] },
         message
       );
 
@@ -1225,7 +1231,7 @@ describe('intake transport F4-B2 — demande explicite et questions déterminist
   it('ne force pas un transport simplement reporté à plus tard', async () => {
     vi.mocked(callAI).mockResolvedValue(reponseIntake());
     const etape = await avancerDialogue(
-      { ...baseTransport, lieux: ['Bordeaux'] },
+      { ...baseTransport, lieux: [{ nom: 'Bordeaux', type: 'ville' }] },
       'On verra le transport plus tard'
     );
 
@@ -1599,7 +1605,10 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
   it('rejette un besoin transport incomplet en 422 avant tout appel au modèle', async () => {
     const briefIncomplet = BriefSchema.parse({
       ...briefComplet,
-      lieux: ['Bordeaux', 'Paris'],
+      lieux: [
+        { nom: 'Bordeaux', type: 'ville' },
+        { nom: 'Paris', type: 'ville' },
+      ],
       transport: {
         necessaire: true,
         troncons: [{ origine: { ville: 'Bordeaux' } }],
@@ -1618,7 +1627,10 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
     async (ville) => {
       const brief = BriefSchema.parse({
         ...briefComplet,
-        lieux: ['Bordeaux', 'Paris'],
+        lieux: [
+          { nom: 'Bordeaux', type: 'ville' },
+          { nom: 'Paris', type: 'ville' },
+        ],
         transport: {
           necessaire: true,
           troncons: [
@@ -1646,7 +1658,10 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
   it('exige une confirmation en multi-ville mais pas en mono-ville', async () => {
     const multiVille = BriefSchema.parse({
       ...briefComplet,
-      lieux: ['Bordeaux', 'Paris'],
+      lieux: [
+        { nom: 'Bordeaux', type: 'ville' },
+        { nom: 'Paris', type: 'ville' },
+      ],
     });
     await expect(genererParcours(multiVille)).rejects.toMatchObject({
       statusCode: 422,
@@ -1684,7 +1699,10 @@ describe('génération (IA orchestrateur) — les ids naissent côté serveur', 
       intention: 'relier Bordeaux et Paris',
       avecQui: 'famille',
       duree: { valeur: 4, unite: 'jours' },
-      lieux: ['Bordeaux', 'Paris'],
+      lieux: [
+        { nom: 'Bordeaux', type: 'ville' },
+        { nom: 'Paris', type: 'ville' },
+      ],
       transport: {
         necessaire: true,
         troncons: [
@@ -1877,7 +1895,7 @@ describe('extraction du brief tolérante aux champs invalides', () => {
         brief: {
           intention: { texte: 'organiser l’EVG de Max', nature: 'remplacement' },
           avecQui: 'groupe de 8', // invalide : l'enum attend "amis"/"groupe"…
-          lieux: ['Bordeaux'],
+          lieux: [{ nom: 'Bordeaux', type: 'ville' }],
           budgetTotal: 2800,
           dates: { debut: '2026-09-04T00:00:00Z', fin: '2026-09-06T00:00:00Z' },
         },
@@ -1890,7 +1908,7 @@ describe('extraction du brief tolérante aux champs invalides', () => {
     expect(etape.brief.avecQui).toBeUndefined();
     // …tous les autres survivent.
     expect(etape.brief.intention).toBe('organiser l’EVG de Max');
-    expect(etape.brief.lieux).toEqual(['Bordeaux']);
+    expect(etape.brief.lieux).toEqual([{ nom: 'Bordeaux', type: 'ville' }]);
     expect(etape.brief.budgetTotal).toBe(2800);
     expect(etape.brief.dates?.debut).toBe('2026-09-04T00:00:00Z');
   });
@@ -1915,12 +1933,15 @@ describe('extraction du brief tolérante aux champs invalides', () => {
     );
 
     const etape = await avancerDialogue(
-      { intention: 'vivre la NBA', lieux: ['Boston'] },
+      {
+        intention: 'vivre la NBA',
+        lieux: [{ nom: 'Boston', type: 'ville' }],
+      },
       'peu importe'
     );
 
     expect(etape.brief.intention).toBe('vivre la NBA');
-    expect(etape.brief.lieux).toEqual(['Boston']);
+    expect(etape.brief.lieux).toEqual([{ nom: 'Boston', type: 'ville' }]);
   });
 });
 

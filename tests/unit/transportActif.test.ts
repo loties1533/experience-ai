@@ -36,7 +36,10 @@ const BASE_BRIEF = {
   intention: 'relier Bordeaux et Paris',
   avecQui: 'amis' as const,
   duree: { valeur: 4, unite: 'jours' as const },
-  lieux: ['Bordeaux', 'Paris'],
+  lieux: [
+    { nom: 'Bordeaux', type: 'ville' as const },
+    { nom: 'Paris', type: 'ville' as const },
+  ],
 };
 
 function parcoursTransport(): Parcours {
@@ -82,11 +85,24 @@ describe('Brief transport actif F4-B2', () => {
         intention: 'une journée à Bordeaux',
         avecQui: 'solo',
         duree: { valeur: 1, unite: 'jours' },
-        lieux: ['Bordeaux'],
+        lieux: [{ nom: 'Bordeaux', type: 'ville' }],
       }).success
     ).toBe(true);
     expect(
-      estParcoursMultiVille({ lieux: [' Paris ', 'paris'] })
+      estParcoursMultiVille({
+        lieux: [
+          { nom: ' Paris ', type: 'ville' },
+          { nom: 'paris', type: 'ville' },
+        ],
+      })
+    ).toBe(false);
+    expect(
+      estParcoursMultiVille({
+        lieux: [
+          { nom: 'Alpes', type: 'zone' },
+          { nom: 'France', type: 'pays', codePays: 'FR' },
+        ],
+      })
     ).toBe(false);
   });
 

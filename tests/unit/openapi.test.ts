@@ -19,6 +19,62 @@ function chemin(...cles: string[]): unknown {
   );
 }
 
+describe('OpenAPI — localisations déclarées typées', () => {
+  it('distingue le Brief confirmé du dialogue en cours', () => {
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'Brief',
+        'properties',
+        'lieux',
+        'items',
+        '$ref'
+      )
+    ).toBe('#/components/schemas/LocalisationDeclaree');
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'BriefPartiel',
+        'properties',
+        'lieux',
+        'items',
+        '$ref'
+      )
+    ).toBe('#/components/schemas/LocalisationDeclareeEnCours');
+  });
+
+  it('documente inconnue comme état transitoire et la clarification ciblée', () => {
+    expect(
+      chemin(
+        'components',
+        'schemas',
+        'LocalisationDeclareeEnCours',
+        'properties',
+        'type',
+        'enum'
+      )
+    ).toContain('inconnue');
+    const variantes = chemin(
+      'components',
+      'schemas',
+      'EtatDialogue',
+      'oneOf'
+    ) as unknown[];
+    expect(variantes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          properties: expect.objectContaining({
+            code: { type: 'string', enum: ['localisation_a_preciser'] },
+            champCible: { type: 'string', enum: ['lieux'] },
+          }),
+        }),
+      ])
+    );
+  });
+});
+
 describe('OpenAPI F3-D — lecture et modification sont séparées', () => {
   it.each([
     ['confiance'],

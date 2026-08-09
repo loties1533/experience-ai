@@ -98,14 +98,18 @@ const briefMono: Brief = BriefSchema.parse({
   intention: 'découvrir une ville',
   avecQui: 'amis',
   duree: { valeur: 2, unite: 'jours' },
-  lieux: ['Bordeaux'],
+  lieux: [{ nom: 'Bordeaux', type: 'ville' }],
 });
 
 const briefMulti: Brief = BriefSchema.parse({
   intention: 'découvrir Bordeaux, Paris et Lyon',
   avecQui: 'groupe',
   duree: { valeur: 6, unite: 'jours' },
-  lieux: ['Bordeaux', 'Paris', 'Lyon'],
+  lieux: [
+    { nom: 'Bordeaux', type: 'ville' },
+    { nom: 'Paris', type: 'ville' },
+    { nom: 'Lyon', type: 'ville' },
+  ],
   transport: { necessaire: false },
 });
 
@@ -114,7 +118,11 @@ function briefTransport(): Brief {
     intention: 'relier trois villes',
     avecQui: 'amis',
     duree: { valeur: 6, unite: 'jours' },
-    lieux: ['Bordeaux', 'Paris', 'Lyon'],
+    lieux: [
+      { nom: 'Bordeaux', type: 'ville' },
+      { nom: 'Paris', type: 'ville' },
+      { nom: 'Lyon', type: 'ville' },
+    ],
     transport: {
       necessaire: true,
       troncons: [
@@ -176,7 +184,7 @@ describe('F5-B — un appel IA par lot', () => {
       intention: 'un long séjour à Bordeaux',
       avecQui: 'solo',
       duree: { valeur: 11, unite: 'jours' },
-      lieux: ['Bordeaux'],
+      lieux: [{ nom: 'Bordeaux', type: 'ville' }],
       dates: { debut: '2026-09-01T00:00:00Z', fin: '2026-09-11T23:59:59Z' },
     });
     const lots = planDuBrief(brief).lots;
@@ -377,7 +385,7 @@ describe('F5-B — validation technique du scope d’un lot', () => {
       intention: 'un séjour à Bordeaux',
       avecQui: 'solo',
       duree: { valeur: 11, unite: 'jours' },
-      lieux: ['Bordeaux'],
+      lieux: [{ nom: 'Bordeaux', type: 'ville' }],
       dates: { debut: '2026-09-01T00:00:00Z', fin: '2026-09-11T23:59:59Z' },
     });
     const lots = planDuBrief(brief).lots;
@@ -436,7 +444,7 @@ describe('F6-F — bornes temporelles d’un lot mono-bloc (ex. soirée courte)'
     avecQui: 'amis',
     duree: { valeur: 5, unite: 'heures' },
     dates: { debut: '2026-09-12T18:00:00.000Z', fin: '2026-09-12T23:59:00.000Z' },
-    lieux: ['Bordeaux'],
+    lieux: [{ nom: 'Bordeaux', type: 'ville' }],
   });
 
   function elementAvecPlage(debut: string, fin: string) {
@@ -551,7 +559,7 @@ describe('F6-F — bornes temporelles d’un lot mono-bloc (ex. soirée courte)'
       intention: 'un long séjour à Bordeaux',
       avecQui: 'solo',
       duree: { valeur: 11, unite: 'jours' },
-      lieux: ['Bordeaux'],
+      lieux: [{ nom: 'Bordeaux', type: 'ville' }],
       dates: { debut: '2026-09-01T00:00:00Z', fin: '2026-09-11T23:59:59Z' },
     });
     expect(planDuBrief(brief).lots.length).toBeGreaterThan(1);
@@ -672,7 +680,11 @@ describe('F5-B — transport et enrichissements sur l’agrégat', () => {
       intention: 'trois semaines entre Bordeaux, Paris et Lyon',
       avecQui: 'groupe',
       duree: { valeur: 21, unite: 'jours' },
-      lieux: ['Bordeaux', 'Paris', 'Lyon'],
+      lieux: [
+        { nom: 'Bordeaux', type: 'ville' },
+        { nom: 'Paris', type: 'ville' },
+        { nom: 'Lyon', type: 'ville' },
+      ],
       dates: { debut: '2026-09-01T00:00:00Z', fin: '2026-09-21T23:59:59Z' },
       transport: {
         necessaire: true,

@@ -8,6 +8,7 @@ import { CandidatEvenementEventFirstSchema } from '../../services/rechercheExter
 
 export const CodeClarificationGenerationSchema = z.enum([
   'zone_geographique_requise',
+  'localisation_a_preciser',
 ]);
 
 export const ChampCibleClarificationGenerationSchema = z.enum(['lieux']);

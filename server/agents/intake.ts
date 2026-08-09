@@ -36,6 +36,7 @@ import {
   questionTransport,
   prochainChampTransport,
   prochainChampBase,
+  premiereLocalisationInconnue,
   libelleChampBase,
   ORDRE_CHAMPS_BASE,
   type ChampHebergement,
@@ -47,6 +48,12 @@ import {
   type BriefPartiel,
   type EtatDialogue,
 } from './brief.js';
+import {
+  codesPaysDeclaresDansMessage,
+  codePaysDepuisNom,
+  extraireLocalisationsDeclarees,
+  type LocalisationDeclareeEnCours,
+} from './localisationDeclaree.js';
 import {
   resoudreExpressionRelative,
   contexteTemporelParDefaut,
@@ -73,7 +80,8 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
   ce champ concerne QUAND il part, jamais D'OÙ il part : une ville reste "lieux", pas "dateDebut". Si "reponse" pose
   une question de confirmation sur une date que l'utilisateur vient de donner, structure QUAND MÊME ta meilleure
   interprétation dans "dateDebut" ou "dates" — ne laisse jamais "reponse" évoquer une date absente de "brief"),
-  lieux (string[]), budgetTotal (number, en euros), ambiance (string), contraintes (string[]),
+  lieux ([{"nom": string, "type": "ville"|"zone"|"pays"|"inconnue", "codePays"?: "FR"}]),
+  budgetTotal (number, en euros), ambiance (string), contraintes (string[]),
   hebergement (UNIQUEMENT si l'utilisateur exprime explicitement qu'un hébergement est nécessaire ou non) :
     {"necessaire": false}
     ou {"necessaire": true, "occupation": {"statut": "a_confirmer", "adultes"?: entier, "enfants"?: entier,
@@ -89,6 +97,12 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
 - N'infère JAMAIS les occupants depuis les participants. N'infère ni enfants=0 ni le nombre de chambres.
 - N'infère JAMAIS l'occupation transport depuis avecQui, l'occupation de l'hôtel ou les participants.
 - Plusieurs villes ne définissent jamais automatiquement un trajet : attends la confirmation de l'utilisateur.
+- Pour chaque lieu, "type" décrit uniquement ce que l'utilisateur désigne dans sa phrase : ville, zone (région,
+  massif, continent ou zone libre), pays, ou inconnue si la nature ne peut pas être établie honnêtement.
+- Le nom du lieu doit reprendre une expression réellement écrite dans le DERNIER message. N'invente ni nom canonique,
+  ni identité, ni homonyme. "à Paris" est une intention de ville ; "dans les Alpes" une zone ; "en France" un pays.
+- codePays n'est permis que si le pays est explicitement déclaré dans le DERNIER message. Ne le déduis jamais de la
+  notoriété d'une ville. Une localisation de type pays doit porter son propre code ISO alpha-2 majuscule.
 - Un aller-retour porte deux tronçons explicites. N'inverse jamais automatiquement origine et destination et
   ne calcule jamais une date de retour.
 - Pour le transport, conserve seulement ville, code pays explicitement écrit, date civile, créneau et mode souhaité.
@@ -264,7 +278,12 @@ function extraireChampsValides(brut: unknown): BriefPartiel {
   const retenu: Record<string, unknown> = {};
 
   for (const [cle, valeur] of Object.entries(brut as Record<string, unknown>)) {
-    if (cle === 'hebergement' || cle === 'transport' || cle === 'intention') {
+    if (
+      cle === 'hebergement' ||
+      cle === 'transport' ||
+      cle === 'intention' ||
+      cle === 'lieux'
+    ) {
       continue; // fusions dédiées, champ par champ, ci-dessous
     }
     const forme = formes[cle as keyof typeof formes];
@@ -1013,6 +1032,44 @@ export interface EtapeDialogue {
   etatDialogue?: EtatDialogue;
 }
 
+function questionLocalisation(nom: string): string {
+  return `Quand tu dis « ${nom} », parles-tu d’une ville, d’un pays ou d’une zone géographique (région, massif ou continent) ?`;
+}
+
+function typeDepuisClarificationLocalisation(
+  message: string
+): 'ville' | 'zone' | 'pays' | undefined {
+  const texte = message
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (/\bville\b/.test(texte)) return 'ville';
+  if (/\bpays\b/.test(texte)) return 'pays';
+  if (/\b(zone|region|massif|continent)\b/.test(texte)) return 'zone';
+  return undefined;
+}
+
+function localisationClarifiee(
+  actuelle: LocalisationDeclareeEnCours,
+  message: string
+): LocalisationDeclareeEnCours | undefined {
+  const type = typeDepuisClarificationLocalisation(message);
+  if (!type) return undefined;
+  const codes = codesPaysDeclaresDansMessage(message);
+  const codeContexte = codes.size === 1 ? [...codes][0] : undefined;
+  if (type === 'pays') {
+    const codePays = codePaysDepuisNom(actuelle.nom) ?? codeContexte;
+    return codePays
+      ? { nom: actuelle.nom, type: 'pays', codePays }
+      : { nom: actuelle.nom, type: 'inconnue' };
+  }
+  return {
+    nom: actuelle.nom,
+    type,
+    ...(codeContexte ? { codePays: codeContexte } : {}),
+  };
+}
+
 /**
  * Calcule la question suivante ou la reformulation finale à partir d'un brief
  * déjà fusionné. Partagée par le chemin LLM normal et par la confirmation
@@ -1028,6 +1085,7 @@ function finaliserEtape(
 ): { reponse: string; estComplet: boolean } {
   const complet = BriefSchema.safeParse(brief);
   const differerSejoursHebergement = doitDiffererSejoursHebergementNBA(brief);
+  const localisationInconnue = premiereLocalisationInconnue(brief);
   // « Complet » exige aussi un point de départ (dates) : une durée seule
   // n'ancre le parcours à aucune vraie date, et les connecteurs chercheraient
   // alors sur une date inventée, sans rapport avec le vrai séjour.
@@ -1062,7 +1120,10 @@ function finaliserEtape(
   return {
     reponse:
       prochainChampBase(brief) === undefined
-        ? questionHebergement(
+        ? (localisationInconnue
+            ? questionLocalisation(localisationInconnue.localisation.nom)
+            : undefined) ??
+          questionHebergement(
             brief,
             champInvalideHebergement,
             differerSejoursHebergement
@@ -1079,6 +1140,52 @@ export async function avancerDialogue(
   messageUtilisateur: string,
   etatDialogueActuel?: EtatDialogue
 ): Promise<EtapeDialogue> {
+  if (etatDialogueActuel?.champ === 'localisation') {
+    const actuelle = briefActuel.lieux?.[etatDialogueActuel.index];
+    if (
+      actuelle?.type === 'inconnue' &&
+      actuelle.nom === etatDialogueActuel.nom
+    ) {
+      const clarifiee = localisationClarifiee(actuelle, messageUtilisateur);
+      if (!clarifiee || clarifiee.type === 'inconnue') {
+        return {
+          reponse: questionLocalisation(actuelle.nom),
+          brief: briefActuel,
+          estComplet: false,
+          etatDialogue: etatDialogueActuel,
+        };
+      }
+      const lieux = [...(briefActuel.lieux ?? [])];
+      lieux[etatDialogueActuel.index] = clarifiee;
+      const brief = { ...briefActuel, lieux };
+      const { reponse, estComplet } = finaliserEtape(
+        brief,
+        briefActuel,
+        true,
+        undefined,
+        undefined,
+        'Peux-tu préciser ta demande ?'
+      );
+      const inconnueSuivante = premiereLocalisationInconnue(brief);
+      return {
+        reponse,
+        brief,
+        estComplet,
+        ...(inconnueSuivante
+          ? {
+              etatDialogue: {
+                champ: 'localisation' as const,
+                code: 'localisation_a_preciser' as const,
+                champCible: 'lieux' as const,
+                index: inconnueSuivante.index,
+                nom: inconnueSuivante.localisation.nom,
+              },
+            }
+          : {}),
+      };
+    }
+  }
+
   // Une date candidate reste en attente d'un "oui"/"non" : on tranche ici,
   // déterministe, SANS appeler le LLM — "oui" ne veut rien dire pour lui hors
   // de ce contexte précis, et confirmationPositive() sert déjà ce rôle pour
@@ -1165,6 +1272,12 @@ La réponse de l'utilisateur répond à une clarification de préparation. Extra
   }
 
   const extrait = extraireChampsValides(sortie.data.brief);
+  const localisationsExtraites = estObjet(sortie.data.brief)
+    ? extraireLocalisationsDeclarees(
+        sortie.data.brief.lieux,
+        messageUtilisateur
+      )
+    : undefined;
   const intentionExtraite = extraireIntention(sortie.data.brief, briefActuel);
   const extractionHebergement = extraireHebergement(
     sortie.data.brief,
@@ -1187,6 +1300,9 @@ La réponse de l'utilisateur répond à une clarification de préparation. Extra
   let brief: BriefPartiel = normaliserDatesBrief({
     ...briefActuel,
     ...extrait,
+    ...(localisationsExtraites !== undefined
+      ? { lieux: localisationsExtraites }
+      : {}),
     ...(intentionExtraite !== undefined ? { intention: intentionExtraite } : {}),
     ...(hebergement ? { hebergement } : {}),
     ...(transport ? { transport } : {}),
@@ -1241,6 +1357,7 @@ La réponse de l'utilisateur répond à une clarification de préparation. Extra
 
   const auMoinsUnChampNouveau =
     Object.keys(extrait).length > 0 ||
+    localisationsExtraites !== undefined ||
     intentionExtraite !== undefined ||
     extractionHebergement.hebergement !== undefined ||
     extractionTransport.transport !== undefined ||
@@ -1256,6 +1373,20 @@ La réponse de l'utilisateur répond à une clarification de préparation. Extra
     extractionTransport.champInvalide,
     reponseSiIncomplet
   );
+  const localisationInconnue = premiereLocalisationInconnue(brief);
+  if (
+    !etatDialogueResultant &&
+    prochainChampBase(brief) === undefined &&
+    localisationInconnue
+  ) {
+    etatDialogueResultant = {
+      champ: 'localisation',
+      code: 'localisation_a_preciser',
+      champCible: 'lieux',
+      index: localisationInconnue.index,
+      nom: localisationInconnue.localisation.nom,
+    };
+  }
   return {
     reponse,
     brief,

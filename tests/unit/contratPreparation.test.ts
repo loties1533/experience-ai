@@ -161,7 +161,10 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
   it('projette les villes déclarées sans les modifier dans le Brief', async () => {
     const avecVilles = BriefSchema.parse({
       ...BRIEF,
-      lieux: ['Bordeaux', 'Paris'],
+      lieux: [
+        { nom: 'Bordeaux', type: 'ville' },
+        { nom: 'Paris', type: 'ville' },
+      ],
     });
 
     expect(await preparerGeneration(avecVilles)).toMatchObject({
@@ -174,13 +177,16 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
         ],
       },
     });
-    expect(avecVilles.lieux).toEqual(['Bordeaux', 'Paris']);
+    expect(avecVilles.lieux).toEqual([
+      { nom: 'Bordeaux', type: 'ville' },
+      { nom: 'Paris', type: 'ville' },
+    ]);
   });
 
   it('projette un brief mono-ville en une étape utilisateur', async () => {
     const monoVille = BriefSchema.parse({
       ...BRIEF,
-      lieux: ['Chamonix'],
+      lieux: [{ nom: 'Chamonix', type: 'ville' }],
       budgetTotal: 1_200,
     });
 
@@ -194,6 +200,29 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
         contraintesConservees: { budgetTotal: 1_200 },
       },
     });
+  });
+
+  it('ne transforme jamais une zone ou un pays déclaré en ville planifiée', async () => {
+    const sansVille = BriefSchema.parse({
+      ...BRIEF,
+      lieux: [
+        { nom: 'Alpes', type: 'zone' },
+        { nom: 'France', type: 'pays', codePays: 'FR' },
+      ],
+    });
+
+    const resultat = await preparerGeneration(sansVille);
+
+    expect(resultat).toMatchObject({
+      type: 'planifiable',
+      contexte: {
+        strategie: 'compatibilite_sans_localisation',
+        etapes: [{ ancres: [] }],
+      },
+    });
+    if (resultat.type === 'planifiable') {
+      expect(resultat.contexte.etapes[0].ville).toBeUndefined();
+    }
   });
 
   it('conserve l’état dates, rejette un état de préparation invalide et ne laisse aucun état entrer dans le Brief', () => {
