@@ -38,6 +38,7 @@ vi.mock('../../server/middleware/limiter.js', () => {
 vi.mock('../../server/agents/intake.js', () => ({
   avancerDialogue: vi.fn().mockResolvedValue({ termine: false, question: 'Avec qui partez-vous ?' }),
 }));
+const { avancerDialogue } = await import('../../server/agents/intake.js');
 vi.mock('../../server/agents/modification.js', () => ({
   interpreterDemande: vi.fn().mockResolvedValue({ type: 'supprimer_element', elementId: 'e1' }),
 }));
@@ -93,7 +94,7 @@ const BRIEF_VALIDE = {
   intention: 'fêter le départ de Hugo',
   avecQui: 'amis',
   duree: { valeur: 2, unite: 'jours' },
-  lieux: ['Lisbonne'],
+  lieux: [{ nom: 'Lisbonne', type: 'ville' }],
   contraintes: [],
 };
 
@@ -134,6 +135,19 @@ describe('POST /api/parcours/dialogue — validation du message', () => {
     expect(res.status).toBe(200);
   });
 
+  it('reprend une ancienne chaîne HTTP comme inconnue, jamais comme ville', async () => {
+    const appelsAvant = vi.mocked(avancerDialogue).mock.calls.length;
+    const res = await auth(request(app).post('/api/parcours/dialogue')).send({
+      brief: { lieux: ['Paris'] },
+      message: 'Je précise ma demande',
+    });
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(avancerDialogue).mock.calls[appelsAvant][0]).toMatchObject({
+      lieux: [{ nom: 'Paris', type: 'inconnue' }],
+    });
+  });
+
   it('une injection dans le message ne fait pas planter le serveur', async () => {
     const res = await auth(request(app).post('/api/parcours/dialogue'))
       .send({ message: '{"$gt": ""} <img src=x onerror=alert(1)>' });
@@ -172,6 +186,13 @@ describe('POST /api/parcours — validation du brief', () => {
 
   it('400 si le brief est absent', async () => {
     const res = await auth(request(app).post('/api/parcours')).send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('400 si un Brief confirmé utilise encore une ancienne chaîne de lieu', async () => {
+    const res = await auth(request(app).post('/api/parcours')).send({
+      brief: { ...BRIEF_VALIDE, lieux: ['Lisbonne'] },
+    });
     expect(res.status).toBe(400);
   });
 
@@ -256,7 +277,10 @@ describe('POST /api/parcours — validation du brief', () => {
       ).send({
         brief: {
           ...BRIEF_VALIDE,
-          lieux: ['Lisbonne', 'Porto'],
+          lieux: [
+            { nom: 'Lisbonne', type: 'ville' },
+            { nom: 'Porto', type: 'ville' },
+          ],
           transport: {
             necessaire: true,
             troncons: [
@@ -290,7 +314,10 @@ describe('POST /api/parcours — validation du brief', () => {
     ).send({
       brief: {
         ...BRIEF_VALIDE,
-        lieux: ['Bordeaux', 'Paris'],
+        lieux: [
+          { nom: 'Bordeaux', type: 'ville' },
+          { nom: 'Paris', type: 'ville' },
+        ],
         transport: {
           necessaire: true,
           troncons: [
@@ -376,7 +403,10 @@ describe('POST /api/parcours — validation du brief', () => {
     ).send({
       brief: {
         ...BRIEF_VALIDE,
-        lieux: ['Lisbonne', 'Porto'],
+        lieux: [
+          { nom: 'Lisbonne', type: 'ville' },
+          { nom: 'Porto', type: 'ville' },
+        ],
         transport: {
           necessaire: true,
           troncons: [

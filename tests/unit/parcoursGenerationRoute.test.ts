@@ -211,7 +211,10 @@ describe('POST /api/parcours/dialogue — clarification de préparation', () => 
       champCible: 'lieux',
     };
     avancerDialogue.mockResolvedValue({
-      brief: { ...BRIEF, lieux: ['Paris'] },
+      brief: {
+        ...BRIEF,
+        lieux: [{ nom: 'Paris', type: 'ville' }],
+      },
       reponse: 'Parfait, Paris est noté.',
       estComplet: true,
     });
@@ -229,7 +232,7 @@ describe('POST /api/parcours/dialogue — clarification de préparation', () => 
       etatDialogue
     );
     expect(res.body.etatDialogue).toBeUndefined();
-    expect(res.body.brief.lieux).toEqual(['Paris']);
+    expect(res.body.brief.lieux).toEqual([{ nom: 'Paris', type: 'ville' }]);
   });
 
   it('rejette un état de préparation invalide avant tout appel intake', async () => {

@@ -246,7 +246,12 @@ describe('sousCodeEchec — F6-C', () => {
 });
 
 describe('villesAttenduesPresentes', () => {
-  const brief = { lieux: ['Bordeaux', 'Lyon'] } as Brief;
+  const brief = {
+    lieux: [
+      { nom: 'Bordeaux', type: 'ville' },
+      { nom: 'Lyon', type: 'ville' },
+    ],
+  } as Brief;
 
   it('vrai quand chaque ville attendue apparaît dans la timeline', () => {
     const parcours = fauxParcours([

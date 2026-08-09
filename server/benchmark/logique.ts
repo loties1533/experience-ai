@@ -7,7 +7,7 @@
 
 import { AppError, type CodeInterneEchec } from '../lib/AppError.js';
 import { MODELE_CLAUDE } from '../services/providers.js';
-import type { Brief } from '../agents/brief.js';
+import { villesDeclarees, type Brief } from '../agents/brief.js';
 import type { Parcours } from '../domaine/parcours/index.js';
 
 // ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ export const SCENARIOS_BENCHMARK: ScenarioBenchmark[] = [
       avecQui: 'amis',
       duree: { valeur: 5, unite: 'heures' },
       dates: { debut: '2026-09-12T18:00:00.000Z', fin: '2026-09-12T23:59:00.000Z' },
-      lieux: ['Bordeaux'],
+      lieux: [{ nom: 'Bordeaux', type: 'ville' }],
       contraintes: [],
     },
   },
@@ -41,7 +41,7 @@ export const SCENARIOS_BENCHMARK: ScenarioBenchmark[] = [
       avecQui: 'groupe',
       duree: { valeur: 2, unite: 'jours' },
       dates: { debut: '2026-10-03T00:00:00.000Z', fin: '2026-10-04T23:59:59.999Z' },
-      lieux: ['Bordeaux'],
+      lieux: [{ nom: 'Bordeaux', type: 'ville' }],
       contraintes: [],
     },
   },
@@ -53,7 +53,11 @@ export const SCENARIOS_BENCHMARK: ScenarioBenchmark[] = [
       avecQui: 'amis',
       duree: { valeur: 3, unite: 'semaines' },
       dates: { debut: '2026-11-02T00:00:00.000Z', fin: '2026-11-22T23:59:59.999Z' },
-      lieux: ['New York', 'Los Angeles', 'Chicago'],
+      lieux: [
+        { nom: 'New York', type: 'ville', codePays: 'US' },
+        { nom: 'Los Angeles', type: 'ville', codePays: 'US' },
+        { nom: 'Chicago', type: 'ville', codePays: 'US' },
+      ],
       contraintes: [],
       // Hors périmètre du scénario : on ne benchmarke pas la génération de
       // demande de transport, seulement les moments par ville.
@@ -281,7 +285,8 @@ export function villesAttenduesPresentes(brief: Brief, parcours: Parcours): bool
       ])
       .join(' ')
   );
-  return brief.lieux.every((ville) => texteComplet.includes(normaliserTexte(ville)));
+  return villesDeclarees(brief)
+    .every((ville) => texteComplet.includes(normaliserTexte(ville.nom)));
 }
 
 function joursCivils(debut: string, fin: string): string[] {

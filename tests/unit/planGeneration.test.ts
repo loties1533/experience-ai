@@ -17,7 +17,7 @@ function brief(options: {
 }): Brief {
   return BriefSchema.parse({
     ...BASE,
-    lieux: options.lieux ?? [],
+    lieux: (options.lieux ?? []).map((nom) => ({ nom, type: 'ville' })),
     ...(options.debut && options.fin
       ? { dates: { debut: options.debut, fin: options.fin } }
       : {}),

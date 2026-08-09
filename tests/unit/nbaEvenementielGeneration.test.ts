@@ -52,7 +52,7 @@ const BRIEF_HOTEL = BriefSchema.parse({
   avecQui: 'solo',
   duree: { valeur: 3, unite: 'semaines' },
   dates: { debut: '2027-01-15T00:00:00.000Z', fin: '2027-02-10T00:00:00.000Z' },
-  lieux: ['États-Unis'],
+  lieux: [{ nom: 'États-Unis', type: 'pays', codePays: 'US' }],
   budgetTotal: 9000,
   hebergement: {
     necessaire: true,

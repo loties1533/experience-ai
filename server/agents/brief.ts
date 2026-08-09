@@ -20,6 +20,25 @@ import {
   type DemandeTransport,
 } from '../domaine/transport/index.js';
 import { EtatDialoguePreparationGenerationSchema } from './generation/contratPreparation.js';
+import {
+  LocalisationDeclareeConfirmeeSchema,
+  LocalisationsDeclareesEnCoursSchema,
+  premiereLocalisationInconnue,
+  villesDeclarees,
+  type LocalisationDeclaree,
+  type LocalisationDeclareeEnCours,
+} from './localisationDeclaree.js';
+
+export {
+  LocalisationDeclareeConfirmeeSchema,
+  LocalisationDeclareeEnCoursSchema,
+  nomsLocalisationsDeclarees,
+  paysDeclares,
+  premiereLocalisationInconnue,
+  villesDeclarees,
+  zonesDeclarees,
+} from './localisationDeclaree.js';
+export type { LocalisationDeclaree, LocalisationDeclareeEnCours };
 
 // Le brief : ce que le dialogue d'intake doit réunir avant de générer.
 // Intention + contexte sont co-égaux (ADR-0005). Le dialogue exige aussi des
@@ -110,7 +129,7 @@ export const TransportBriefSchema = z.discriminatedUnion('necessaire', [
     .strict(),
 ]);
 
-export const BriefSchema = z
+const BriefCommunSchema = z
   .object({
     intention: z.string().min(1),
     avecQui: ContexteSchema.shape.avecQui,
@@ -118,7 +137,6 @@ export const BriefSchema = z
     // Optionnelles, comme dans le contexte : on ne bloque jamais le dialogue
     // sur des dates que l'utilisateur n'a pas encore arrêtées.
     dates: ContexteSchema.shape.dates,
-    lieux: z.array(z.string().min(1)).default([]),
     budgetTotal: z.number().positive().optional(),
     ambiance: z.string().optional(),
     contraintes: z.array(z.string().min(1)).default([]),
@@ -132,7 +150,17 @@ export const BriefSchema = z
   })
   .strict();
 
-export const BriefPartielSchema = BriefSchema.partial();
+/** Le Brief confirmé ne peut porter aucune localisation encore inconnue. */
+export const BriefSchema = BriefCommunSchema.extend({
+  lieux: z.array(LocalisationDeclareeConfirmeeSchema).default([]),
+}).strict();
+
+/** Le dialogue partage la même structure canonique, avec `inconnue` en plus. */
+export const BriefEnCoursSchema = BriefCommunSchema.extend({
+  lieux: LocalisationsDeclareesEnCoursSchema.default([]),
+}).strict();
+
+export const BriefPartielSchema = BriefEnCoursSchema.partial();
 
 /**
  * État transitoire du dialogue — jamais une information acquise (le Brief
@@ -141,9 +169,8 @@ export const BriefPartielSchema = BriefSchema.partial();
  * confirmer. Ne fuit jamais vers `BriefSchema` ni vers la génération : c'est
  * un objet frère du brief, jamais un champ dedans.
  *
- * Les dates approximatives et le cadrage de préparation sont les deux seuls
- * cas qui ont besoin d'un contexte sur le tour suivant. Pas de généralisation
- * à d'autres champs tant qu'un besoin concret ne la justifie pas.
+ * Les dates approximatives, une localisation inconnue et le cadrage de
+ * préparation ont besoin d'un contexte sur le tour suivant.
  */
 export const EtatDialogueDatesSchema = z
   .object({
@@ -152,8 +179,19 @@ export const EtatDialogueDatesSchema = z
   })
   .strict();
 
+export const EtatDialogueLocalisationSchema = z
+  .object({
+    champ: z.literal('localisation'),
+    code: z.literal('localisation_a_preciser'),
+    champCible: z.literal('lieux'),
+    index: z.number().int().nonnegative(),
+    nom: z.string().trim().min(1),
+  })
+  .strict();
+
 export const EtatDialogueSchema = z.discriminatedUnion('champ', [
   EtatDialogueDatesSchema,
+  EtatDialogueLocalisationSchema,
   EtatDialoguePreparationGenerationSchema,
 ]);
 
@@ -261,7 +299,9 @@ export function estParcoursMultiVille(
 ): boolean {
   return (
     new Set(
-      (brief.lieux ?? []).map(normaliserVillePourComparaison)
+      villesDeclarees(brief).map((lieu) =>
+        normaliserVillePourComparaison(lieu.nom)
+      )
     ).size > 1
   );
 }
@@ -393,6 +433,13 @@ export function champsManquants(
   const manquants = ORDRE_CHAMPS_BASE
     .filter((champ) => brief[champ] === undefined)
     .map((champ) => LIBELLES_MANQUANTS[champ]);
+
+  const localisationInconnue = premiereLocalisationInconnue(brief);
+  if (localisationInconnue) {
+    manquants.push(
+      `la nature de la localisation « ${localisationInconnue.localisation.nom} »`
+    );
+  }
 
   if (brief.hebergement?.necessaire === true) {
     const occupation = brief.hebergement.occupation;
@@ -558,7 +605,15 @@ export function reformulerBrief(brief: Brief): string {
   if (brief.dates) {
     morceaux.push(`du ${enFrancais(brief.dates.debut)} au ${enFrancais(brief.dates.fin)}`);
   }
-  if (brief.lieux.length > 0) morceaux.push(`du côté de ${brief.lieux.join(', ')}`);
+  for (const lieu of brief.lieux) {
+    if (lieu.type === 'ville') {
+      morceaux.push(`dans la ville de ${lieu.nom}`);
+    } else if (lieu.type === 'pays') {
+      morceaux.push(`en ${lieu.nom}`);
+    } else {
+      morceaux.push(`dans la zone ${lieu.nom}`);
+    }
+  }
   if (brief.budgetTotal !== undefined) morceaux.push(`avec un budget d'environ ${brief.budgetTotal} €`);
   if (brief.ambiance) morceaux.push(`dans une ambiance ${brief.ambiance}`);
   if (brief.hebergement?.necessaire === true) {

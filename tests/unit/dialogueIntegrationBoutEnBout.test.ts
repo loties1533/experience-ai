@@ -97,7 +97,7 @@ describe('F7-C — scénario 2 : plusieurs champs de base dans un seul message',
         intention: { texte: 'organiser l’EVG de Max', nature: 'remplacement' },
         avecQui: 'amis',
         duree: { valeur: 2, unite: 'jours' },
-        lieux: ['Bordeaux'],
+        lieux: [{ nom: 'Bordeaux', type: 'ville' }],
       })
     );
 
@@ -109,7 +109,7 @@ describe('F7-C — scénario 2 : plusieurs champs de base dans un seul message',
     expect(tour.brief.intention).toBe('organiser l’EVG de Max');
     expect(tour.brief.avecQui).toBe('amis');
     expect(tour.brief.duree).toEqual({ valeur: 2, unite: 'jours' });
-    expect(tour.brief.lieux).toEqual(['Bordeaux']);
+    expect(tour.brief.lieux).toEqual([{ nom: 'Bordeaux', type: 'ville' }]);
     // "le week-end prochain" résolu par F7-A sans dépendre du LLM.
     expect(tour.brief.dates).toEqual({
       debut: '2026-08-07T22:00:00.000Z',
@@ -216,7 +216,10 @@ describe('F7-C — scénario 5 : transition déterministe vers hébergement/tran
     avecQui: 'famille' as const,
     duree: { valeur: 4, unite: 'jours' as const },
     dates: { debut: '2026-09-10T00:00:00.000Z', fin: '2026-09-14T23:59:59.999Z' },
-    lieux: ['Bordeaux', 'Paris'],
+    lieux: [
+      { nom: 'Bordeaux', type: 'ville' as const },
+      { nom: 'Paris', type: 'ville' as const },
+    ],
   };
 
   it('la question transport ne devient accessible qu’une fois les 4 champs de base complets', async () => {

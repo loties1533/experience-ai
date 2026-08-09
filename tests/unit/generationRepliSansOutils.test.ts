@@ -31,7 +31,7 @@ const brief = BriefSchema.parse({
   intention: "organiser l'EVG de Max",
   avecQui: 'groupe',
   duree: { valeur: 2, unite: 'jours' },
-  lieux: ['Bordeaux'],
+  lieux: [{ nom: 'Bordeaux', type: 'ville' }],
 });
 
 beforeEach(() => {
