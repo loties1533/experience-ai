@@ -1604,6 +1604,50 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     expect(resoudreLien).not.toHaveBeenCalled();
   });
 
+  it('accepte un hébergement sans séjour inventé quand la préparation a résolu la destination', async () => {
+    const briefSansVille = BriefSchema.parse({
+      intention: 'se détendre quelques jours au bord du lac',
+      avecQui: 'couple',
+      duree: { valeur: 2, unite: 'jours' },
+      lieux: [],
+      hebergement: {
+        necessaire: true,
+        occupation: {
+          statut: 'declaree',
+          adultes: 2,
+          enfants: 0,
+          chambres: 1,
+        },
+        sejours: [],
+      },
+    });
+    vi.mocked(callClaudeOutils).mockResolvedValueOnce(
+      tourReponse('Un hébergement à choisir à Annecy', {
+        type: 'hebergement',
+        ville: 'Annecy',
+      })
+    );
+
+    const parcours = await genererParcours(briefSansVille, null, {}, {
+      strategie: 'decouverte_destinations',
+      etapes: [
+        {
+          ville: { nom: 'Annecy', origine: 'selection_moteur' },
+          ancres: [],
+        },
+      ],
+      contraintesConservees: {},
+    });
+    const [element] = parcours.timeline[0].elements;
+
+    expect(parcours.contexte.lieux).toEqual(['Annecy']);
+    expect(element.nom).toBe('Un hébergement à choisir à Annecy');
+    expect(element.sejourHebergement).toBeUndefined();
+    expect(element.lienRechercheHebergement).toBeUndefined();
+    expect(briefSansVille.lieux).toEqual([]);
+    expect(briefSansVille.hebergement?.sejours).toEqual([]);
+  });
+
   it('refuse en 422 un séjour hors des dates du parcours avant tout appel externe', async () => {
     const briefHorsDates = BriefSchema.parse({
       ...brief,

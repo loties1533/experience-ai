@@ -170,6 +170,77 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     expect(BriefSchema.safeParse(etape.brief).success).toBe(true);
   });
 
+  it('consomme une clarification de période dans le champ dates', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({
+        reponse: 'Parfait.',
+        brief: {
+          dates: {
+            debut: '2027-01-05T00:00:00.000Z',
+            fin: '2027-01-25T23:59:59.999Z',
+          },
+        },
+      })
+    );
+    const etape = await avancerDialogue(
+      {
+        intention: 'faire un trek',
+        avecQui: 'solo',
+        duree: { valeur: 3, unite: 'semaines' },
+      },
+      'en janvier 2027',
+      {
+        champ: 'preparation_generation',
+        code: 'periode_requise',
+        champCible: 'dates',
+      }
+    );
+
+    expect(vi.mocked(callAI).mock.calls[0][0]).toContain('champ dates demandé');
+    expect(etape.brief.dates).toEqual({
+      debut: '2027-01-05T00:00:00.000Z',
+      fin: '2027-01-25T23:59:59.999Z',
+    });
+    expect(etape.etatDialogue).toBeUndefined();
+  });
+
+  it('consomme une clarification d’intention sans état résiduel', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      JSON.stringify({
+        reponse: 'Parfait.',
+        brief: {
+          intention: {
+            texte: 'la nature et le trek',
+            nature: 'remplacement',
+          },
+        },
+      })
+    );
+    const etape = await avancerDialogue(
+      {
+        intention: 'partir quelque part',
+        avecQui: 'solo',
+        duree: { valeur: 1, unite: 'semaines' },
+        dates: {
+          debut: '2027-01-05T00:00:00.000Z',
+          fin: '2027-01-11T23:59:59.999Z',
+        },
+      },
+      'plutôt la nature et le trek',
+      {
+        champ: 'preparation_generation',
+        code: 'intention_a_preciser',
+        champCible: 'intention',
+      }
+    );
+
+    expect(vi.mocked(callAI).mock.calls[0][0]).toContain(
+      'champ intention demandé'
+    );
+    expect(etape.brief.intention).toBe('la nature et le trek');
+    expect(etape.etatDialogue).toBeUndefined();
+  });
+
   it('fusionne l’extraction et pose la question suivante tant que le brief est incomplet', async () => {
     vi.mocked(callAI).mockResolvedValue(
       JSON.stringify({

@@ -13,12 +13,34 @@ const BRIEF = BriefSchema.parse({
 });
 
 describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
-  it('accepte un brief planifiable, y compris sans ville imposée', async () => {
-    expect(await preparerGeneration(BRIEF)).toEqual({
+  it('accepte un brief planifiable avec une destination préparée sans muter le brief', async () => {
+    const preparer = () =>
+      preparerGeneration(BRIEF, {
+        decouvrirDestinations: async () => ({
+          type: 'planifiable',
+          contexte: {
+            strategie: 'decouverte_destinations',
+            etapes: [
+              {
+                ville: { nom: 'Chamonix', origine: 'selection_moteur' },
+                ancres: [],
+              },
+            ],
+            contraintesConservees: { dates: BRIEF.dates },
+          },
+        }),
+      });
+
+    expect(await preparer()).toEqual({
       type: 'planifiable',
       contexte: {
-        strategie: 'compatibilite_sans_localisation',
-        etapes: [{ ancres: [] }],
+        strategie: 'decouverte_destinations',
+        etapes: [
+          {
+            ville: { nom: 'Chamonix', origine: 'selection_moteur' },
+            ancres: [],
+          },
+        ],
         contraintesConservees: {
           dates: BRIEF.dates,
         },
@@ -27,12 +49,13 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
     expect(
       ResultatCadrageGenerationSchema.safeParse({
         type: 'planifiable',
-        contexte: (await preparerGeneration(BRIEF) as Extract<
+        contexte: (await preparer() as Extract<
           Awaited<ReturnType<typeof preparerGeneration>>,
           { type: 'planifiable' }
         >).contexte,
       }).success
     ).toBe(true);
+    expect(BRIEF.lieux).toEqual([]);
   });
 
   it('accepte une clarification structurée et son état de dialogue frère du brief', () => {
@@ -51,6 +74,121 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
     };
     expect(ResultatCadrageGenerationSchema.safeParse(resultat).success).toBe(true);
     expect(EtatDialogueSchema.safeParse(resultat.etatDialogue).success).toBe(true);
+  });
+
+  it.each([
+    ['periode_requise', 'dates'],
+    ['intention_a_preciser', 'intention'],
+  ] as const)(
+    'accepte la clarification %s uniquement sur %s',
+    (code, champCible) => {
+      const resultat = {
+        type: 'clarification_requise',
+        clarification: { code, question: 'Question ciblée ?', champCible },
+        etatDialogue: {
+          champ: 'preparation_generation',
+          code,
+          champCible,
+        },
+      };
+      expect(ResultatCadrageGenerationSchema.safeParse(resultat).success).toBe(
+        true
+      );
+      expect(EtatDialogueSchema.safeParse(resultat.etatDialogue).success).toBe(
+        true
+      );
+    }
+  );
+
+  it('verrouille les invariants des destinations sélectionnées par le moteur', () => {
+    const contexte = {
+      strategie: 'decouverte_destinations',
+      etapes: [
+        {
+          ville: { nom: 'Chamonix', origine: 'selection_moteur' },
+          ancres: [],
+        },
+        {
+          ville: { nom: 'Innsbruck', origine: 'selection_moteur' },
+          ancres: [],
+        },
+      ],
+      contraintesConservees: {},
+    };
+    expect(
+      ResultatCadrageGenerationSchema.safeParse({
+        type: 'planifiable',
+        contexte,
+      }).success
+    ).toBe(true);
+    expect(
+      ResultatCadrageGenerationSchema.safeParse({
+        type: 'planifiable',
+        contexte: {
+          ...contexte,
+          etapes: [
+            ...contexte.etapes,
+            contexte.etapes[0],
+            {
+              ville: { nom: 'Zermatt', origine: 'selection_moteur' },
+              ancres: [],
+            },
+          ],
+        },
+      }).success
+    ).toBe(false);
+    expect(
+      ResultatCadrageGenerationSchema.safeParse({
+        type: 'planifiable',
+        contexte: {
+          ...contexte,
+          etapes: [
+            {
+              ville: { nom: 'Chamonix', origine: 'utilisateur' },
+              ancres: [],
+            },
+          ],
+        },
+      }).success
+    ).toBe(false);
+    expect(
+      ResultatCadrageGenerationSchema.safeParse({
+        type: 'planifiable',
+        contexte: {
+          ...contexte,
+          etapes: [
+            {
+              ville: {
+                nom: 'Aix-en-Provence',
+                origine: 'selection_moteur',
+              },
+              ancres: [],
+            },
+            {
+              ville: {
+                nom: 'aix en provence',
+                origine: 'selection_moteur',
+              },
+              ancres: [],
+            },
+          ],
+        },
+      }).success
+    ).toBe(false);
+    expect(
+      ResultatCadrageGenerationSchema.safeParse({
+        type: 'planifiable',
+        contexte: {
+          ...contexte,
+          etapes: [
+            {
+              ville: { nom: '   ', origine: 'selection_moteur' },
+              ancres: [],
+            },
+          ],
+        },
+      }).success
+    ).toBe(false);
   });
 
   it('accepte les refus qui réutilisent les deux codes métier existants', () => {
@@ -152,6 +290,22 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
         type: 'clarification_requise',
         clarification: { code: 'ville_obligatoire', question: 'Où ?', champCible: 'lieux' },
         etatDialogue: { champ: 'preparation_generation', code: 'ville_obligatoire', champCible: 'lieux' },
+      },
+    ],
+    [
+      'champ cible incohérent avec la clarification',
+      {
+        type: 'clarification_requise',
+        clarification: {
+          code: 'periode_requise',
+          question: 'Quand ?',
+          champCible: 'lieux',
+        },
+        etatDialogue: {
+          champ: 'preparation_generation',
+          code: 'periode_requise',
+          champCible: 'lieux',
+        },
       },
     ],
   ])('rejette %s', (_cas, resultat) => {
