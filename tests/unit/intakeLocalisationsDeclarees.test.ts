@@ -100,6 +100,25 @@ describe('intake — localisations declarees typees', () => {
     expect(() => BriefSchema.parse(resultat.brief)).toThrow();
   });
 
+  it('borne chaque code pays au segment de sa ville dans le vrai intake', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      sortieLLM([
+        { nom: 'Paris', type: 'ville', codePays: 'FR' },
+        { nom: 'Rome', type: 'ville', codePays: 'FR' },
+      ])
+    );
+
+    const resultat = await avancerDialogue(
+      BRIEF_DE_BASE,
+      'Paris en France puis Rome'
+    );
+
+    expect(resultat.brief.lieux).toEqual([
+      { nom: 'Paris', type: 'ville', codePays: 'FR' },
+      { nom: 'Rome', type: 'ville' },
+    ]);
+  });
+
   it('resout la clarification sans nouvel appel LLM et sans changer le nom', async () => {
     const resultat = await avancerDialogue(
       {

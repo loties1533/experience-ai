@@ -123,6 +123,51 @@ describe('localisations declarees — frontiere intake', () => {
     ).toEqual([{ nom: 'Alpes', type: 'zone', codePays: 'FR' }]);
   });
 
+  it('ne propage pas France de Paris vers Rome', () => {
+    expect(
+      extraireLocalisationsDeclarees(
+        [
+          { nom: 'Paris', type: 'ville', codePays: 'FR' },
+          { nom: 'Rome', type: 'ville', codePays: 'FR' },
+        ],
+        'Paris en France puis Rome'
+      )
+    ).toEqual([
+      { nom: 'Paris', type: 'ville', codePays: 'FR' },
+      { nom: 'Rome', type: 'ville' },
+    ]);
+  });
+
+  it('ne propage pas Italie de Rome vers Paris', () => {
+    expect(
+      extraireLocalisationsDeclarees(
+        [
+          { nom: 'Paris', type: 'ville', codePays: 'IT' },
+          { nom: 'Rome', type: 'ville', codePays: 'IT' },
+        ],
+        'Paris puis Rome en Italie'
+      )
+    ).toEqual([
+      { nom: 'Paris', type: 'ville' },
+      { nom: 'Rome', type: 'ville', codePays: 'IT' },
+    ]);
+  });
+
+  it('ne croise aucun code entre deux associations explicites', () => {
+    expect(
+      extraireLocalisationsDeclarees(
+        [
+          { nom: 'Paris', type: 'ville', codePays: 'FR' },
+          { nom: 'Rome', type: 'ville', codePays: 'IT' },
+        ],
+        'Paris en France puis Rome en Italie'
+      )
+    ).toEqual([
+      { nom: 'Paris', type: 'ville', codePays: 'FR' },
+      { nom: 'Rome', type: 'ville', codePays: 'IT' },
+    ]);
+  });
+
   it('derive le code du pays declare au lieu de faire confiance au LLM', () => {
     expect(
       extraireLocalisationsDeclarees(

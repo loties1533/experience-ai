@@ -182,6 +182,51 @@ export function codesPaysDeclaresDansMessage(message: string): Set<string> {
 }
 
 /**
+ * Une conjonction de parcours ou une ponctuation forte sépare deux segments
+ * d'association. Cette règle reste volontairement prudente : elle ne prétend
+ * pas résoudre toute la syntaxe, elle empêche seulement un pays déclaré dans
+ * un segment de contaminer les autres localisations du message.
+ */
+function segmentsGeographiques(message: string): string[] {
+  return message
+    .split(/[,;.!?]|\b(?:puis|ensuite|après cela|et)\b/giu)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function codePaysLieALocalisation(
+  localisation: Extract<
+    LocalisationDeclareeEnCours,
+    { type: 'ville' | 'zone' }
+  >,
+  localisations: LocalisationDeclareeEnCours[],
+  message: string
+): string | undefined {
+  if (!localisation.codePays) return undefined;
+
+  const segments = segmentsGeographiques(message).filter((segment) =>
+    nomPresentDansMessage(segment, localisation.nom)
+  );
+  if (segments.length !== 1) return undefined;
+
+  const [segment] = segments;
+  const referentsOperationnels = new Set(
+    localisations
+      .filter(
+        (autre) =>
+          (autre.type === 'ville' || autre.type === 'zone') &&
+          nomPresentDansMessage(segment, autre.nom)
+      )
+      .map((autre) => normaliserTexteGeographique(autre.nom))
+  );
+  if (referentsOperationnels.size !== 1) return undefined;
+
+  return codesPaysDeclaresDansMessage(segment).has(localisation.codePays)
+    ? localisation.codePays
+    : undefined;
+}
+
+/**
  * Frontière d'intake : valide la structure, la trace textuelle et le pays sans
  * transformer cette extraction linguistique en preuve géographique.
  */
@@ -191,9 +236,6 @@ export function extraireLocalisationsDeclarees(
 ): LocalisationDeclareeEnCours[] | undefined {
   const tableau = z.array(LocalisationDeclareeEnCoursSchema).safeParse(brut);
   if (!tableau.success) return undefined;
-  const codesDeclares = codesPaysDeclaresDansMessage(messageUtilisateur);
-  const codeContexteUnique =
-    codesDeclares.size === 1 ? [...codesDeclares][0] : undefined;
   const retenues: LocalisationDeclareeEnCours[] = [];
   const cles = new Set<string>();
 
@@ -206,10 +248,11 @@ export function extraireLocalisationsDeclarees(
         ? { nom: localisation.nom, type: 'pays', codePays: codeDepuisNom }
         : { nom: localisation.nom, type: 'inconnue' };
     } else if (localisation.type === 'ville' || localisation.type === 'zone') {
-      const codePays =
-        localisation.codePays && codesDeclares.has(localisation.codePays)
-          ? localisation.codePays
-          : codeContexteUnique;
+      const codePays = codePaysLieALocalisation(
+        localisation,
+        tableau.data,
+        messageUtilisateur
+      );
       normalisee = {
         nom: localisation.nom,
         type: localisation.type,
