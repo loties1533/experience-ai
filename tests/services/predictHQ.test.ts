@@ -474,6 +474,41 @@ describe('rechercherEvenementsPredictHQEventFirst — événements sans ville pr
     });
   });
 
+  it.each([
+    ['sans fin', { end: undefined }],
+    ['avec une fin égale au début', { end: '2027-01-18T00:30:00Z' }],
+    ['avec une fin antérieure au début', { end: '2027-01-17T23:30:00Z' }],
+    ['avec un début non daté', { start: 'date-invalide' }],
+  ])('écarte un événement %s', async (_cas, changements) => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ results: [evenementEventFirst(changements)] }),
+    });
+
+    await expect(rechercherEvenementsPredictHQEventFirst(DEMANDE_NBA)).resolves.toMatchObject({
+      statut: 'vide',
+      resultats: [],
+    });
+  });
+
+  it('renvoie vide lorsque tous les résultats ont une plage temporelle inutilisable', async () => {
+    requeteFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        results: [
+          evenementEventFirst({ id: 'evt-sans-fin', end: undefined }),
+          evenementEventFirst({ id: 'evt-fin-egale', end: '2027-01-18T00:30:00Z' }),
+          evenementEventFirst({ id: 'evt-fin-avant', end: '2027-01-17T23:30:00Z' }),
+        ],
+      }),
+    });
+
+    await expect(rechercherEvenementsPredictHQEventFirst(DEMANDE_NBA)).resolves.toMatchObject({
+      statut: 'vide',
+      resultats: [],
+    });
+  });
+
   it('pagine de façon bornée lorsqu’une première page ne fournit aucune ville utilisable', async () => {
     requeteFetch
       .mockResolvedValueOnce({

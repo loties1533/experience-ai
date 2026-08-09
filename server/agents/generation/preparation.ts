@@ -1,6 +1,9 @@
 import { AppError } from '../../lib/AppError.js';
 import { rechercherEvenementsPredictHQEventFirst } from '../../services/predictHQ.js';
-import type { CandidatEvenementEventFirst } from '../../services/rechercheExterne.js';
+import {
+  estPlageEvenementiellePlanifiable,
+  type CandidatEvenementEventFirst,
+} from '../../services/rechercheExterne.js';
 import type { Brief } from '../brief.js';
 import {
   ContextePlanifiableSchema,
@@ -48,7 +51,14 @@ export function selectionnerEvenementsEventFirst(
   dateDebut: string,
   dateFin: string
 ): CandidatEvenementEventFirst[] {
-  const uniques = [...new Map(candidats.map((candidat) => [candidat.identifiantExterne, candidat])).values()]
+  const candidatsPlanifiables = candidats.filter((candidat) =>
+    estPlageEvenementiellePlanifiable(candidat.dateDebut, candidat.dateFin)
+  );
+  const uniques = [
+    ...new Map(
+      candidatsPlanifiables.map((candidat) => [candidat.identifiantExterne, candidat])
+    ).values(),
+  ]
     .sort(
       (gauche, droite) =>
         gauche.dateDebut.localeCompare(droite.dateDebut) ||

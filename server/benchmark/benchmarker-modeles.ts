@@ -10,16 +10,17 @@
 //     --essais=claude-haiku-4-5-20251001:nba-multi-villes,claude-sonnet-5:soiree-bordeaux --repetitions=1
 //
 // Jamais lancé par Vitest ni par la CI. Ne modifie ni ne persiste aucun
-// parcours utilisateur réel : chaque appel passe par genererParcours() sur
-// un brief fictif, exactement comme un vrai parcours, mais rien n'est écrit
-// en base (aucun dépôt n'est appelé ici).
+// parcours utilisateur réel : chaque essai passe par preparerGeneration(),
+// puis par genererParcours() uniquement si le brief est planifiable, mais rien
+// n'est écrit en base (aucun dépôt n'est appelé ici).
 // =============================================================================
 
 import 'dotenv/config';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { deriverPlan, genererParcours } from '../agents/generation.js';
-import { construireContextePlanifiable } from '../agents/generation/preparation.js';
+import { preparerGeneration } from '../agents/generation/preparation.js';
 import type { MetriquesAppelOutils } from '../services/claude/core.js';
 import {
   CHAMPS_EXECUTION_AUTORISES,
@@ -46,30 +47,53 @@ import {
  * prompt système, outils et paramètres que la production (genererParcours) :
  * seul le modèle Anthropic interrogé varie, via l'injection posée par F6-A.
  */
-async function executerUnEssai(
+export async function executerUnEssai(
   scenario: ScenarioBenchmark,
   modele: string,
   repetition: number
 ): Promise<ResultatExecution> {
-  const lotsPrevus = deriverPlan(
-    construireContextePlanifiable(scenario.brief)
-  ).lots.length;
   const evenements: MetriquesAppelOutils[] = [];
   const debut = Date.now();
+  let lotsPrevus = 0;
 
   const base = {
     scenarioId: scenario.id,
     scenarioNom: scenario.nom,
     modele,
     repetition,
-    lotsPrevus,
   };
 
   try {
-    const parcours = await genererParcours(scenario.brief, null, {
-      modele,
-      onMetriques: (metriques) => evenements.push(metriques),
-    });
+    const cadrage = await preparerGeneration(scenario.brief);
+    if (cadrage.type !== 'planifiable') {
+      return {
+        ...base,
+        succes: false,
+        categorieEchec:
+          cadrage.type === 'clarification_requise'
+            ? 'clarification_requise'
+            : 'refus_metier',
+        dureeMs: Date.now() - debut,
+        tokensEntree: 0,
+        tokensSortie: 0,
+        tours: 0,
+        jsonValide: true,
+        lotsPrevus: 0,
+        lotsGeneres: 0,
+        reprises: 0,
+      };
+    }
+
+    lotsPrevus = deriverPlan(cadrage.contexte).lots.length;
+    const parcours = await genererParcours(
+      scenario.brief,
+      null,
+      {
+        modele,
+        onMetriques: (metriques) => evenements.push(metriques),
+      },
+      cadrage.contexte
+    );
     const lotsGeneres = evenements.filter((evenement) => evenement.succes).length;
     return {
       ...base,
@@ -79,6 +103,7 @@ async function executerUnEssai(
       tokensSortie: evenements.reduce((somme, e) => somme + e.tokensSortie, 0),
       tours: evenements.reduce((somme, e) => somme + e.tours, 0),
       jsonValide: true,
+      lotsPrevus,
       lotsGeneres,
       reprises: Math.max(0, evenements.length - lotsGeneres),
       villesAttenduesPresentes: villesAttenduesPresentes(scenario.brief, parcours),
@@ -96,6 +121,7 @@ async function executerUnEssai(
       tokensSortie: evenements.reduce((somme, e) => somme + e.tokensSortie, 0),
       tours: evenements.reduce((somme, e) => somme + e.tours, 0),
       jsonValide: false,
+      lotsPrevus,
       lotsGeneres,
       // Le dernier événement d'un essai en échec est la panne TERMINALE (non
       // rejouable, ou budget de reprises épuisé) : elle n'a jamais déclenché
@@ -193,7 +219,9 @@ async function main(): Promise<void> {
   console.log(`\nRapport JSON (tokens et métriques uniquement, jamais de contenu brut) : ${chemin}`);
 }
 
-main().catch((erreur) => {
-  console.error('Benchmark interrompu :', (erreur as Error).message);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((erreur) => {
+    console.error('Benchmark interrompu :', (erreur as Error).message);
+    process.exitCode = 1;
+  });
+}

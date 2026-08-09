@@ -3,7 +3,7 @@
 // Aucun appel réseau ici : scénarios fixes, parsing d'arguments, évaluation
 // déterministe d'un parcours produit, agrégation de métriques et
 // construction du rapport JSON. La seule partie qui parle au réseau vit dans
-// benchmarker-modeles.ts, jamais importée par les tests.
+// benchmarker-modeles.ts ; ses tests injectent des dépendances simulées.
 
 import { AppError, type CodeInterneEchec } from '../lib/AppError.js';
 import { MODELE_CLAUDE } from '../services/providers.js';
@@ -221,6 +221,7 @@ export function coutEstime(
 // ---------------------------------------------------------------------------
 
 export type CategorieEchec =
+  | 'clarification_requise'
   | 'refus_metier'
   | 'sortie_inexploitable'
   | 'service_indisponible'
