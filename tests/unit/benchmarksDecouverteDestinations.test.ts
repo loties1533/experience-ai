@@ -142,7 +142,12 @@ describe('benchmarks métier PR5-B', () => {
       clarification: { code: 'zone_geographique_requise' },
     });
     await expect(
-      executer(BriefSchema.parse({ ...sansZone, lieux: ['Europe'] }))
+      executer(
+        BriefSchema.parse({
+          ...sansZone,
+          lieux: [{ nom: 'France', type: 'pays', codePays: 'FR' }],
+        })
+      )
     ).resolves.toMatchObject({
       type: 'clarification_requise',
       clarification: {

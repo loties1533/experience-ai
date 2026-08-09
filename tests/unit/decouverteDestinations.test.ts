@@ -121,6 +121,41 @@ describe('proposeur LLM borné', () => {
     );
   });
 
+  it('rejette une facette du Brief supprimée par le LLM', async () => {
+    const appelerIA = vi.fn().mockResolvedValue(
+      sortieLLM({
+        facettesObligatoires: ['nature'],
+        facettesSouples: [],
+      })
+    );
+
+    await expect(
+      proposerDestinations(
+        brief({ intention: 'Découvrir la nature et la gastronomie locale' }),
+        appelerIA
+      )
+    ).rejects.toMatchObject({ statusCode: 502 });
+  });
+
+  it('accepte toutes les facettes du Brief réparties entre obligatoire et souple', async () => {
+    const appelerIA = vi.fn().mockResolvedValue(
+      sortieLLM({
+        facettesObligatoires: ['nature'],
+        facettesSouples: ['gastronomie'],
+      })
+    );
+
+    await expect(
+      proposerDestinations(
+        brief({ intention: 'Découvrir la nature et la gastronomie locale' }),
+        appelerIA
+      )
+    ).resolves.toMatchObject({
+      facettesObligatoires: ['nature'],
+      facettesSouples: ['gastronomie'],
+    });
+  });
+
   it('permet au contrat LLM de répondre sans facette à un besoin non objectivable', async () => {
     const appelerIA = vi.fn().mockResolvedValue(
       sortieLLM({
@@ -274,7 +309,7 @@ describe('préconditions et décision de découverte', () => {
     const avecZone = await decouvrirDestinations(
       brief({
         intention: 'Je veux du soleil et de la détente',
-        lieux: ['Europe'],
+        lieux: [{ nom: 'France', type: 'pays', codePays: 'FR' }],
       }),
       deps
     );
@@ -294,7 +329,7 @@ describe('préconditions et décision de découverte', () => {
     const resultat = await decouvrirDestinations(
       brief({
         intention: 'Le soleil est indispensable pour ce séjour détente',
-        lieux: ['Europe'],
+        lieux: [{ nom: 'France', type: 'pays', codePays: 'FR' }],
       }),
       deps
     );
@@ -331,6 +366,51 @@ describe('préconditions et décision de découverte', () => {
     });
     expect(deps.appelerIA).toHaveBeenCalledTimes(1);
   });
+
+  it('laisse détente souple pour « spa si possible » puis clarifie avant résolution', async () => {
+    const deps = dependances();
+    deps.appelerIA.mockResolvedValue(
+      sortieLLM({
+        format: 'sejour',
+        facettesObligatoires: [],
+        facettesSouples: ['detente'],
+        candidats: [{ nom: 'Vichy', codePaysSuggere: 'FR' }],
+      })
+    );
+
+    const resultat = await decouvrirDestinations(
+      brief({ intention: 'Week-end romantique, avec un spa si possible' }),
+      deps
+    );
+
+    expect(resultat).toMatchObject({
+      type: 'clarification_requise',
+      clarification: {
+        code: 'intention_a_preciser',
+        champCible: 'intention',
+      },
+    });
+    expect(deps.appelerIA).toHaveBeenCalledTimes(1);
+    expect(deps.resoudre).not.toHaveBeenCalled();
+  });
+
+  it.each(['Alpes', 'Pyrénées'])(
+    'clarifie la zone %s sans proposer ni résoudre une ville homonyme',
+    async (zone) => {
+      const deps = dependances();
+      const demande = brief({ lieux: [{ nom: zone, type: 'zone' }] });
+
+      const resultat = await decouvrirDestinations(demande, deps);
+
+      expect(resultat).toMatchObject({
+        type: 'clarification_requise',
+        clarification: { code: 'zone_geographique_requise' },
+      });
+      expect(deps.appelerIA).not.toHaveBeenCalled();
+      expect(deps.resoudre).not.toHaveBeenCalled();
+      expect(demande.lieux).toEqual([{ nom: zone, type: 'zone' }]);
+    }
+  );
 
   it('transforme zéro candidat vérifié en refus métier, jamais en erreur technique', async () => {
     const deps = dependances({

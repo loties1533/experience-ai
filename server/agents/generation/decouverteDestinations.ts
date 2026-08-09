@@ -24,8 +24,9 @@ Réponds UNIQUEMENT avec un objet JSON strict de cette forme :
 Règles absolues :
 - 1 à 5 candidats, sans doublon de nom ;
 - facettes autorisées uniquement : sports_hiver, nature, plage, gastronomie, culture, detente ;
-- utilise uniquement les facettes explicitement autorisées dans le prompt utilisateur ;
-- si aucune facette n'est autorisée, laisse les deux listes vides au lieu d'en inventer une ;
+- classe chaque facette explicitement autorisée une fois et une seule, comme obligatoire ou souple ;
+- n'ajoute et ne supprime aucune facette ;
+- une préférence comme "si possible" reste souple et ne doit jamais être forcée en obligatoire ;
 - codePaysSuggere est un code ISO alpha-2 majuscule, seulement si pertinent ;
 - aucune justification, preuve, note, score, prix, disponibilité ou affirmation marketing ;
 - ne prétends jamais qu'une destination est supérieure, ensoleillée ou adaptée au budget ;
@@ -52,7 +53,7 @@ const DETECTIONS_FACETTES = [
   { facette: 'plage', motif: /\b(plage|mer|ocean|surf)\b/ },
   {
     facette: 'gastronomie',
-    motif: /\b(gastronom|culinaire|cuisine|restaurant|vin|vignoble)\b/,
+    motif: /\b(gastronom(?:ie|ique)?|culinaire|cuisine|restaurant|vin|vignoble)\b/,
   },
   {
     facette: 'culture',
@@ -169,12 +170,16 @@ ${JSON.stringify({
   intention: sanitizeInput(brief.intention),
   duree: brief.duree,
   dates: brief.dates,
-  lieux: brief.lieux.map(sanitizeInput),
+  lieux: brief.lieux.map((lieu) => ({
+    nom: sanitizeInput(lieu.nom),
+    type: lieu.type,
+    ...(lieu.codePays ? { codePays: lieu.codePays } : {}),
+  })),
   contraintes: brief.contraintes.map(sanitizeInput),
 })}
 
 Facettes objectivables explicitement autorisées par le Brief : ${JSON.stringify(facettesDuBrief)}.
-N'ajoute aucune autre facette. Si cette liste est vide, garde facettesObligatoires et facettesSouples vides.
+Répartis exactement cette liste entre facettesObligatoires et facettesSouples : n'en ajoute aucune, n'en supprime aucune et ne place aucun doublon.
 Propose uniquement des localités peuplées plausibles à faire vérifier par le serveur. Le soleil n'est pas une facette disponible et ne doit produire aucune promesse météo.`;
   let contenu: unknown;
   try {
@@ -195,14 +200,13 @@ Propose uniquement des localités peuplées plausibles à faire vérifier par le
     );
   }
   const facettesAutorisees = new Set(facettesDuBrief);
-  const facettesProposees = [
+  const facettesProposees = new Set([
     ...proposition.data.facettesObligatoires,
     ...proposition.data.facettesSouples,
-  ];
+  ]);
   if (
-    (facettesDuBrief.length > 0 &&
-      proposition.data.facettesObligatoires.length === 0) ||
-    facettesProposees.some((facette) => !facettesAutorisees.has(facette))
+    facettesProposees.size !== facettesAutorisees.size ||
+    [...facettesProposees].some((facette) => !facettesAutorisees.has(facette))
   ) {
     throw new AppError(
       'La proposition de destinations a produit une sortie inexploitable.',
@@ -246,6 +250,13 @@ export async function decouvrirDestinations(
 
   const soleil = besoinSoleil(brief);
   const contraintes = analyserContraintesGeographiques(brief);
+  if (contraintes.zonesDeclarees.length > 0) {
+    return clarification(
+      'zone_geographique_requise',
+      `Quelle ville souhaites-tu explorer dans la zone « ${contraintes.zonesDeclarees[0]} » ?`,
+      'lieux'
+    );
+  }
   if (
     soleil === 'a_clarifier' &&
     contraintes.codesPaysAutorises === undefined
@@ -275,12 +286,26 @@ export async function decouvrirDestinations(
   }
 
   const proposition = await proposerDestinations(brief, dependances.appelerIA);
+  if (proposition.facettesObligatoires.length === 0) {
+    return clarification(
+      'intention_a_preciser',
+      'Quel critère doit être indispensable pour choisir honnêtement la destination ?',
+      'intention'
+    );
+  }
   const resolution = await dependances.resoudre(brief, proposition);
   if (resolution.statut === 'clarification_zone') {
     return clarification(
       'zone_geographique_requise',
       'Tu préfères rester en Europe ou es-tu ouvert à plus loin ?',
       'lieux'
+    );
+  }
+  if (resolution.statut === 'clarification_intention') {
+    return clarification(
+      'intention_a_preciser',
+      'Quel critère doit être indispensable pour choisir honnêtement la destination ?',
+      'intention'
     );
   }
   if (resolution.statut === 'vide') {

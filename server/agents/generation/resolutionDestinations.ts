@@ -9,6 +9,11 @@ import {
   type ResolutionDestination,
 } from '../../services/destinations/index.js';
 import type { Brief } from '../brief.js';
+import {
+  paysDeclares,
+  villesDeclarees,
+  zonesDeclarees,
+} from '../localisationDeclaree.js';
 import type {
   CandidatDestinationPropose,
   PropositionDecouverteDestinations,
@@ -19,105 +24,6 @@ import type { ContextePlanifiable } from './contratPreparation.js';
 export const NOMBRE_MINIMUM_POI_FACETTE_OBLIGATOIRE = 3;
 const PLAFOND_POI_CLASSEMENT = 5;
 
-const CODES_EUROPE = new Set([
-  'AD', 'AL', 'AT', 'BA', 'BE', 'BG', 'BY', 'CH', 'CY', 'CZ', 'DE', 'DK',
-  'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IS', 'IT', 'LI',
-  'LT', 'LU', 'LV', 'MC', 'MD', 'ME', 'MK', 'MT', 'NL', 'NO', 'PL', 'PT',
-  'RO', 'RS', 'SE', 'SI', 'SK', 'SM', 'UA', 'VA',
-]);
-
-const CODES_ASIE = new Set([
-  'AE', 'AF', 'AM', 'AZ', 'BD', 'BH', 'BN', 'BT', 'CN', 'GE', 'HK', 'ID',
-  'IL', 'IN', 'IQ', 'IR', 'JO', 'JP', 'KG', 'KH', 'KP', 'KR', 'KW', 'KZ',
-  'LA', 'LB', 'LK', 'MM', 'MN', 'MO', 'MV', 'MY', 'NP', 'OM', 'PH', 'PK',
-  'PS', 'QA', 'SA', 'SG', 'SY', 'TH', 'TJ', 'TL', 'TM', 'TR', 'TW', 'UZ',
-  'VN', 'YE',
-]);
-
-const CODES_AFRIQUE = new Set([
-  'AO', 'BF', 'BI', 'BJ', 'BW', 'CD', 'CF', 'CG', 'CI', 'CM', 'CV', 'DJ',
-  'DZ', 'EG', 'ER', 'ET', 'GA', 'GH', 'GM', 'GN', 'GQ', 'GW', 'KE', 'KM',
-  'LR', 'LS', 'LY', 'MA', 'MG', 'ML', 'MR', 'MU', 'MW', 'MZ', 'NA', 'NE',
-  'NG', 'RW', 'SC', 'SD', 'SL', 'SN', 'SO', 'SS', 'ST', 'SZ', 'TD', 'TG',
-  'TN', 'TZ', 'UG', 'ZA', 'ZM', 'ZW',
-]);
-
-const CODES_AMERIQUE_NORD = new Set([
-  'BS', 'BZ', 'CA', 'CR', 'CU', 'DO', 'GT', 'HN', 'HT', 'JM', 'MX', 'NI',
-  'PA', 'SV', 'US',
-]);
-
-const CODES_AMERIQUE_SUD = new Set([
-  'AR', 'BO', 'BR', 'CL', 'CO', 'EC', 'GY', 'PE', 'PY', 'SR', 'UY', 'VE',
-]);
-
-const CODES_OCEANIE = new Set([
-  'AU', 'FJ', 'FM', 'KI', 'MH', 'NR', 'NZ', 'PG', 'PW', 'SB', 'TO', 'TV',
-  'VU', 'WS',
-]);
-
-// Garde-fou fermé PR5-B : ces valeurs courantes sont des zones, pas des
-// villes. Il évite un moteur géographique universel et conserve le chemin
-// historique des villes explicites comme Paris.
-const CODES_ZONES_REGIONALES_SUPPORTEES = new Map<string, readonly string[]>([
-  ['alpes', ['AT', 'CH', 'DE', 'FR', 'IT', 'LI', 'SI']],
-  ['toscane', ['IT']],
-  ['bretagne', ['FR']],
-  ['provence', ['FR']],
-]);
-
-function normaliserTexte(texte: string): string {
-  return texte
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-let codesPaysParNom: Map<string, string> | undefined;
-
-function construireCodesPaysParNom(): Map<string, string> {
-  if (codesPaysParNom) return codesPaysParNom;
-  const correspondances = new Map<string, string>();
-  for (const langue of ['fr', 'en']) {
-    const noms = new Intl.DisplayNames([langue], { type: 'region' });
-    for (let premier = 65; premier <= 90; premier += 1) {
-      for (let second = 65; second <= 90; second += 1) {
-        const code = String.fromCharCode(premier, second);
-        const nom = noms.of(code);
-        const nomNormalise = nom ? normaliserTexte(nom) : undefined;
-        // ICU conserve aussi quelques codes historiques (ex. FX pour France).
-        // La première correspondance alphabétique garde le code souverain FR
-        // au lieu d'être silencieusement écrasée par un alias obsolète.
-        if (nomNormalise && nom !== code && !correspondances.has(nomNormalise)) {
-          correspondances.set(nomNormalise, code);
-        }
-      }
-    }
-  }
-  correspondances.set('etats unis', 'US');
-  correspondances.set('usa', 'US');
-  correspondances.set('us', 'US');
-  correspondances.set('royaume uni', 'GB');
-  codesPaysParNom = correspondances;
-  return correspondances;
-}
-
-function codesPourContrainte(lieu: string): Set<string> | undefined {
-  const normalise = normaliserTexte(lieu);
-  if (normalise === 'europe') return new Set(CODES_EUROPE);
-  if (normalise === 'asie') return new Set(CODES_ASIE);
-  if (normalise === 'afrique') return new Set(CODES_AFRIQUE);
-  if (normalise === 'amerique du nord') return new Set(CODES_AMERIQUE_NORD);
-  if (normalise === 'amerique du sud') return new Set(CODES_AMERIQUE_SUD);
-  if (normalise === 'oceanie') return new Set(CODES_OCEANIE);
-  const codesRegion = CODES_ZONES_REGIONALES_SUPPORTEES.get(normalise);
-  if (codesRegion) return new Set(codesRegion);
-  const codePays = construireCodesPaysParNom().get(normalise);
-  return codePays ? new Set([codePays]) : undefined;
-}
-
 export interface ContraintesGeographiquesBrief {
   villesExplicites: string[];
   codesPaysAutorises?: ReadonlySet<string>;
@@ -125,30 +31,26 @@ export interface ContraintesGeographiquesBrief {
 }
 
 /**
- * Les pays, continents et régions explicitement supportées restent des
- * contraintes du Brief, jamais des villes planifiées. Les autres lieux
- * conservent le chemin historique utilisateur sans géocodage généralisé.
+ * Consomme exclusivement le typage confirmé par l'intake. Aucune chaîne
+ * n'est reclassifiée ici et une zone n'est jamais assimilée à une ville.
  */
 export function analyserContraintesGeographiques(
   brief: Brief
 ): ContraintesGeographiquesBrief {
-  const villesExplicites: string[] = [];
-  const zonesDeclarees: string[] = [];
-  let codesPaysAutorises: Set<string> | undefined;
+  const villesExplicites = villesDeclarees(brief).map(({ nom }) => nom);
+  const zones = zonesDeclarees(brief);
+  const pays = paysDeclares(brief);
+  const codesPaysAutorises = new Set(
+    [...pays, ...zones].flatMap(({ codePays }) =>
+      codePays ? [codePays] : []
+    )
+  );
 
-  for (const lieu of brief.lieux) {
-    const codes = codesPourContrainte(lieu);
-    if (!codes) {
-      villesExplicites.push(lieu);
-      continue;
-    }
-    zonesDeclarees.push(lieu);
-    codesPaysAutorises = codesPaysAutorises
-      ? new Set([...codesPaysAutorises].filter((code) => codes.has(code)))
-      : new Set(codes);
-  }
-
-  return { villesExplicites, zonesDeclarees, codesPaysAutorises };
+  return {
+    villesExplicites,
+    zonesDeclarees: zones.map(({ nom }) => nom),
+    ...(codesPaysAutorises.size > 0 ? { codesPaysAutorises } : {}),
+  };
 }
 
 export function destinationsAResoudreApresIntake(brief: Brief): boolean {
@@ -190,6 +92,7 @@ export type ResultatResolutionDestinations =
       rejets: RejetDestination[];
     }
   | { statut: 'clarification_zone'; rejets: RejetDestination[] }
+  | { statut: 'clarification_intention'; rejets: RejetDestination[] }
   | { statut: 'vide'; rejets: RejetDestination[] };
 
 export interface DependancesResolutionDestinations {
@@ -370,6 +273,12 @@ export async function resoudreDestinationsProposees(
   dependances: DependancesResolutionDestinations = DEPENDANCES_PAR_DEFAUT
 ): Promise<ResultatResolutionDestinations> {
   const contraintes = analyserContraintesGeographiques(brief);
+  if (contraintes.zonesDeclarees.length > 0) {
+    return { statut: 'clarification_zone', rejets: [] };
+  }
+  if (proposition.facettesObligatoires.length === 0) {
+    return { statut: 'clarification_intention', rejets: [] };
+  }
   const verifications = await Promise.all(
     proposition.candidats.map(async (candidat) => ({
       candidat,

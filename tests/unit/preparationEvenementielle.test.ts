@@ -51,7 +51,7 @@ const BRIEF_RECETTE = BriefSchema.parse({
     debut: '2027-01-15T00:00:00.000Z',
     fin: '2027-02-10T00:00:00.000Z',
   },
-  lieux: ['États-Unis'],
+  lieux: [{ nom: 'États-Unis', type: 'pays', codePays: 'US' }],
   budgetTotal: 9000,
 });
 
@@ -121,7 +121,9 @@ describe('préparation événementielle NBA', () => {
         'États-Unis'
       );
     }
-    expect(BRIEF_RECETTE.lieux).toEqual(['États-Unis']);
+    expect(BRIEF_RECETTE.lieux).toEqual([
+      { nom: 'États-Unis', type: 'pays', codePays: 'US' },
+    ]);
   });
 
   it.each(['Etats-Unis', 'USA', 'US'])(
@@ -132,7 +134,10 @@ describe('préparation événementielle NBA', () => {
         recupereLe: '2026-08-08T12:00:00.000Z',
         resultats: [evenement('evt-boston', 'Boston', '2027-01-18T00:30:00.000Z')],
       });
-      const brief = BriefSchema.parse({ ...BRIEF_RECETTE, lieux: [zone] });
+      const brief = BriefSchema.parse({
+        ...BRIEF_RECETTE,
+        lieux: [{ nom: zone, type: 'pays', codePays: 'US' }],
+      });
 
       const resultat = await preparerGeneration(brief);
 
@@ -143,14 +148,19 @@ describe('préparation événementielle NBA', () => {
         type: 'planifiable',
         contexte: { strategie: 'decouverte_evenementielle' },
       });
-      expect(brief.lieux).toEqual([zone]);
+      expect(brief.lieux).toEqual([
+        { nom: zone, type: 'pays', codePays: 'US' },
+      ]);
     }
   );
 
   it('conserve Boston explicite et exclut la zone US des étapes du chemin villes', async () => {
     const brief = BriefSchema.parse({
       ...BRIEF_RECETTE,
-      lieux: ['États-Unis', 'Boston'],
+      lieux: [
+        { nom: 'États-Unis', type: 'pays', codePays: 'US' },
+        { nom: 'Boston', type: 'ville', codePays: 'US' },
+      ],
     });
 
     const resultat = await preparerGeneration(brief);
@@ -166,11 +176,17 @@ describe('préparation événementielle NBA', () => {
     if (resultat.type === 'planifiable') {
       expect(resultat.contexte.etapes).toHaveLength(1);
     }
-    expect(brief.lieux).toEqual(['États-Unis', 'Boston']);
+    expect(brief.lieux).toEqual([
+      { nom: 'États-Unis', type: 'pays', codePays: 'US' },
+      { nom: 'Boston', type: 'ville', codePays: 'US' },
+    ]);
   });
 
   it('conserve le chemin villes du brief et ignore les intentions non événementielles', async () => {
-    const avecVilles = BriefSchema.parse({ ...BRIEF_NBA, lieux: ['Boston'] });
+    const avecVilles = BriefSchema.parse({
+      ...BRIEF_NBA,
+      lieux: [{ nom: 'Boston', type: 'ville', codePays: 'US' }],
+    });
     const resultatAvecVille = await preparerGeneration(avecVilles);
     const decouvrirDestinations = vi.fn().mockResolvedValue({
       type: 'planifiable',

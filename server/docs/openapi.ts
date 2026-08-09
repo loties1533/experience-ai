@@ -36,7 +36,10 @@ const proprietesBrief = {
       fin: { type: 'string', format: 'date-time' },
     },
   },
-  lieux: { type: 'array', items: { type: 'string', minLength: 1 } },
+  lieux: {
+    type: 'array',
+    items: { $ref: '#/components/schemas/LocalisationDeclaree' },
+  },
   budgetTotal: { type: 'number', exclusiveMinimum: 0 },
   ambiance: { type: 'string' },
   contraintes: { type: 'array', items: { type: 'string', minLength: 1 } },
@@ -46,6 +49,47 @@ const proprietesBrief = {
 
 // Schémas réutilisables (composants) ------------------------------------------
 const schemas = {
+  LocalisationDeclaree: {
+    oneOf: [
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['nom', 'type'],
+        properties: {
+          nom: { type: 'string', minLength: 1, maxLength: 120 },
+          type: { type: 'string', enum: ['ville', 'zone'] },
+          codePays: { type: 'string', pattern: '^[A-Z]{2}$' },
+        },
+      },
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['nom', 'type', 'codePays'],
+        properties: {
+          nom: { type: 'string', minLength: 1, maxLength: 120 },
+          type: { type: 'string', enum: ['pays'] },
+          codePays: { type: 'string', pattern: '^[A-Z]{2}$' },
+        },
+      },
+    ],
+    description:
+      'Localisation confirmée telle que l’utilisateur la désigne. Le type exprime une sémantique déclarée, jamais une validation fournisseur. Un pays confirmé exige son code ISO ; ville et zone peuvent rester sans code.',
+  },
+  LocalisationDeclareeEnCours: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['nom', 'type'],
+    properties: {
+      nom: { type: 'string', minLength: 1, maxLength: 120 },
+      type: {
+        type: 'string',
+        enum: ['ville', 'zone', 'pays', 'inconnue'],
+      },
+      codePays: { type: 'string', pattern: '^[A-Z]{2}$' },
+    },
+    description:
+      'Variante transitoire du dialogue. inconnue impose une clarification et ne peut jamais entrer dans un Brief confirmé.',
+  },
   Error: {
     type: 'object',
     properties: { error: { type: 'string', example: 'Non authentifié' } },
@@ -417,7 +461,13 @@ const schemas = {
   BriefPartiel: {
     type: 'object',
     additionalProperties: false,
-    properties: proprietesBrief,
+    properties: {
+      ...proprietesBrief,
+      lieux: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/LocalisationDeclareeEnCours' },
+      },
+    },
   },
   EtatDialogue: {
     oneOf: [
@@ -432,11 +482,26 @@ const schemas = {
       },
       {
         type: 'object',
+        required: ['champ', 'code', 'champCible', 'index', 'nom'],
+        additionalProperties: false,
+        properties: {
+          champ: { type: 'string', enum: ['localisation'] },
+          code: { type: 'string', enum: ['localisation_a_preciser'] },
+          champCible: { type: 'string', enum: ['lieux'] },
+          index: { type: 'integer', minimum: 0 },
+          nom: { type: 'string', minLength: 1 },
+        },
+      },
+      {
+        type: 'object',
         required: ['champ', 'code', 'champCible'],
         additionalProperties: false,
         properties: {
           champ: { type: 'string', enum: ['preparation_generation'] },
-          code: { type: 'string', enum: ['zone_geographique_requise'] },
+          code: {
+            type: 'string',
+            enum: ['zone_geographique_requise', 'localisation_a_preciser'],
+          },
           champCible: { type: 'string', enum: ['lieux'] },
         },
       },
@@ -449,7 +514,10 @@ const schemas = {
     required: ['code', 'question', 'champCible'],
     additionalProperties: false,
     properties: {
-      code: { type: 'string', enum: ['zone_geographique_requise'] },
+      code: {
+        type: 'string',
+        enum: ['zone_geographique_requise', 'localisation_a_preciser'],
+      },
       question: { type: 'string', minLength: 1 },
       champCible: { type: 'string', enum: ['lieux'] },
     },
@@ -460,7 +528,10 @@ const schemas = {
     additionalProperties: false,
     properties: {
       champ: { type: 'string', enum: ['preparation_generation'] },
-      code: { type: 'string', enum: ['zone_geographique_requise'] },
+      code: {
+        type: 'string',
+        enum: ['zone_geographique_requise', 'localisation_a_preciser'],
+      },
       champCible: { type: 'string', enum: ['lieux'] },
     },
   },

@@ -59,7 +59,7 @@ const brief = BriefSchema.parse({
   intention: "organiser l'EVG de Max",
   avecQui: 'groupe',
   duree: { valeur: 2, unite: 'jours' },
-  lieux: ['Bordeaux'],
+  lieux: [{ nom: 'Bordeaux', type: 'ville' }],
 });
 
 const DATE_RECUPERATION = '2026-07-28T08:15:00.000Z';
@@ -392,7 +392,10 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
       intention: 'relier Bordeaux et Paris',
       avecQui: 'amis',
       duree: { valeur: 3, unite: 'jours' },
-      lieux: ['Bordeaux', 'Paris'],
+      lieux: [
+        { nom: 'Bordeaux', type: 'ville' },
+        { nom: 'Paris', type: 'ville' },
+      ],
       transport: {
         necessaire: true,
         troncons: [
@@ -539,7 +542,10 @@ describe('F5-B — isolation technique des lots', () => {
       intention: 'découvrir Bordeaux et Lyon',
       avecQui: 'amis',
       duree: { valeur: 4, unite: 'jours' },
-      lieux: ['Bordeaux', 'Lyon'],
+      lieux: [
+        { nom: 'Bordeaux', type: 'ville' },
+        { nom: 'Lyon', type: 'ville' },
+      ],
       transport: { necessaire: false },
     });
     vi.mocked(rechercherLieuxFoursquare).mockImplementation(async (villeDemandee) => ({
@@ -1872,7 +1878,10 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       intention: 'découvrir Bordeaux et Lyon',
       avecQui: 'couple',
       duree: { valeur: 4, unite: 'jours' },
-      lieux: ['Bordeaux', 'Lyon'],
+      lieux: [
+        { nom: 'Bordeaux', type: 'ville' },
+        { nom: 'Lyon', type: 'ville' },
+      ],
       transport: { necessaire: false },
       hebergement: {
         necessaire: true,
@@ -2715,7 +2724,10 @@ describe('la génération — ville et catégorie du candidat', () => {
       intention: 'découvrir deux villes',
       avecQui: 'groupe',
       duree: { valeur: 3, unite: 'jours' },
-      lieux: ['Bordeaux', 'Lyon'],
+      lieux: [
+        { nom: 'Bordeaux', type: 'ville' },
+        { nom: 'Lyon', type: 'ville' },
+      ],
       transport: { necessaire: false },
     });
     vi.mocked(rechercherLieuxFoursquare).mockImplementation(

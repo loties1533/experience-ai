@@ -25,6 +25,7 @@ import {
   demandeTransportComplete,
   estParcoursMultiVille,
   normaliserDatesBrief,
+  villesDeclarees,
   type Brief,
 } from './brief.js';
 import { deriverPlan } from './generation/plan.js';
@@ -126,7 +127,7 @@ function validerDonneesHotelieresEssentielles(
   const villesAutorisees = new Set(
     (destinationsResoluesPourGeneration(brief, contextePlanifiable)
       ? villesPlanifiees(contextePlanifiable)
-      : brief.lieux
+      : villesDeclarees(brief).map((ville) => ville.nom)
     ).map(cleTexte)
   );
   if (

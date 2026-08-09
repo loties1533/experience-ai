@@ -89,7 +89,7 @@ describe('Envie', () => {
       etatDialogue,
     })
     vi.mocked(avancerDialogue).mockResolvedValue({
-      brief: { ...brief, lieux: ['Paris'] },
+      brief: { ...brief, lieux: [{ nom: 'Paris', type: 'ville' }] },
       estComplet: true,
       reponse: 'Parfait, Paris est noté.',
     })

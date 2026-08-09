@@ -5,6 +5,7 @@ import {
   type CandidatEvenementEventFirst,
 } from '../../services/rechercheExterne.js';
 import type { Brief } from '../brief.js';
+import { paysDeclares, villesDeclarees } from '../localisationDeclaree.js';
 import {
   ContextePlanifiableSchema,
   ResultatCadrageGenerationSchema,
@@ -17,10 +18,7 @@ import {
   villesExplicitesNBA,
 } from './demandeNBA.js';
 import { decouvrirDestinations } from './decouverteDestinations.js';
-import {
-  analyserContraintesGeographiques,
-  destinationsAResoudreApresIntake,
-} from './resolutionDestinations.js';
+import { destinationsAResoudreApresIntake } from './resolutionDestinations.js';
 
 export { estDemandeNBAEvenementielle } from './demandeNBA.js';
 
@@ -28,9 +26,15 @@ const NOMBRE_MAX_ANCRES_EVENEMENTIELLES = 3;
 
 function paysNBAConfirme(brief: Brief): 'US' | undefined {
   const texte = normaliserTexte(
-    [brief.intention, ...brief.contraintes, ...brief.lieux].join(' ')
+    [brief.intention, ...brief.contraintes].join(' ')
   );
-  return /\b(etats unis|usa|us)\b/.test(texte) ? 'US' : undefined;
+  return paysDeclares(brief).some(
+    (pays) =>
+      pays.codePays === 'US' ||
+      /^(?:etats unis|usa|us)$/.test(normaliserTexte(pays.nom))
+  ) || /\b(etats unis|usa|us)\b/.test(texte)
+    ? 'US'
+    : undefined;
 }
 
 function nombreJoursInclus(debut: string, fin: string): number {
@@ -165,7 +169,7 @@ function construireContextePlanifiableDepuisVilles(
 export function construireContextePlanifiable(brief: Brief): ContextePlanifiable {
   return construireContextePlanifiableDepuisVilles(
     brief,
-    analyserContraintesGeographiques(brief).villesExplicites
+    villesDeclarees(brief).map((ville) => ville.nom)
   );
 }
 

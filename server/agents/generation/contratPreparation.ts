@@ -10,6 +10,7 @@ export const CodeClarificationGenerationSchema = z.enum([
   'zone_geographique_requise',
   'periode_requise',
   'intention_a_preciser',
+  'localisation_a_preciser',
 ]);
 
 export const ChampCibleClarificationGenerationSchema = z.enum([
@@ -21,7 +22,12 @@ export const ChampCibleClarificationGenerationSchema = z.enum([
 function cibleAttenduePourClarification(
   code: z.infer<typeof CodeClarificationGenerationSchema>
 ): z.infer<typeof ChampCibleClarificationGenerationSchema> {
-  if (code === 'zone_geographique_requise') return 'lieux';
+  if (
+    code === 'zone_geographique_requise' ||
+    code === 'localisation_a_preciser'
+  ) {
+    return 'lieux';
+  }
   if (code === 'periode_requise') return 'dates';
   return 'intention';
 }

@@ -23,6 +23,37 @@ interface DialogueState {
   reinitialiser: () => void
 }
 
+function estObjet(valeur: unknown): valeur is Record<string, unknown> {
+  return typeof valeur === 'object' && valeur !== null && !Array.isArray(valeur)
+}
+
+/**
+ * Une ancienne chaîne ne porte aucune sémantique fiable. La reprise locale la
+ * transforme donc en localisation inconnue et exige une nouvelle confirmation.
+ */
+export function migrerEtatDialoguePersiste(etat: unknown): unknown {
+  if (!estObjet(etat) || !estObjet(etat.brief)) return etat
+  const lieux = Array.isArray(etat.brief.lieux) ? etat.brief.lieux : undefined
+  if (!lieux) return etat
+
+  let reconfirmationNecessaire = false
+  const lieuxMigres = lieux.map((lieu) => {
+    if (typeof lieu === 'string') {
+      reconfirmationNecessaire = true
+      return { nom: lieu, type: 'inconnue' as const }
+    }
+    if (estObjet(lieu) && lieu.type === 'inconnue') {
+      reconfirmationNecessaire = true
+    }
+    return lieu
+  })
+  return {
+    ...etat,
+    brief: { ...etat.brief, lieux: lieuxMigres },
+    ...(reconfirmationNecessaire ? { estComplet: false } : {}),
+  }
+}
+
 export const useDialogueStore = create<DialogueState>()(
   persist(
     (set) => ({
@@ -35,7 +66,11 @@ export const useDialogueStore = create<DialogueState>()(
       mettreAJourBrief: (brief, estComplet, etatDialogue) => set({ brief, estComplet, etatDialogue }),
       reinitialiser: () => set({ messages: [], brief: {}, estComplet: false, etatDialogue: undefined }),
     }),
-    { name: 'xp_dialogue' }
+    {
+      name: 'xp_dialogue',
+      version: 1,
+      migrate: (etatPersiste) => migrerEtatDialoguePersiste(etatPersiste) as DialogueState,
+    }
   )
 )
 

@@ -123,35 +123,50 @@ describe('contraintes et prédicats de destination', () => {
   it('distingue pays, zone et vraie ville sans muter le Brief', () => {
     const brief = BriefSchema.parse({
       ...BRIEF,
-      lieux: ['Europe', 'France', 'Chamonix'],
+      lieux: [
+        { nom: 'Europe', type: 'zone' },
+        { nom: 'France', type: 'pays', codePays: 'FR' },
+        { nom: 'Chamonix', type: 'ville' },
+      ],
     });
 
     const analyse = analyserContraintesGeographiques(brief);
 
     expect(analyse.villesExplicites).toEqual(['Chamonix']);
-    expect(analyse.zonesDeclarees).toEqual(['Europe', 'France']);
+    expect(analyse.zonesDeclarees).toEqual(['Europe']);
     expect(analyse.codesPaysAutorises).toEqual(new Set(['FR']));
-    expect(brief.lieux).toEqual(['Europe', 'France', 'Chamonix']);
+    expect(brief.lieux).toEqual([
+      { nom: 'Europe', type: 'zone' },
+      { nom: 'France', type: 'pays', codePays: 'FR' },
+      { nom: 'Chamonix', type: 'ville' },
+    ]);
     expect(destinationsAResoudreApresIntake(brief)).toBe(false);
   });
 
   it.each([
-    ['Europe', 'FR'],
-    ['France', 'FR'],
-    ['Alpes', 'CH'],
-    ['Toscane', 'IT'],
+    [{ nom: 'France', type: 'pays', codePays: 'FR' } as const, [], 'FR'],
+    [{ nom: 'Alpes', type: 'zone' } as const, ['Alpes'], undefined],
+    [
+      { nom: 'Toscane', type: 'zone', codePays: 'IT' } as const,
+      ['Toscane'],
+      'IT',
+    ],
   ])(
-    'conserve %s comme contrainte géographique, jamais comme ville',
-    (zone, codePresent) => {
-      const brief = BriefSchema.parse({ ...BRIEF, lieux: [zone] });
+    'consomme directement la localisation typée $nom',
+    (lieu, zonesAttendues, codePresent) => {
+      const brief = BriefSchema.parse({ ...BRIEF, lieux: [lieu] });
 
       const analyse = analyserContraintesGeographiques(brief);
 
       expect(analyse.villesExplicites).toEqual([]);
-      expect(analyse.zonesDeclarees).toEqual([zone]);
-      expect(analyse.codesPaysAutorises?.has(codePresent)).toBe(true);
+      expect(analyse.zonesDeclarees).toEqual(zonesAttendues);
+      expect(
+        codePresent
+          ? analyse.codesPaysAutorises?.has(codePresent)
+          : analyse.codesPaysAutorises
+      ).toBe(codePresent ? true : undefined);
       expect(destinationsAResoudreApresIntake(brief)).toBe(true);
-      expect(brief.lieux).toEqual([zone]);
+      expect(brief.lieux).toEqual([lieu]);
     }
   );
 
@@ -264,10 +279,13 @@ describe('résolution et sélection serveur', () => {
 
   it('rejette une suggestion pays incohérente avant tout fournisseur', async () => {
     const deps = dependancesValides({ Boston: destination('Boston', 1, 'US') });
-    const briefEurope = BriefSchema.parse({ ...BRIEF, lieux: ['Europe'] });
+    const briefFrance = BriefSchema.parse({
+      ...BRIEF,
+      lieux: [{ nom: 'France', type: 'pays', codePays: 'FR' }],
+    });
 
     const resultat = await resoudreDestinationsProposees(
-      briefEurope,
+      briefFrance,
       proposition({ candidats: [{ nom: 'Boston', codePaysSuggere: 'US' }] }),
       deps
     );
@@ -277,6 +295,37 @@ describe('résolution et sélection serveur', () => {
       rejets: [{ raison: 'pays_incoherent' }],
     });
     expect(deps.geocoder).not.toHaveBeenCalled();
+  });
+
+  it('ne contacte aucun fournisseur pour une zone sans preuve d’appartenance', async () => {
+    const deps = dependancesValides({ Lourdes: destination('Lourdes', 1) });
+    const pyrenees = BriefSchema.parse({
+      ...BRIEF,
+      lieux: [{ nom: 'Pyrénées', type: 'zone' }],
+    });
+
+    await expect(
+      resoudreDestinationsProposees(pyrenees, proposition(), deps)
+    ).resolves.toEqual({ statut: 'clarification_zone', rejets: [] });
+    expect(deps.geocoder).not.toHaveBeenCalled();
+    expect(deps.rechercherPoi).not.toHaveBeenCalled();
+  });
+
+  it('ne classe aucune destination avec uniquement des facettes souples', async () => {
+    const deps = dependancesValides({ Annecy: destination('Annecy', 1) });
+
+    await expect(
+      resoudreDestinationsProposees(
+        BRIEF,
+        proposition({
+          facettesObligatoires: [],
+          facettesSouples: ['nature'],
+        }),
+        deps
+      )
+    ).resolves.toEqual({ statut: 'clarification_intention', rejets: [] });
+    expect(deps.geocoder).not.toHaveBeenCalled();
+    expect(deps.rechercherPoi).not.toHaveBeenCalled();
   });
 
   it('classe sans score : obligatoires, souples, minimum plafonné puis GeoNames', async () => {
