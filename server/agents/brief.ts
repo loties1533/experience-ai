@@ -597,6 +597,13 @@ function accorderDuree(valeur: number, unite: 'heures' | 'jours' | 'semaines'): 
   return `${valeur} ${valeur < 2 ? SINGULIERS[unite] : unite}`;
 }
 
+const NOMS_PAYS_FRANCAIS = new Intl.DisplayNames(['fr'], { type: 'region' });
+
+function contextePaysAffichable(codePays?: string): string {
+  if (!codePays) return '';
+  return ` (${NOMS_PAYS_FRANCAIS.of(codePays) ?? codePays})`;
+}
+
 /** Reformulation affichable du brief compris — validée par l'utilisateur avant génération. */
 export function reformulerBrief(brief: Brief): string {
   const morceaux = [
@@ -607,11 +614,11 @@ export function reformulerBrief(brief: Brief): string {
   }
   for (const lieu of brief.lieux) {
     if (lieu.type === 'ville') {
-      morceaux.push(`dans la ville de ${lieu.nom}`);
+      morceaux.push(`dans la ville de ${lieu.nom}${contextePaysAffichable(lieu.codePays)}`);
     } else if (lieu.type === 'pays') {
       morceaux.push(`en ${lieu.nom}`);
     } else {
-      morceaux.push(`dans la zone ${lieu.nom}`);
+      morceaux.push(`dans la zone ${lieu.nom}${contextePaysAffichable(lieu.codePays)}`);
     }
   }
   if (brief.budgetTotal !== undefined) morceaux.push(`avec un budget d'environ ${brief.budgetTotal} €`);

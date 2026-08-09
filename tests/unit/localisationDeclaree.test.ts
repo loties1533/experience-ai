@@ -82,6 +82,23 @@ describe('localisations declarees — contrat canonique', () => {
     expect(confirmation).toContain('dans la zone Alpes');
     expect(confirmation).toContain('en France');
   });
+
+  it.each([
+    [
+      { nom: 'Paris', type: 'ville' as const, codePays: 'FR' },
+      'dans la ville de Paris (France)',
+    ],
+    [
+      { nom: 'Alpes', type: 'zone' as const, codePays: 'FR' },
+      'dans la zone Alpes (France)',
+    ],
+  ])('rend visible le pays de $nom dans la confirmation', (lieu, attendu) => {
+    const confirmation = reformulerBrief(
+      BriefSchema.parse({ ...BASE, lieux: [lieu] })
+    );
+
+    expect(confirmation).toContain(attendu);
+  });
 });
 
 describe('localisations declarees — frontiere intake', () => {
@@ -167,6 +184,18 @@ describe('localisations declarees — frontiere intake', () => {
       { nom: 'Rome', type: 'ville', codePays: 'IT' },
     ]);
   });
+
+  it.each(['CH', 'FR'])(
+    'omet le code %s quand le segment de Paris declare plusieurs pays',
+    (codePays) => {
+      expect(
+        extraireLocalisationsDeclarees(
+          [{ nom: 'Paris', type: 'ville', codePays }],
+          'Je pars de Suisse pour Paris en France'
+        )
+      ).toEqual([{ nom: 'Paris', type: 'ville' }]);
+    }
+  );
 
   it('derive le code du pays declare au lieu de faire confiance au LLM', () => {
     expect(

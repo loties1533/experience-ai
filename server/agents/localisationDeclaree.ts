@@ -221,7 +221,8 @@ function codePaysLieALocalisation(
   );
   if (referentsOperationnels.size !== 1) return undefined;
 
-  return codesPaysDeclaresDansMessage(segment).has(localisation.codePays)
+  const codesPaysDeclares = codesPaysDeclaresDansMessage(segment);
+  return codesPaysDeclares.size === 1 && codesPaysDeclares.has(localisation.codePays)
     ? localisation.codePays
     : undefined;
 }
