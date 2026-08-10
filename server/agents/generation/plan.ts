@@ -22,10 +22,10 @@ const PlageJoursSchema = z
     message: 'le début doit précéder ou égaler la fin',
   });
 
-const LotPrevuSchema = z
+export const LotPrevuSchema = z
   .object({
     id: z.string().min(1),
-    ville: z.string().min(1).optional(),
+    ville: z.string().min(1),
     plage: PlageJoursSchema.optional(),
     ancres: z.array(CandidatEvenementEventFirstSchema).default([]),
   })
@@ -101,9 +101,9 @@ function transitionsDepuisEtapes(
 ): TransitionPlanifiee[] {
   const transitions: TransitionPlanifiee[] = [];
   for (let index = 1; index < etapes.length; index += 1) {
-    const origine = etapes[index - 1].ville?.nom;
-    const destination = etapes[index].ville?.nom;
-    if (origine && destination && origine !== destination) {
+    const origine = etapes[index - 1].ville.nom;
+    const destination = etapes[index].ville.nom;
+    if (origine !== destination) {
       transitions.push({ origine, destination });
     }
   }
@@ -113,7 +113,7 @@ function transitionsDepuisEtapes(
 function lotsSansPlage(etapes: EtapePlanifiable[]): PlanGeneration['lots'] {
   return etapes.map((etape, index) => ({
     id: `lot-${index}`,
-    ...(etape.ville ? { ville: etape.ville.nom } : {}),
+    ville: etape.ville.nom,
     ancres: etape.ancres,
   }));
 }
@@ -142,15 +142,6 @@ export function deriverPlan(contexteRecu: ContextePlanifiable): PlanGeneration {
   const contexte = ContextePlanifiableSchema.parse(contexteRecu);
   const etapes = contexte.etapes;
 
-  // Dette PR2 explicitement limitée : ne pas inventer de localisation avant
-  // PR3/PR4. Le lot sans ville demeure compatible avec le moteur actuel.
-  if (contexte.strategie === 'compatibilite_sans_localisation') {
-    return PlanGenerationSchema.parse({
-      lots: [{ id: 'lot-0', ancres: [] }],
-      transitions: [],
-    });
-  }
-
   const plageGlobale = contexte.contraintesConservees.dates
     ? {
         debut: contexte.contraintesConservees.dates.debut.slice(0, 10),
@@ -168,7 +159,7 @@ export function deriverPlan(contexteRecu: ContextePlanifiable): PlanGeneration {
       if (!plage) {
         lots.push({
           id: `lot-${lots.length}`,
-          ...(etape.ville ? { ville: etape.ville.nom } : {}),
+          ville: etape.ville.nom,
           ancres: etape.ancres,
         });
         return;
@@ -176,7 +167,7 @@ export function deriverPlan(contexteRecu: ContextePlanifiable): PlanGeneration {
       for (const bloc of decouperEnBlocsDeJours(plage.debut, plage.fin)) {
         lots.push({
           id: `lot-${lots.length}`,
-          ville: etape.ville?.nom,
+          ville: etape.ville.nom,
           plage: bloc,
           ancres: ancresDuLot(etape.ancres, bloc),
         });
@@ -193,7 +184,7 @@ export function deriverPlan(contexteRecu: ContextePlanifiable): PlanGeneration {
     const lots = decouperEnBlocsDeJours(plageGlobale.debut, plageGlobale.fin).map(
       (plage, index) => ({
         id: `lot-${index}`,
-        ville: etapes[0].ville?.nom,
+        ville: etapes[0].ville.nom,
         plage,
         ancres: ancresDuLot(etapes[0].ancres, plage),
       })
@@ -221,7 +212,7 @@ export function deriverPlan(contexteRecu: ContextePlanifiable): PlanGeneration {
     )) {
       lots.push({
         id: `lot-${lots.length}`,
-        ville: etape.ville?.nom,
+        ville: etape.ville.nom,
         plage,
         ancres: ancresDuLot(etape.ancres, plage),
       });

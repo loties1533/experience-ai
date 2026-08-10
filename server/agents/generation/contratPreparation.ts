@@ -80,7 +80,7 @@ export const VillePlanifieeSchema = z
 
 export const EtapePlanifiableSchema = z
   .object({
-    ville: VillePlanifieeSchema.optional(),
+    ville: VillePlanifieeSchema,
     plage: PlageJoursPlanifieeSchema.optional(),
     ancres: z.array(CandidatEvenementEventFirstSchema).default([]),
   })
@@ -93,18 +93,13 @@ const ContraintesConserveesSchema = z
   })
   .strict();
 
-/**
- * Décisions de préparation, séparées des données déclarées dans le Brief.
- * La stratégie de compatibilité reste temporairement présente : PR5-C retirera
- * le dernier lot sans ville après validation de la découverte de destinations.
- */
+/** Décisions de préparation, séparées des données déclarées dans le Brief. */
 export const ContextePlanifiableSchema = z
   .object({
     strategie: z.enum([
       'villes_du_brief',
       'decouverte_evenementielle',
       'decouverte_destinations',
-      'compatibilite_sans_localisation',
     ]),
     etapes: z.array(EtapePlanifiableSchema).min(1),
     contraintesConservees: ContraintesConserveesSchema,
@@ -112,16 +107,10 @@ export const ContextePlanifiableSchema = z
   .strict()
   .superRefine((contexte, ajout) => {
     if (contexte.strategie === 'villes_du_brief') {
-      if (contexte.etapes.some((etape) => etape.ville?.origine !== 'utilisateur')) {
+      if (contexte.etapes.some((etape) => etape.ville.origine !== 'utilisateur')) {
         ajout.addIssue({
           code: 'custom',
           message: 'les étapes des villes du brief doivent avoir une origine utilisateur',
-        });
-      }
-      if (contexte.etapes.some((etape) => etape.ville === undefined)) {
-        ajout.addIssue({
-          code: 'custom',
-          message: 'les étapes des villes du brief exigent une ville',
         });
       }
     }
@@ -129,7 +118,7 @@ export const ContextePlanifiableSchema = z
       if (
         contexte.etapes.some(
           (etape) =>
-            etape.ville?.origine !== 'fournisseur' ||
+            etape.ville.origine !== 'fournisseur' ||
             etape.plage === undefined ||
             etape.ancres.length === 0
         )
@@ -141,7 +130,7 @@ export const ContextePlanifiableSchema = z
         });
       }
       for (const etape of contexte.etapes) {
-        if (!etape.ville || !etape.plage) continue;
+        if (!etape.plage) continue;
         for (const ancre of etape.ancres) {
           const jourAncre = ancre.dateDebut.slice(0, 10);
           if (
@@ -167,14 +156,14 @@ export const ContextePlanifiableSchema = z
       }
       const villes = new Set<string>();
       for (const etape of contexte.etapes) {
-        const villeNormalisee = etape.ville?.nom
+        const villeNormalisee = etape.ville.nom
           .toLowerCase()
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
           .replace(/[^a-z0-9]+/g, ' ')
           .trim();
         if (
-          etape.ville?.origine !== 'selection_moteur' ||
+          etape.ville.origine !== 'selection_moteur' ||
           etape.plage !== undefined ||
           etape.ancres.length > 0
         ) {
@@ -191,20 +180,6 @@ export const ContextePlanifiableSchema = z
           });
         }
         if (villeNormalisee) villes.add(villeNormalisee);
-      }
-    }
-    if (contexte.strategie === 'compatibilite_sans_localisation') {
-      const [etape] = contexte.etapes;
-      if (
-        contexte.etapes.length !== 1 ||
-        etape.ville !== undefined ||
-        etape.plage !== undefined ||
-        etape.ancres.length !== 0
-      ) {
-        ajout.addIssue({
-          code: 'custom',
-          message: 'la compatibilité sans localisation ne porte aucun lieu, plage ou ancre',
-        });
       }
     }
   });

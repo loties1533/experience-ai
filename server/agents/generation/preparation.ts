@@ -135,7 +135,7 @@ export function construireEtapesEvenementielles(
 
 /** Villes planifiées, sans les réécrire dans le Brief utilisateur. */
 export function villesPlanifiees(contexte: ContextePlanifiable): string[] {
-  return contexte.etapes.flatMap((etape) => (etape.ville ? [etape.ville.nom] : []));
+  return contexte.etapes.map((etape) => etape.ville.nom);
 }
 
 /** Projection déterministe du brief confirmé hors stratégie événementielle. */
@@ -143,25 +143,20 @@ function construireContextePlanifiableDepuisVilles(
   brief: Brief,
   villes: string[]
 ): ContextePlanifiable {
+  if (villes.length === 0) {
+    throw new Error('Un contexte planifiable exige au moins une ville.');
+  }
   const contraintesConservees = {
     ...(brief.dates ? { dates: brief.dates } : {}),
     ...(brief.budgetTotal === undefined ? {} : { budgetTotal: brief.budgetTotal }),
   };
 
-  if (villes.length > 0) {
-    return ContextePlanifiableSchema.parse({
-      strategie: 'villes_du_brief',
-      etapes: villes.map((nom) => ({
-        ville: { nom, origine: 'utilisateur' },
-        ancres: [],
-      })),
-      contraintesConservees,
-    });
-  }
-
   return ContextePlanifiableSchema.parse({
-    strategie: 'compatibilite_sans_localisation',
-    etapes: [{ ancres: [] }],
+    strategie: 'villes_du_brief',
+    etapes: villes.map((nom) => ({
+      ville: { nom, origine: 'utilisateur' },
+      ancres: [],
+    })),
     contraintesConservees,
   });
 }
@@ -202,10 +197,25 @@ export async function preparerGeneration(
   }
 
   const villesExplicites = villesExplicitesNBA(brief.lieux);
-  if (villesExplicites.length > 0 || !brief.dates) {
+  if (villesExplicites.length > 0) {
     return ResultatCadrageGenerationSchema.parse({
       type: 'planifiable',
       contexte: construireContextePlanifiableDepuisVilles(brief, villesExplicites),
+    });
+  }
+  if (!brief.dates) {
+    return ResultatCadrageGenerationSchema.parse({
+      type: 'clarification_requise',
+      clarification: {
+        code: 'periode_requise',
+        question: 'À quelle période souhaites-tu vivre ces matchs NBA ?',
+        champCible: 'dates',
+      },
+      etatDialogue: {
+        champ: 'preparation_generation',
+        code: 'periode_requise',
+        champCible: 'dates',
+      },
     });
   }
 
@@ -248,7 +258,7 @@ export async function preparerGeneration(
   const etapes = construireEtapesEvenementielles(selection, dateDebut, dateFin);
   console.info(
     `[generation.preparation.event] query=NBA candidates=${recherche.resultats.length} ` +
-      `selected=${selection.length} cities=${[...new Set(etapes.map((etape) => etape.ville?.nom))].join(',')}`
+      `selected=${selection.length} cities=${[...new Set(etapes.map((etape) => etape.ville.nom))].join(',')}`
   );
   return ResultatCadrageGenerationSchema.parse({
     type: 'planifiable',

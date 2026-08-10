@@ -54,6 +54,7 @@ describe('génération — les préférences orientent, le brief prime', () => {
     intention: 'vivre la NBA',
     avecQui: 'solo',
     duree: { valeur: 3, unite: 'jours' },
+    lieux: [{ nom: 'Boston', type: 'ville', codePays: 'US' }],
   });
   const sortieMinimale = JSON.stringify({
     moments: [

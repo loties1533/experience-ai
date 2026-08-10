@@ -68,11 +68,17 @@ const BRIEF = {
   intention: "fêter l'EVG de Max",
   avecQui: 'amis',
   duree: { valeur: 2, unite: 'jours' },
+  lieux: [{ nom: 'Paris', type: 'ville' }],
 };
 
-const CONTEXTE_SANS_LOCALISATION = {
-  strategie: 'compatibilite_sans_localisation' as const,
-  etapes: [{ ancres: [] }],
+const CONTEXTE_PLANIFIABLE = {
+  strategie: 'villes_du_brief' as const,
+  etapes: [
+    {
+      ville: { nom: 'Paris', origine: 'utilisateur' as const },
+      ancres: [],
+    },
+  ],
   contraintesConservees: {},
 };
 
@@ -81,7 +87,7 @@ describe('POST /api/parcours — F9, aucune écriture sans génération réussie
     vi.clearAllMocks();
     preparerGeneration.mockReturnValue({
       type: 'planifiable',
-      contexte: CONTEXTE_SANS_LOCALISATION,
+      contexte: CONTEXTE_PLANIFIABLE,
     });
     prismaMock.preferenceParcours.findUnique.mockResolvedValue(null);
     prismaMock.parcours.findUnique.mockResolvedValue(null);
@@ -99,7 +105,7 @@ describe('POST /api/parcours — F9, aucune écriture sans génération réussie
       expect.any(Object),
       null,
       {},
-      CONTEXTE_SANS_LOCALISATION
+      CONTEXTE_PLANIFIABLE
     );
     expect(prismaMock.parcours.upsert).toHaveBeenCalledTimes(1);
   });

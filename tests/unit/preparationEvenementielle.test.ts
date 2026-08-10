@@ -182,6 +182,29 @@ describe('préparation événementielle NBA', () => {
     ]);
   });
 
+  it('clarifie la période d’une demande NBA sans ville avant tout appel fournisseur', async () => {
+    const sansDates = BriefSchema.parse({
+      ...BRIEF_NBA,
+      dates: undefined,
+    });
+
+    const resultat = await preparerGeneration(sansDates);
+
+    expect(resultat).toMatchObject({
+      type: 'clarification_requise',
+      clarification: {
+        code: 'periode_requise',
+        champCible: 'dates',
+      },
+      etatDialogue: {
+        champ: 'preparation_generation',
+        code: 'periode_requise',
+        champCible: 'dates',
+      },
+    });
+    expect(rechercherEvenementsPredictHQEventFirst).not.toHaveBeenCalled();
+  });
+
   it('conserve le chemin villes du brief et ignore les intentions non événementielles', async () => {
     const avecVilles = BriefSchema.parse({
       ...BRIEF_NBA,
