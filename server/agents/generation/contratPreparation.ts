@@ -8,10 +8,29 @@ import { CandidatEvenementEventFirstSchema } from '../../services/rechercheExter
 
 export const CodeClarificationGenerationSchema = z.enum([
   'zone_geographique_requise',
+  'periode_requise',
+  'intention_a_preciser',
   'localisation_a_preciser',
 ]);
 
-export const ChampCibleClarificationGenerationSchema = z.enum(['lieux']);
+export const ChampCibleClarificationGenerationSchema = z.enum([
+  'lieux',
+  'dates',
+  'intention',
+]);
+
+function cibleAttenduePourClarification(
+  code: z.infer<typeof CodeClarificationGenerationSchema>
+): z.infer<typeof ChampCibleClarificationGenerationSchema> {
+  if (
+    code === 'zone_geographique_requise' ||
+    code === 'localisation_a_preciser'
+  ) {
+    return 'lieux';
+  }
+  if (code === 'periode_requise') return 'dates';
+  return 'intention';
+}
 
 export const ClarificationGenerationSchema = z
   .object({
@@ -19,7 +38,13 @@ export const ClarificationGenerationSchema = z
     question: z.string().min(1),
     champCible: ChampCibleClarificationGenerationSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (clarification) =>
+      clarification.champCible ===
+      cibleAttenduePourClarification(clarification.code),
+    { message: 'le champ cible doit correspondre au code de clarification' }
+  );
 
 // Cet état reste frère du Brief. Il ne transporte que le contexte nécessaire
 // pour que l'intake interprète la réponse suivante, jamais une donnée acquise.
@@ -29,7 +54,12 @@ export const EtatDialoguePreparationGenerationSchema = z
     code: CodeClarificationGenerationSchema,
     champCible: ChampCibleClarificationGenerationSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (etat) =>
+      etat.champCible === cibleAttenduePourClarification(etat.code),
+    { message: 'le champ cible doit correspondre au code de clarification' }
+  );
 
 const PlageJoursPlanifieeSchema = z
   .object({
@@ -43,8 +73,8 @@ const PlageJoursPlanifieeSchema = z
 
 export const VillePlanifieeSchema = z
   .object({
-    nom: z.string().min(1),
-    origine: z.enum(['utilisateur', 'fournisseur']),
+    nom: z.string().trim().min(1),
+    origine: z.enum(['utilisateur', 'fournisseur', 'selection_moteur']),
   })
   .strict();
 
@@ -65,14 +95,15 @@ const ContraintesConserveesSchema = z
 
 /**
  * Décisions de préparation, séparées des données déclarées dans le Brief.
- * La seconde stratégie est une compatibilité temporaire : elle conserve le
- * lot sans ville actuel jusqu'aux stratégies de découverte de PR3/PR4.
+ * La stratégie de compatibilité reste temporairement présente : PR5-C retirera
+ * le dernier lot sans ville après validation de la découverte de destinations.
  */
 export const ContextePlanifiableSchema = z
   .object({
     strategie: z.enum([
       'villes_du_brief',
       'decouverte_evenementielle',
+      'decouverte_destinations',
       'compatibilite_sans_localisation',
     ]),
     etapes: z.array(EtapePlanifiableSchema).min(1),
@@ -125,6 +156,41 @@ export const ContextePlanifiableSchema = z
             });
           }
         }
+      }
+    }
+    if (contexte.strategie === 'decouverte_destinations') {
+      if (contexte.etapes.length > 3) {
+        ajout.addIssue({
+          code: 'custom',
+          message: 'la découverte de destinations accepte au plus trois étapes',
+        });
+      }
+      const villes = new Set<string>();
+      for (const etape of contexte.etapes) {
+        const villeNormalisee = etape.ville?.nom
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim();
+        if (
+          etape.ville?.origine !== 'selection_moteur' ||
+          etape.plage !== undefined ||
+          etape.ancres.length > 0
+        ) {
+          ajout.addIssue({
+            code: 'custom',
+            message:
+              'la découverte de destinations exige une ville sélectionnée par le moteur, sans plage ni ancre',
+          });
+        }
+        if (villeNormalisee && villes.has(villeNormalisee)) {
+          ajout.addIssue({
+            code: 'custom',
+            message: 'les villes découvertes doivent être distinctes',
+          });
+        }
+        if (villeNormalisee) villes.add(villeNormalisee);
       }
     }
     if (contexte.strategie === 'compatibilite_sans_localisation') {

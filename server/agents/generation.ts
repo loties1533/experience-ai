@@ -38,6 +38,7 @@ import {
   type ContextePlanifiable,
 } from './generation/contratPreparation.js';
 import { estDemandeNBAEvenementielle } from './generation/demandeNBA.js';
+import { destinationsResoluesParPreparation } from './generation/resolutionDestinations.js';
 import type { MomentGenere } from './generation/contratLLM.js';
 import {
   momentDeTransition,
@@ -90,12 +91,15 @@ export type { OptionsGenerationParcours } from './generation/lot.js';
 // des connecteurs, et le parcours final repasse par les invariants du domaine
 // avant de sortir.
 
-function estContexteNBAEvenementiel(
+function destinationsResoluesPourGeneration(
   brief: Brief,
   contextePlanifiable: ContextePlanifiable
 ): boolean {
+  if (!destinationsResoluesParPreparation(contextePlanifiable)) return false;
+  // Le contexte événementiel reste le vertical NBA validé par PR4 : un appel
+  // direct à la génération ne doit pas pouvoir le greffer à un autre Brief.
   return (
-    contextePlanifiable.strategie === 'decouverte_evenementielle' &&
+    contextePlanifiable.strategie !== 'decouverte_evenementielle' ||
     estDemandeNBAEvenementielle(brief)
   );
 }
@@ -113,7 +117,7 @@ function validerDonneesHotelieresEssentielles(
     );
   }
   if (brief.hebergement.sejours.length === 0) {
-    if (estContexteNBAEvenementiel(brief, contextePlanifiable)) return;
+    if (destinationsResoluesPourGeneration(brief, contextePlanifiable)) return;
     throw new AppError(
       'La ville et les dates du séjour hôtelier doivent être confirmées avant la génération.',
       422
@@ -121,7 +125,7 @@ function validerDonneesHotelieresEssentielles(
   }
 
   const villesAutorisees = new Set(
-    (estContexteNBAEvenementiel(brief, contextePlanifiable)
+    (destinationsResoluesPourGeneration(brief, contextePlanifiable)
       ? villesPlanifiees(contextePlanifiable)
       : villesDeclarees(brief).map((ville) => ville.nom)
     ).map(cleTexte)
@@ -132,7 +136,7 @@ function validerDonneesHotelieresEssentielles(
     )
   ) {
     throw new AppError(
-      'Chaque séjour hôtelier doit correspondre à une ville du brief.',
+      'Chaque séjour hôtelier doit correspondre à une ville planifiée.',
       422
     );
   }
@@ -318,10 +322,8 @@ async function genererEtAssemblerLots(
   const momentsParLot: MomentGenere[][] = [];
   const candidatsValides: CandidatJournal[] = [];
   let ambiance: string | undefined;
-  const autoriserBesoinHotelierSansSejour = estContexteNBAEvenementiel(
-    brief,
-    contextePlanifiable
-  );
+  const destinationsResoluesApresIntake =
+    destinationsResoluesPourGeneration(brief, contextePlanifiable);
 
   for (let index = 0; index < plan.lots.length; index += 1) {
     const lot = plan.lots[index];
@@ -335,7 +337,7 @@ ${JSON.stringify(
     brief,
     lot,
     plan.lots.length === 1,
-    autoriserBesoinHotelierSansSejour
+    destinationsResoluesApresIntake
   ),
   null,
   2
@@ -392,7 +394,7 @@ ${JSON.stringify(
     const suivant = plan.lots[index + 1];
     const villeCourante = plan.lots[index].ville;
     if (
-      (demandeTransport || contextePlanifiable.strategie === 'decouverte_evenementielle') &&
+      (demandeTransport || destinationsResoluesApresIntake) &&
       suivant?.ville &&
       villeCourante &&
       plan.transitions.some(

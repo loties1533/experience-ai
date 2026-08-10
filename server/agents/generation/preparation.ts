@@ -17,6 +17,8 @@ import {
   normaliserTexteNBA as normaliserTexte,
   villesExplicitesNBA,
 } from './demandeNBA.js';
+import { decouvrirDestinations } from './decouverteDestinations.js';
+import { destinationsAResoudreApresIntake } from './resolutionDestinations.js';
 
 export { estDemandeNBAEvenementielle } from './demandeNBA.js';
 
@@ -171,12 +173,28 @@ export function construireContextePlanifiable(brief: Brief): ContextePlanifiable
   );
 }
 
+export interface DependancesPreparationGeneration {
+  decouvrirDestinations: typeof decouvrirDestinations;
+}
+
+const DEPENDANCES_PREPARATION_PAR_DEFAUT: DependancesPreparationGeneration = {
+  decouvrirDestinations,
+};
+
 /**
- * Prépare le seul vertical slice event-first PR4. Les intentions non NBA ou
- * les villes explicitement demandées conservent la projection PR2 inchangée.
+ * Oriente d'abord le vertical event-first NBA, puis la découverte générique
+ * lorsqu'aucune vraie ville n'est déclarée. Une ville explicite conserve la
+ * projection déterministe historique.
  */
-export async function preparerGeneration(brief: Brief): Promise<ResultatCadrageGeneration> {
+export async function preparerGeneration(
+  brief: Brief,
+  dependances: DependancesPreparationGeneration =
+    DEPENDANCES_PREPARATION_PAR_DEFAUT
+): Promise<ResultatCadrageGeneration> {
   if (!estDemandeNBAEvenementielle(brief)) {
+    if (destinationsAResoudreApresIntake(brief)) {
+      return dependances.decouvrirDestinations(brief);
+    }
     return ResultatCadrageGenerationSchema.parse({
       type: 'planifiable',
       contexte: construireContextePlanifiable(brief),

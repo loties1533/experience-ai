@@ -500,9 +500,17 @@ const schemas = {
           champ: { type: 'string', enum: ['preparation_generation'] },
           code: {
             type: 'string',
-            enum: ['zone_geographique_requise', 'localisation_a_preciser'],
+            enum: [
+              'zone_geographique_requise',
+              'periode_requise',
+              'intention_a_preciser',
+              'localisation_a_preciser',
+            ],
           },
-          champCible: { type: 'string', enum: ['lieux'] },
+          champCible: {
+            type: 'string',
+            enum: ['lieux', 'dates', 'intention'],
+          },
         },
       },
     ],
@@ -516,10 +524,18 @@ const schemas = {
     properties: {
       code: {
         type: 'string',
-        enum: ['zone_geographique_requise', 'localisation_a_preciser'],
+        enum: [
+          'zone_geographique_requise',
+          'periode_requise',
+          'intention_a_preciser',
+          'localisation_a_preciser',
+        ],
       },
       question: { type: 'string', minLength: 1 },
-      champCible: { type: 'string', enum: ['lieux'] },
+      champCible: {
+        type: 'string',
+        enum: ['lieux', 'dates', 'intention'],
+      },
     },
   },
   EtatDialoguePreparationGeneration: {
@@ -530,9 +546,17 @@ const schemas = {
       champ: { type: 'string', enum: ['preparation_generation'] },
       code: {
         type: 'string',
-        enum: ['zone_geographique_requise', 'localisation_a_preciser'],
+        enum: [
+          'zone_geographique_requise',
+          'periode_requise',
+          'intention_a_preciser',
+          'localisation_a_preciser',
+        ],
       },
-      champCible: { type: 'string', enum: ['lieux'] },
+      champCible: {
+        type: 'string',
+        enum: ['lieux', 'dates', 'intention'],
+      },
     },
   },
   ReponseClarificationGeneration: {

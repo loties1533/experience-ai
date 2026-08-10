@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BriefSchema, EtatDialogueSchema } from '../../server/agents/brief.js';
 import {
   ResultatCadrageGenerationSchema,
@@ -13,12 +13,34 @@ const BRIEF = BriefSchema.parse({
 });
 
 describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
-  it('accepte un brief planifiable, y compris sans ville imposée', async () => {
-    expect(await preparerGeneration(BRIEF)).toEqual({
+  it('accepte un brief planifiable avec une destination préparée sans muter le brief', async () => {
+    const preparer = () =>
+      preparerGeneration(BRIEF, {
+        decouvrirDestinations: async () => ({
+          type: 'planifiable',
+          contexte: {
+            strategie: 'decouverte_destinations',
+            etapes: [
+              {
+                ville: { nom: 'Chamonix', origine: 'selection_moteur' },
+                ancres: [],
+              },
+            ],
+            contraintesConservees: { dates: BRIEF.dates },
+          },
+        }),
+      });
+
+    expect(await preparer()).toEqual({
       type: 'planifiable',
       contexte: {
-        strategie: 'compatibilite_sans_localisation',
-        etapes: [{ ancres: [] }],
+        strategie: 'decouverte_destinations',
+        etapes: [
+          {
+            ville: { nom: 'Chamonix', origine: 'selection_moteur' },
+            ancres: [],
+          },
+        ],
         contraintesConservees: {
           dates: BRIEF.dates,
         },
@@ -27,12 +49,13 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
     expect(
       ResultatCadrageGenerationSchema.safeParse({
         type: 'planifiable',
-        contexte: (await preparerGeneration(BRIEF) as Extract<
+        contexte: (await preparer() as Extract<
           Awaited<ReturnType<typeof preparerGeneration>>,
           { type: 'planifiable' }
         >).contexte,
       }).success
     ).toBe(true);
+    expect(BRIEF.lieux).toEqual([]);
   });
 
   it('accepte une clarification structurée et son état de dialogue frère du brief', () => {
@@ -51,6 +74,121 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
     };
     expect(ResultatCadrageGenerationSchema.safeParse(resultat).success).toBe(true);
     expect(EtatDialogueSchema.safeParse(resultat.etatDialogue).success).toBe(true);
+  });
+
+  it.each([
+    ['periode_requise', 'dates'],
+    ['intention_a_preciser', 'intention'],
+  ] as const)(
+    'accepte la clarification %s uniquement sur %s',
+    (code, champCible) => {
+      const resultat = {
+        type: 'clarification_requise',
+        clarification: { code, question: 'Question ciblée ?', champCible },
+        etatDialogue: {
+          champ: 'preparation_generation',
+          code,
+          champCible,
+        },
+      };
+      expect(ResultatCadrageGenerationSchema.safeParse(resultat).success).toBe(
+        true
+      );
+      expect(EtatDialogueSchema.safeParse(resultat.etatDialogue).success).toBe(
+        true
+      );
+    }
+  );
+
+  it('verrouille les invariants des destinations sélectionnées par le moteur', () => {
+    const contexte = {
+      strategie: 'decouverte_destinations',
+      etapes: [
+        {
+          ville: { nom: 'Chamonix', origine: 'selection_moteur' },
+          ancres: [],
+        },
+        {
+          ville: { nom: 'Innsbruck', origine: 'selection_moteur' },
+          ancres: [],
+        },
+      ],
+      contraintesConservees: {},
+    };
+    expect(
+      ResultatCadrageGenerationSchema.safeParse({
+        type: 'planifiable',
+        contexte,
+      }).success
+    ).toBe(true);
+    expect(
+      ResultatCadrageGenerationSchema.safeParse({
+        type: 'planifiable',
+        contexte: {
+          ...contexte,
+          etapes: [
+            ...contexte.etapes,
+            contexte.etapes[0],
+            {
+              ville: { nom: 'Zermatt', origine: 'selection_moteur' },
+              ancres: [],
+            },
+          ],
+        },
+      }).success
+    ).toBe(false);
+    expect(
+      ResultatCadrageGenerationSchema.safeParse({
+        type: 'planifiable',
+        contexte: {
+          ...contexte,
+          etapes: [
+            {
+              ville: { nom: 'Chamonix', origine: 'utilisateur' },
+              ancres: [],
+            },
+          ],
+        },
+      }).success
+    ).toBe(false);
+    expect(
+      ResultatCadrageGenerationSchema.safeParse({
+        type: 'planifiable',
+        contexte: {
+          ...contexte,
+          etapes: [
+            {
+              ville: {
+                nom: 'Aix-en-Provence',
+                origine: 'selection_moteur',
+              },
+              ancres: [],
+            },
+            {
+              ville: {
+                nom: 'aix en provence',
+                origine: 'selection_moteur',
+              },
+              ancres: [],
+            },
+          ],
+        },
+      }).success
+    ).toBe(false);
+    expect(
+      ResultatCadrageGenerationSchema.safeParse({
+        type: 'planifiable',
+        contexte: {
+          ...contexte,
+          etapes: [
+            {
+              ville: { nom: '   ', origine: 'selection_moteur' },
+              ancres: [],
+            },
+          ],
+        },
+      }).success
+    ).toBe(false);
   });
 
   it('accepte les refus qui réutilisent les deux codes métier existants', () => {
@@ -154,6 +292,22 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
         etatDialogue: { champ: 'preparation_generation', code: 'ville_obligatoire', champCible: 'lieux' },
       },
     ],
+    [
+      'champ cible incohérent avec la clarification',
+      {
+        type: 'clarification_requise',
+        clarification: {
+          code: 'periode_requise',
+          question: 'Quand ?',
+          champCible: 'lieux',
+        },
+        etatDialogue: {
+          champ: 'preparation_generation',
+          code: 'periode_requise',
+          champCible: 'lieux',
+        },
+      },
+    ],
   ])('rejette %s', (_cas, resultat) => {
     expect(ResultatCadrageGenerationSchema.safeParse(resultat).success).toBe(false);
   });
@@ -202,29 +356,142 @@ describe('PR1/PR2 — contrat de cadrage et contexte planifiable', () => {
     });
   });
 
-  it('ne transforme jamais une zone ou un pays déclaré en ville planifiée', async () => {
-    const sansVille = BriefSchema.parse({
+  it('conserve Paris explicite sur le chemin ville historique', async () => {
+    const demande = BriefSchema.parse({
       ...BRIEF,
-      lieux: [
-        { nom: 'Alpes', type: 'zone' },
-        { nom: 'France', type: 'pays', codePays: 'FR' },
-      ],
+      lieux: [{ nom: 'Paris', type: 'ville' }],
     });
+    const decouvrirDestinations = vi.fn(async () =>
+      ResultatCadrageGenerationSchema.parse({
+        type: 'refus',
+        refus: {
+          code: 'donnees_essentielles_insuffisantes',
+          message: 'ne doit pas être appelé',
+        },
+      })
+    );
 
-    const resultat = await preparerGeneration(sansVille);
+    const resultat = await preparerGeneration(demande, {
+      decouvrirDestinations,
+    });
 
     expect(resultat).toMatchObject({
       type: 'planifiable',
       contexte: {
-        strategie: 'compatibilite_sans_localisation',
-        etapes: [{ ancres: [] }],
+        strategie: 'villes_du_brief',
+        etapes: [
+          { ville: { nom: 'Paris', origine: 'utilisateur' } },
+        ],
       },
     });
-    if (resultat.type === 'planifiable') {
-      expect(resultat.contexte.etapes[0].ville).toBeUndefined();
-    }
+    expect(decouvrirDestinations).not.toHaveBeenCalled();
   });
 
+  it('conserve Springfield déclarée comme ville sans choisir un homonyme fournisseur', async () => {
+    const demande = BriefSchema.parse({
+      ...BRIEF,
+      lieux: [{ nom: 'Springfield', type: 'ville' }],
+    });
+    const decouvrirDestinations = vi.fn();
+
+    const resultat = await preparerGeneration(demande, {
+      decouvrirDestinations,
+    });
+
+    expect(resultat).toMatchObject({
+      type: 'planifiable',
+      contexte: {
+        strategie: 'villes_du_brief',
+        etapes: [
+          { ville: { nom: 'Springfield', origine: 'utilisateur' } },
+        ],
+      },
+    });
+    expect(decouvrirDestinations).not.toHaveBeenCalled();
+  });
+
+  it('utilise un pays comme contrainte de découverte, jamais comme ville', async () => {
+    const demande = BriefSchema.parse({
+      ...BRIEF,
+      lieux: [{ nom: 'France', type: 'pays', codePays: 'FR' }],
+    });
+    const decouvrirDestinations = vi.fn(async () =>
+      ResultatCadrageGenerationSchema.parse({
+        type: 'clarification_requise',
+        clarification: {
+          code: 'intention_a_preciser',
+          question: 'Quel critère doit être indispensable ?',
+          champCible: 'intention',
+        },
+        etatDialogue: {
+          champ: 'preparation_generation',
+          code: 'intention_a_preciser',
+          champCible: 'intention',
+        },
+      })
+    );
+
+    const resultat = await preparerGeneration(demande, {
+      decouvrirDestinations,
+    });
+
+    expect(decouvrirDestinations).toHaveBeenCalledWith(demande);
+    expect(resultat).toMatchObject({ type: 'clarification_requise' });
+    expect(JSON.stringify(resultat)).not.toContain('VillePlanifiee');
+    expect(demande.lieux).toEqual([
+      { nom: 'France', type: 'pays', codePays: 'FR' },
+    ]);
+  });
+
+  it.each([
+    ['Alpes', 'Grenoble'],
+    ['Toscane', 'Florence'],
+  ])(
+    'ne transforme jamais la zone %s en VillePlanifiee',
+    async (zone, villeResolue) => {
+      const demande = BriefSchema.parse({
+        ...BRIEF,
+        lieux: [{ nom: zone, type: 'zone' }],
+      });
+      const decouvrirDestinations = vi.fn(async () =>
+        ResultatCadrageGenerationSchema.parse({
+          type: 'planifiable',
+          contexte: {
+            strategie: 'decouverte_destinations',
+            etapes: [
+              {
+                ville: {
+                  nom: villeResolue,
+                  origine: 'selection_moteur',
+                },
+                ancres: [],
+              },
+            ],
+            contraintesConservees: { dates: demande.dates },
+          },
+        })
+      );
+
+      const resultat = await preparerGeneration(demande, {
+        decouvrirDestinations,
+      });
+
+      expect(decouvrirDestinations).toHaveBeenCalledWith(demande);
+      expect(resultat).toMatchObject({
+        type: 'planifiable',
+        contexte: {
+          strategie: 'decouverte_destinations',
+          etapes: [{ ville: { nom: villeResolue } }],
+        },
+      });
+      if (resultat.type === 'planifiable') {
+        expect(resultat.contexte.etapes.map((etape) => etape.ville?.nom)).not.toContain(
+          zone
+        );
+      }
+      expect(demande.lieux).toEqual([{ nom: zone, type: 'zone' }]);
+    }
+  );
   it('conserve l’état dates, rejette un état de préparation invalide et ne laisse aucun état entrer dans le Brief', () => {
     expect(
       EtatDialogueSchema.safeParse({

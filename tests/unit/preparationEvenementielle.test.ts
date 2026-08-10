@@ -188,8 +188,22 @@ describe('préparation événementielle NBA', () => {
       lieux: [{ nom: 'Boston', type: 'ville', codePays: 'US' }],
     });
     const resultatAvecVille = await preparerGeneration(avecVilles);
+    const decouvrirDestinations = vi.fn().mockResolvedValue({
+      type: 'planifiable',
+      contexte: {
+        strategie: 'decouverte_destinations',
+        etapes: [
+          {
+            ville: { nom: 'Chamonix', origine: 'selection_moteur' },
+            ancres: [],
+          },
+        ],
+        contraintesConservees: { dates: BRIEF_NBA.dates },
+      },
+    });
     const resultatNonEvenementiel = await preparerGeneration(
-      BriefSchema.parse({ ...BRIEF_NBA, intention: 'Faire un trek dans les Alpes' })
+      BriefSchema.parse({ ...BRIEF_NBA, intention: 'Faire un trek dans les Alpes' }),
+      { decouvrirDestinations }
     );
 
     expect(rechercherEvenementsPredictHQEventFirst).not.toHaveBeenCalled();
@@ -199,8 +213,9 @@ describe('préparation événementielle NBA', () => {
     });
     expect(resultatNonEvenementiel).toMatchObject({
       type: 'planifiable',
-      contexte: { strategie: 'compatibilite_sans_localisation' },
+      contexte: { strategie: 'decouverte_destinations' },
     });
+    expect(decouvrirDestinations).toHaveBeenCalledTimes(1);
   });
 
   it('distingue zéro événement vérifiable (refus) et fournisseur indisponible (503)', async () => {
