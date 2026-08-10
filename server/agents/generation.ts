@@ -342,7 +342,7 @@ ${JSON.stringify(
   null,
   2
 )}${consigneAncres}${blocPreferences}`;
-    const villesAutoriseesDuLot = lot.ville ? [lot.ville] : villesDuContexte;
+    const villesAutoriseesDuLot = [lot.ville];
 
     let tentative = 0;
     for (;;) {
@@ -366,7 +366,7 @@ ${JSON.stringify(
         ambiance ??= sortie.ambiance;
         console.info(
           `[génération] lot ${index + 1}/${plan.lots.length} ` +
-            `(${lot.ville ?? 'sans ville'}${lot.plage ? ` ${lot.plage.debut}→${lot.plage.fin}` : ''}) ` +
+            `(${lot.ville}${lot.plage ? ` ${lot.plage.debut}→${lot.plage.fin}` : ''}) ` +
             `— ${moments.length} moment(s), ${Date.now() - debut} ms, tentative ${tentative + 1}`
         );
         momentsParLot.push(moments);
@@ -395,12 +395,11 @@ ${JSON.stringify(
     const villeCourante = plan.lots[index].ville;
     if (
       (demandeTransport || destinationsResoluesApresIntake) &&
-      suivant?.ville &&
-      villeCourante &&
+      suivant &&
       plan.transitions.some(
         (transition) =>
           cleTexte(transition.origine) === cleTexte(villeCourante) &&
-          cleTexte(transition.destination) === cleTexte(suivant.ville as string)
+          cleTexte(transition.destination) === cleTexte(suivant.ville)
       )
     ) {
       momentsAssembles.push(
@@ -447,9 +446,9 @@ export async function genererParcours(
   // aussi, et pas seulement à l'intake, car un brief peut arriver directement
   // par l'API sans être passé par le dialogue.
   const brief = normaliserDatesBrief(resultatBrief.data);
-  // Compatibilité temporaire des appels internes directs : la route publique
-  // transmet le contexte issu de préparerGeneration(). Dans les tests et les
-  // usages internes hérités, on dérive la même projection déterministe ici.
+  // La route publique transmet le contexte issu de preparerGeneration(). Les
+  // appels internes directs ne peuvent dériver un contexte que depuis les
+  // villes explicitement déclarées dans le Brief.
   const contextePlanifiable = contextePlanifiableRecu
     ? ContextePlanifiableSchema.parse(contextePlanifiableRecu)
     : construireContextePlanifiable(brief);

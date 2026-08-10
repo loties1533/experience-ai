@@ -22,8 +22,13 @@ const SCENARIO: ScenarioBenchmark = {
   brief: BRIEF,
 };
 const CONTEXTE = {
-  strategie: 'compatibilite_sans_localisation',
-  etapes: [{ ancres: [] }],
+  strategie: 'villes_du_brief',
+  etapes: [
+    {
+      ville: { nom: 'Paris', origine: 'utilisateur' },
+      ancres: [],
+    },
+  ],
   contraintesConservees: {},
 } as const;
 
@@ -32,7 +37,7 @@ describe('benchmarker-modeles — préparation runtime', () => {
 
   it('génère uniquement après un cadrage planifiable et transmet son contexte', async () => {
     preparerGeneration.mockResolvedValue({ type: 'planifiable', contexte: CONTEXTE });
-    deriverPlan.mockReturnValue({ lots: [{ id: 'lot-1' }] });
+    deriverPlan.mockReturnValue({ lots: [{ id: 'lot-1', ville: 'Paris' }] });
     genererParcours.mockResolvedValue({ timeline: [] });
 
     const resultat = await executerUnEssai(SCENARIO, 'modele-test', 1);

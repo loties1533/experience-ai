@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { deriverPlan } from '../../server/agents/generation.js';
 import { BriefSchema, type Brief } from '../../server/agents/brief.js';
-import { ContextePlanifiableSchema } from '../../server/agents/generation/contratPreparation.js';
+import {
+  ContextePlanifiableSchema,
+  EtapePlanifiableSchema,
+} from '../../server/agents/generation/contratPreparation.js';
+import { LotPrevuSchema } from '../../server/agents/generation/plan.js';
 import { construireContextePlanifiable } from '../../server/agents/generation/preparation.js';
 
 const BASE = {
@@ -56,11 +60,21 @@ function ancre(identifiantExterne: string, dateDebut: string) {
 }
 
 describe('deriverPlan — découpage pur par ville et par jours', () => {
-  it('rend un lot unique et sans ville quand aucune ville n’est connue', () => {
-    const plan = planDuBrief(brief({ lieux: [] }));
-    expect(plan.lots).toHaveLength(1);
-    expect(plan.lots[0].ville).toBeUndefined();
-    expect(plan.lots[0].plage).toBeUndefined();
+  it('rejette toute étape, stratégie de compatibilité ou lot sans ville', () => {
+    expect(EtapePlanifiableSchema.safeParse({ ancres: [] }).success).toBe(false);
+    expect(
+      ContextePlanifiableSchema.safeParse({
+        strategie: 'compatibilite_sans_localisation',
+        etapes: [{ ancres: [] }],
+        contraintesConservees: {},
+      }).success
+    ).toBe(false);
+    expect(LotPrevuSchema.safeParse({ id: 'lot-0', ancres: [] }).success).toBe(
+      false
+    );
+    expect(() => construireContextePlanifiable(brief({ lieux: [] }))).toThrow(
+      'Un contexte planifiable exige au moins une ville.'
+    );
   });
 
   it('rend un lot par ville et sans plage quand aucune date n’est fournie', () => {
@@ -71,6 +85,7 @@ describe('deriverPlan — découpage pur par ville et par jours', () => {
       'Lyon',
     ]);
     expect(plan.lots.every((lot) => lot.plage === undefined)).toBe(true);
+    expect(plan.lots.every((lot) => lot.ville.length > 0)).toBe(true);
     expect(plan.transitions).toEqual([
       { origine: 'Bordeaux', destination: 'Paris' },
       { origine: 'Paris', destination: 'Lyon' },

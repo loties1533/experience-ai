@@ -56,11 +56,11 @@
   hôtelière et aucun lien Booking de disponibilité ne sont synthétisés ; un
   séjour explicite valide conserve le rattachement et le lien historiques.
 
-`compatibilite_sans_localisation` reste réservée aux intentions non
-événementielles ou non encore couvertes ; elle est interdite pour le cas NBA
-event-first. Cette PR ne généralise pas encore la stratégie aux autres envies
-et laisse à un chantier ultérieur la confirmation de séjours exacts après la
-découverte des villes, nécessaire avant toute recherche de disponibilité datée.
+La préparation garantit désormais qu’un parcours planifiable possède une ville
+pour chaque étape : les envies génériques sans ville passent par la découverte
+de destinations, tandis qu’une demande NBA sans ville exige une période avant
+la recherche event-first. Une clarification ou un refus métier n’entre jamais
+dans la génération de lots.
 
 Validation locale : 69 fichiers / 1 931 tests, TypeScript serveur et client,
 lint et build client.

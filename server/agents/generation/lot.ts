@@ -53,16 +53,16 @@ export function briefPourLot(
   // La ville projetée ici vient du PlanGeneration, lui-même dérivé du
   // ContextePlanifiable. Le Brief reste la déclaration utilisateur intacte,
   // jamais une seconde source de vérité pour la géographie du lot.
-  const lieux = lot.ville ? [lot.ville] : [];
+  const lieux = [lot.ville];
   const dates =
     lot.plage && !lotUniqueDuPlan
       ? { debut: `${lot.plage.debut}T00:00:00.000Z`, fin: `${lot.plage.fin}T23:59:59.999Z` }
       : brief.dates;
 
   const sejoursDuLot =
-    brief.hebergement?.necessaire === true && lot.ville
+    brief.hebergement?.necessaire === true
       ? brief.hebergement.sejours.filter(
-          (sejour) => cleTexte(sejour.ville) === cleTexte(lot.ville as string)
+          (sejour) => cleTexte(sejour.ville) === cleTexte(lot.ville)
         )
       : [];
   let hebergement: Brief['hebergement'];
@@ -285,7 +285,6 @@ export function namespacerLot(lot: LotPrevu, moments: MomentGenere[]): MomentGen
  */
 function villeHorsLot(ville: string | undefined, lot: LotPrevu): boolean {
   return (
-    lot.ville !== undefined &&
     ville !== undefined &&
     cleTexte(ville) !== cleTexte(lot.ville)
   );
