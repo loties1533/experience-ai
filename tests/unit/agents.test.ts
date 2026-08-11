@@ -272,7 +272,7 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     expect(propose.brief.dates).toBeUndefined();
     expect(propose.etatDialogue).toEqual({
       champ: 'dates',
-      valeurCandidate: { debut: '2026-08-15T00:00:00.000Z', fin: '2026-09-05T00:00:00.000Z' },
+      valeurCandidate: { debut: '2026-08-15T00:00:00.000Z', fin: '2026-09-04T00:00:00.000Z' },
     });
     expect(propose.reponse).toContain('15 août');
 
@@ -327,7 +327,7 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     );
     expect(propose.etatDialogue?.valeurCandidate).toEqual({
       debut: '2026-08-15T00:00:00.000Z',
-      fin: '2026-08-29T00:00:00.000Z',
+      fin: '2026-08-28T00:00:00.000Z',
     });
 
     const confirme = await avancerDialogue(propose.brief, 'oui', propose.etatDialogue);
@@ -336,7 +336,7 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     // `normaliserDatesBrief`, appliquée à la confirmation.
     expect(confirme.brief.dates).toEqual({
       debut: '2026-08-15T00:00:00.000Z',
-      fin: '2026-08-29T23:59:59.999Z',
+      fin: '2026-08-28T23:59:59.999Z',
     });
   });
 
@@ -351,12 +351,12 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
       })
     );
     const etape = await avancerDialogue(
-      { intention: 'vivre la NBA', duree: { valeur: 3, unite: 'semaines' } },
+      { intention: 'vivre la NBA', duree: { valeur: 27, unite: 'jours' } },
       'solo du 15/08/2026 au 10/09/2026 avec un budget de 8000 euros'
     );
     expect(etape.brief.dates).toEqual({
       debut: '2026-08-15T00:00:00.000Z',
-      fin: '2026-09-10T00:00:00.000Z',
+      fin: '2026-09-10T23:59:59.999Z',
     });
     expect(etape.estComplet).toBe(true);
   });
@@ -1981,7 +1981,8 @@ describe('extraction du brief tolérante aux champs invalides', () => {
     expect(etape.brief.intention).toBe('organiser l’EVG de Max');
     expect(etape.brief.lieux).toEqual([{ nom: 'Bordeaux', type: 'ville' }]);
     expect(etape.brief.budgetTotal).toBe(2800);
-    expect(etape.brief.dates?.debut).toBe('2026-09-04T00:00:00Z');
+    expect(etape.brief.dates?.debut).toBe('2026-09-04T00:00:00.000Z');
+    expect(etape.brief.dates?.fin).toBe('2026-09-06T23:59:59.999Z');
   });
 
   it('ignore un champ que le modèle a inventé', async () => {
