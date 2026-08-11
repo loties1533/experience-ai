@@ -1303,7 +1303,7 @@ function questionConfirmationDates(etat: Extract<EtatDialogue, { champ: 'dates' 
       `Veux-tu garder cette plage et ajuster la durée à ${jours} jour(s) ?`
     );
   }
-  return `Tu pars donc le ${enFrancais(etat.valeurCandidate.debut)} ? Réponds « oui » pour confirmer, ou donne une autre date.`;
+  return `Tu confirmes donc le ${enFrancais(etat.valeurCandidate.debut)} ? Réponds « oui » pour confirmer, ou donne une autre date.`;
 }
 
 /**

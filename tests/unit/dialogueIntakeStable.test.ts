@@ -96,6 +96,31 @@ describe('PR7 — décision serveur du prochain champ', () => {
     expect(nombreQuestions(resultat.reponse)).toBe(1);
   });
 
+  it('confirme une date candidate de soirée improvisée sans vocabulaire de voyage', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(sortie({}));
+
+    const resultat = await avancerDialogue(
+      {
+        intention: 'une soirée improvisée',
+        avecQui: 'amis',
+        duree: { valeur: 1, unite: 'jours' },
+      },
+      'Le 20 novembre 2026.'
+    );
+
+    expect(resultat.etatDialogue).toMatchObject({
+      champ: 'dates',
+      valeurCandidate: {
+        debut: '2026-11-20T00:00:00.000Z',
+      },
+    });
+    expect(resultat.reponse).toBe(
+      'Tu confirmes donc le 20 novembre 2026 ? Réponds « oui » pour confirmer, ou donne une autre date.'
+    );
+    expect(resultat.reponse).not.toMatch(/voyage|voyager|partir/i);
+    expect(nombreQuestions(resultat.reponse)).toBe(1);
+  });
+
   it('reste neutre pour un EVG local', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
       sortie({
