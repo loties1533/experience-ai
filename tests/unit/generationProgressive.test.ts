@@ -44,8 +44,20 @@ function numeroDeJour(dateCivile: string): number {
 
 /** Lit le brief JSON qu'un prompt de lot embarque, pour répondre par ville. */
 function briefDuPrompt(prompt: string): {
+  intention?: string;
+  duree?: { valeur: number; unite: string };
   lieux?: string[];
   dates?: { debut: string; fin: string };
+  temporalite?: {
+    voyageGlobal: {
+      duree: { valeur: number; unite: string };
+      dates?: { debut: string; fin: string };
+    };
+    lotLocal: {
+      dates?: { debut: string; fin: string };
+      nombreJoursCivils: number;
+    };
+  };
 } {
   const debut = prompt.indexOf('{');
   const fin = prompt.lastIndexOf('}');
@@ -204,6 +216,80 @@ describe('F5-B — un appel IA par lot', () => {
 
     expect(callAIAvecOutils).toHaveBeenCalledTimes(lots.length);
     expect(parcours.timeline).toHaveLength(lots.length);
+  });
+
+  it('découverte sans lieu : projette séparément les 5 jours globaux et les lots locaux sans muter le Brief', async () => {
+    const brief = BriefSchema.parse({
+      intention: '5 jours entre plage et gastronomie',
+      avecQui: 'amis',
+      duree: { valeur: 5, unite: 'jours' },
+      lieux: [],
+      dates: {
+        debut: '2026-09-20T00:00:00.000Z',
+        fin: '2026-09-24T23:59:59.999Z',
+      },
+    });
+    const contexte = {
+      strategie: 'decouverte_destinations' as const,
+      etapes: [
+        {
+          ville: { nom: 'Ajaccio', origine: 'selection_moteur' as const },
+          ancres: [],
+        },
+        {
+          ville: { nom: 'Bastia', origine: 'selection_moteur' as const },
+          ancres: [],
+        },
+      ],
+      contraintesConservees: { dates: brief.dates },
+    };
+    const avant = JSON.stringify(brief);
+    const projections: ReturnType<typeof briefDuPrompt>[] = [];
+
+    vi.mocked(callAIAvecOutils).mockImplementation(async (prompt) => {
+      const projection = briefDuPrompt(prompt as string);
+      projections.push(projection);
+      expect(prompt).toContain(
+        "Une durée mentionnée dans l'intention est globale et ne contredit jamais cette sous-plage locale."
+      );
+      return JSON.stringify({
+        moments: [momentActivite(projection.lieux?.[0])],
+      });
+    });
+
+    await expect(
+      genererParcours(brief, null, {}, contexte)
+    ).resolves.toBeTruthy();
+
+    expect(projections).toHaveLength(2);
+    expect(projections.map((projection) => projection.duree)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(
+      projections.map(
+        (projection) => projection.temporalite?.voyageGlobal.duree
+      )
+    ).toEqual([
+      { valeur: 5, unite: 'jours' },
+      { valeur: 5, unite: 'jours' },
+    ]);
+    expect(
+      projections.map(
+        (projection) => projection.temporalite?.lotLocal.nombreJoursCivils
+      )
+    ).toEqual([3, 2]);
+    expect(projections.map((projection) => projection.dates)).toEqual([
+      {
+        debut: '2026-09-20T00:00:00.000Z',
+        fin: '2026-09-22T23:59:59.999Z',
+      },
+      {
+        debut: '2026-09-23T00:00:00.000Z',
+        fin: '2026-09-24T23:59:59.999Z',
+      },
+    ]);
+    expect(JSON.stringify(brief)).toBe(avant);
   });
 });
 

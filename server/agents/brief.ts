@@ -176,6 +176,10 @@ export const EtatDialogueDatesSchema = z
   .object({
     champ: z.literal('dates'),
     valeurCandidate: PlageHoraireSchema,
+    // Présente uniquement quand l'utilisateur a déclaré une durée exacte en
+    // jours/semaines incompatible avec une plage explicite. La plage reste
+    // autoritative, mais l'ajustement de durée attend son accord explicite.
+    dureeCandidate: ContexteSchema.shape.duree.optional(),
   })
   .strict();
 
@@ -407,21 +411,26 @@ export function normaliserDatesBrief<T extends BriefPartiel>(brief: T): T {
 
 /**
  * La fin d'une plage se CALCULE depuis un début connu + la durée — jamais
- * confiée au LLM (arithmétique de dates, pas son fort). Utilisé une fois
- * qu'un point de départ a été obtenu, pour que le domaine porte toujours de
- * vraies dates avant la génération.
+ * confiée au LLM (arithmétique de dates, pas son fort). Une durée exprimée en
+ * jours couvre exactement ce nombre de dates civiles : trois jours à partir
+ * du 10 couvrent les 10, 11 et 12. La borne civile de fin est donc J + N - 1.
+ * Une semaine suit la même convention et vaut sept dates civiles. Les heures
+ * restent des durées exactes et ne relèvent pas de cette convention civile.
  */
 export function calculerDates(
   debutISO: string,
   duree: { valeur: number; unite: 'heures' | 'jours' | 'semaines' }
 ): { debut: string; fin: string } {
-  const HEURES_PAR_UNITE: Record<typeof duree.unite, number> = {
-    heures: 1,
-    jours: 24,
-    semaines: 24 * 7,
-  };
   const debut = new Date(debutISO);
-  const fin = new Date(debut.getTime() + duree.valeur * HEURES_PAR_UNITE[duree.unite] * 3_600_000);
+  if (duree.unite === 'heures') {
+    const fin = new Date(debut.getTime() + duree.valeur * 3_600_000);
+    return { debut: debut.toISOString(), fin: fin.toISOString() };
+  }
+
+  const nombreJours =
+    duree.unite === 'semaines' ? duree.valeur * 7 : duree.valeur;
+  const fin = new Date(debut);
+  fin.setUTCDate(fin.getUTCDate() + nombreJours - 1);
   return { debut: debut.toISOString(), fin: fin.toISOString() };
 }
 

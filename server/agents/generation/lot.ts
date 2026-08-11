@@ -58,6 +58,19 @@ export function briefPourLot(
     lot.plage && !lotUniqueDuPlan
       ? { debut: `${lot.plage.debut}T00:00:00.000Z`, fin: `${lot.plage.fin}T23:59:59.999Z` }
       : brief.dates;
+  const temporalite = lot.plage
+    ? {
+        voyageGlobal: {
+          duree: brief.duree,
+          ...(brief.dates ? { dates: brief.dates } : {}),
+        },
+        lotLocal: {
+          dates,
+          nombreJoursCivils:
+            numeroDeJour(lot.plage.fin) - numeroDeJour(lot.plage.debut) + 1,
+        },
+      }
+    : undefined;
 
   const sejoursDuLot =
     brief.hebergement?.necessaire === true
@@ -84,6 +97,7 @@ export function briefPourLot(
     avecQui: brief.avecQui,
     ...(lot.plage ? {} : { duree: brief.duree }),
     ...(dates ? { dates } : {}),
+    ...(temporalite ? { temporalite } : {}),
     lieux,
     ...(brief.budgetTotal === undefined ? {} : { budgetTotal: brief.budgetTotal }),
     ...(brief.ambiance ? { ambiance: brief.ambiance } : {}),

@@ -28,7 +28,7 @@ import {
   villesDeclarees,
   type Brief,
 } from './brief.js';
-import { deriverPlan } from './generation/plan.js';
+import { deriverPlan, numeroDeJour } from './generation/plan.js';
 import {
   construireContextePlanifiable,
   villesPlanifiees,
@@ -341,7 +341,14 @@ ${JSON.stringify(
   ),
   null,
   2
-)}${consigneAncres}${blocPreferences}`;
+)}${
+  lot.plage
+    ? `
+Consigne temporelle du lot : "intention" et "temporalite.voyageGlobal" décrivent le voyage complet. Construis uniquement "temporalite.lotLocal", soit ${
+        numeroDeJour(lot.plage.fin) - numeroDeJour(lot.plage.debut) + 1
+      } journée(s) civile(s), du ${lot.plage.debut} au ${lot.plage.fin} inclus. Une durée mentionnée dans l'intention est globale et ne contredit jamais cette sous-plage locale. Toute plage produite doit rester dans les dates locales du lot.`
+    : ''
+}${consigneAncres}${blocPreferences}`;
     const villesAutoriseesDuLot = [lot.ville];
 
     let tentative = 0;

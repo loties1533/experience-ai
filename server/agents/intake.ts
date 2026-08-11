@@ -223,40 +223,139 @@ function extraireIntention(
  * pas de lui seul pour un champ aussi structurant. Motif générique : aucune
  * date câblée en dur, marche pour n'importe quelle plage JJ/MM.
  */
-function extrairePlageExplicite(message: string): { debut: string; fin: string } | undefined {
-  const motif = /(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s*(?:au|-|à)\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/i;
-  const trouve = message.match(motif);
-  if (!trouve) return undefined;
+function construireDateUTC(
+  jour: number,
+  mois: number,
+  annee: number
+): Date | undefined {
+  if (mois < 1 || mois > 12 || jour < 1 || jour > 31) return undefined;
+  const date = new Date(Date.UTC(annee, mois - 1, jour));
+  if (
+    date.getUTCFullYear() !== annee ||
+    date.getUTCMonth() + 1 !== mois ||
+    date.getUTCDate() !== jour
+  ) {
+    return undefined;
+  }
+  return date;
+}
 
-  const construire = (jourStr: string, moisStr: string, annee: number): Date | undefined => {
-    const jour = Number(jourStr);
-    const mois = Number(moisStr);
-    if (mois < 1 || mois > 12 || jour < 1 || jour > 31) return undefined;
-    return new Date(Date.UTC(annee, mois - 1, jour));
-  };
-
-  const anneeExpliciteDebut = trouve[3] ? Number(trouve[3]) : undefined;
-  const anneeExpliciteFin = trouve[6] ? Number(trouve[6]) : undefined;
+function resoudrePlageCivile(
+  debutCivil: { jour: number; mois: number; annee?: number },
+  finCivil: { jour: number; mois: number; annee?: number }
+): { debut: string; fin: string } | undefined {
   const anneeCourante = new Date().getUTCFullYear();
+  let anneeDebut = debutCivil.annee;
+  let anneeFin = finCivil.annee;
 
-  let debut = construire(trouve[1], trouve[2], anneeExpliciteDebut ?? anneeCourante);
-  if (!debut) return undefined;
-  // Sans année précisée : la prochaine occurrence future, jamais une date passée.
-  if (!anneeExpliciteDebut && debut.getTime() < Date.now()) {
-    debut = construire(trouve[1], trouve[2], anneeCourante + 1);
-    if (!debut) return undefined;
+  if (anneeDebut === undefined && anneeFin !== undefined) {
+    const debutApresFin =
+      debutCivil.mois > finCivil.mois ||
+      (debutCivil.mois === finCivil.mois && debutCivil.jour > finCivil.jour);
+    anneeDebut = anneeFin - (debutApresFin ? 1 : 0);
+  } else if (anneeDebut !== undefined && anneeFin === undefined) {
+    const finAvantDebut =
+      finCivil.mois < debutCivil.mois ||
+      (finCivil.mois === debutCivil.mois && finCivil.jour < debutCivil.jour);
+    anneeFin = anneeDebut + (finAvantDebut ? 1 : 0);
+  } else if (anneeDebut === undefined && anneeFin === undefined) {
+    anneeDebut = anneeCourante;
+    let debutProvisoire = construireDateUTC(
+      debutCivil.jour,
+      debutCivil.mois,
+      anneeDebut
+    );
+    if (!debutProvisoire) return undefined;
+    // Sans année : prochaine occurrence future, comme pour une date isolée.
+    if (debutProvisoire.getTime() < Date.now()) {
+      anneeDebut += 1;
+      debutProvisoire = construireDateUTC(
+        debutCivil.jour,
+        debutCivil.mois,
+        anneeDebut
+      );
+      if (!debutProvisoire) return undefined;
+    }
+    const finAvantDebut =
+      finCivil.mois < debutCivil.mois ||
+      (finCivil.mois === debutCivil.mois && finCivil.jour < debutCivil.jour);
+    anneeFin = anneeDebut + (finAvantDebut ? 1 : 0);
   }
 
-  let fin = construire(trouve[4], trouve[5], anneeExpliciteFin ?? debut.getUTCFullYear());
-  if (!fin) return undefined;
-  // La fin suit le début : si elle tombe avant ("20/12 au 05/01"), l'année suivante.
-  if (!anneeExpliciteFin && fin.getTime() <= debut.getTime()) {
-    fin = construire(trouve[4], trouve[5], debut.getUTCFullYear() + 1);
-    if (!fin) return undefined;
-  }
-  if (fin.getTime() <= debut.getTime()) return undefined; // garde-fou : jamais une plage inversée
+  if (anneeDebut === undefined || anneeFin === undefined) return undefined;
 
+  const debut = construireDateUTC(
+    debutCivil.jour,
+    debutCivil.mois,
+    anneeDebut
+  );
+  const fin = construireDateUTC(finCivil.jour, finCivil.mois, anneeFin);
+  if (!debut || !fin || fin.getTime() < debut.getTime()) return undefined;
   return { debut: debut.toISOString(), fin: fin.toISOString() };
+}
+
+function nombreJoursCivils(plage: { debut: string; fin: string }): number {
+  const jour = (iso: string) => {
+    const [annee, mois, date] = iso.slice(0, 10).split('-').map(Number);
+    return Math.floor(Date.UTC(annee, mois - 1, date) / 86_400_000);
+  };
+  return jour(plage.fin) - jour(plage.debut) + 1;
+}
+
+function dureeExacteEnJours(
+  duree: BriefPartiel['duree']
+): number | undefined {
+  if (!duree || !Number.isInteger(duree.valeur)) return undefined;
+  if (duree.unite === 'jours') return duree.valeur;
+  if (duree.unite === 'semaines') return duree.valeur * 7;
+  return undefined;
+}
+
+function extrairePlageExplicite(
+  message: string
+): { debut: string; fin: string } | undefined {
+  const motifNumerique =
+    /(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s*(?:au|-|à)\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/i;
+  const numerique = message.match(motifNumerique);
+  if (numerique) {
+    return resoudrePlageCivile(
+      {
+        jour: Number(numerique[1]),
+        mois: Number(numerique[2]),
+        ...(numerique[3] ? { annee: Number(numerique[3]) } : {}),
+      },
+      {
+        jour: Number(numerique[4]),
+        mois: Number(numerique[5]),
+        ...(numerique[6] ? { annee: Number(numerique[6]) } : {}),
+      }
+    );
+  }
+
+  const nomsMois = Object.keys(MOIS_FRANCAIS).join('|');
+  const motifFrancais = new RegExp(
+    `\\bdu\\s+(\\d{1,2})(?:\\s+(${nomsMois}))?(?:\\s+(\\d{4}))?\\s+au\\s+(\\d{1,2})\\s+(${nomsMois})(?:\\s+(\\d{4}))?\\b`,
+    'i'
+  );
+  const francais = message.match(motifFrancais);
+  if (!francais) return undefined;
+
+  const moisFin = MOIS_FRANCAIS[francais[5].toLowerCase()];
+  const moisDebut = francais[2]
+    ? MOIS_FRANCAIS[francais[2].toLowerCase()]
+    : moisFin;
+  return resoudrePlageCivile(
+    {
+      jour: Number(francais[1]),
+      mois: moisDebut,
+      ...(francais[3] ? { annee: Number(francais[3]) } : {}),
+    },
+    {
+      jour: Number(francais[4]),
+      mois: moisFin,
+      ...(francais[6] ? { annee: Number(francais[6]) } : {}),
+    }
+  );
 }
 
 /**
@@ -1194,6 +1293,9 @@ export async function avancerDialogue(
     if (confirmationPositive(messageUtilisateur)) {
       const brief = normaliserDatesBrief({
         ...briefActuel,
+        ...(etatDialogueActuel.dureeCandidate
+          ? { duree: etatDialogueActuel.dureeCandidate }
+          : {}),
         dates: etatDialogueActuel.valeurCandidate,
       });
       const { reponse, estComplet } = finaliserEtape(
@@ -1222,7 +1324,17 @@ export async function avancerDialogue(
   // tente que si aucune date n'est déjà arrêtée dans le brief — jamais pour
   // écraser une date explicite déjà validée.
   const contexteTemporel = contexteTemporelParDefaut();
-  const dateRelativeResolue = briefActuel.dates
+  const plageExpliciteExtraite = extrairePlageExplicite(messageUtilisateur);
+  // Une plage explicitement rattachée à un hôtel qualifie le séjour hôtelier,
+  // jamais les dates globales du parcours (règle d'intake déjà existante).
+  const plageExpliciteResolue =
+    plageExpliciteExtraite &&
+    !/\b(h[oô]tel|h[eé]bergement|chambre|nuit(?:s|ée)?s?)\b/i.test(
+      messageUtilisateur
+    )
+      ? plageExpliciteExtraite
+      : undefined;
+  const dateRelativeResolue = briefActuel.dates || plageExpliciteResolue
     ? undefined
     : resoudreExpressionRelative(messageUtilisateur, contexteTemporel);
 
@@ -1254,7 +1366,10 @@ ${
       : 'Tous les champs de base sont déjà validés : ne pose plus aucune question sur intention, avecQui, duree ou dates, sauf correction explicite de l’utilisateur.'
   }
 Repère temporel : nous sommes le ${dateReferenceLisible(contexteTemporel)} (fuseau ${contexteTemporel.fuseau}).${
-    dateRelativeResolue
+    plageExpliciteResolue
+      ? `
+Plage explicite déjà résolue pour ce message, autoritative sur toute date isolée : du ${plageExpliciteResolue.debut} au ${plageExpliciteResolue.fin}.`
+      : dateRelativeResolue
       ? `
 Dates déjà résolues pour l'expression temporelle de ce message : du ${dateRelativeResolue.debut} au ${dateRelativeResolue.fin}.`
       : ''
@@ -1312,21 +1427,47 @@ La réponse de l'utilisateur répond à une clarification de préparation. Extra
   // structuré du tout), on les applique nous-mêmes : jamais dépendant de lui
   // seul pour un champ aussi structurant, même logique que la plage explicite
   // ci-dessous.
+  let plageExpliciteUtilisee = false;
   let dateRelativeUtilisee = false;
-  if (!brief.dates && dateRelativeResolue) {
+  if (plageExpliciteResolue) {
+    const plageNormalisee = normaliserDatesBrief({
+      dates: plageExpliciteResolue,
+    }).dates;
+    const dureeDeclareeEnJours = dureeExacteEnJours(brief.duree);
+    const joursDeLaPlage = nombreJoursCivils(plageExpliciteResolue);
+    if (
+      plageNormalisee &&
+      dureeDeclareeEnJours !== undefined &&
+      dureeDeclareeEnJours !== joursDeLaPlage
+    ) {
+      const { dates: _datesExtraites, ...briefSansDates } = brief;
+      return {
+        reponse:
+          `Tu as indiqué ${dureeDeclareeEnJours} jour(s), mais la plage du ` +
+          `${enFrancais(plageNormalisee.debut)} au ${enFrancais(plageNormalisee.fin)} ` +
+          `en couvre ${joursDeLaPlage}. Veux-tu garder cette plage et ajuster la durée à ${joursDeLaPlage} jour(s) ?`,
+        brief: briefSansDates,
+        estComplet: false,
+        etatDialogue: {
+          champ: 'dates',
+          valeurCandidate: plageNormalisee,
+          dureeCandidate: { valeur: joursDeLaPlage, unite: 'jours' },
+        },
+      };
+    }
+    brief = normaliserDatesBrief({
+      ...brief,
+      dates: plageExpliciteResolue,
+    });
+    plageExpliciteUtilisee = true;
+  } else if (briefActuel.dates && extrait.dates === undefined) {
+    // Une date déjà confirmée est un acquis. Une réponse ultérieure du LLM ne
+    // peut l'effacer. Une correction temporelle explicitement extraite reste
+    // toutefois possible, comme pour les autres champs déjà confirmés.
+    brief = { ...brief, dates: briefActuel.dates };
+  } else if (!brief.dates && dateRelativeResolue) {
     brief = { ...brief, dates: dateRelativeResolue };
     dateRelativeUtilisee = true;
-  }
-
-  // Filet déterministe, avant de compter sur le LLM : une plage explicite
-  // ("du 15/08 au 10/09") qu'il aurait comprise sans la structurer.
-  let plageExpliciteUtilisee = false;
-  if (!brief.dates) {
-    const plage = extrairePlageExplicite(messageUtilisateur);
-    if (plage) {
-      brief = { ...brief, dates: plage };
-      plageExpliciteUtilisee = true;
-    }
   }
 
   // Un point de départ seul (sans la fin) reste une approximation : elle

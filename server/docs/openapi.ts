@@ -478,6 +478,18 @@ const schemas = {
         properties: {
           champ: { type: 'string', enum: ['dates'] },
           valeurCandidate: { $ref: '#/components/schemas/PlageHoraire' },
+          dureeCandidate: {
+            type: 'object',
+            required: ['valeur', 'unite'],
+            additionalProperties: false,
+            properties: {
+              valeur: { type: 'number', exclusiveMinimum: 0 },
+              unite: {
+                type: 'string',
+                enum: ['heures', 'jours', 'semaines'],
+              },
+            },
+          },
         },
       },
       {
