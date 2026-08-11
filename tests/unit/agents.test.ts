@@ -255,7 +255,7 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     expect(etape.estComplet).toBe(false);
     expect(etape.brief.intention).toBe('vivre la NBA');
     expect(etape.reponse).toBe(
-      'Tu voyages seul, en couple, en famille, entre amis ou en groupe ?'
+      'Tu seras seul, en couple, en famille, entre amis ou en groupe ?'
     );
   });
 
@@ -636,7 +636,7 @@ describe('intake F7-B — état déterministe du dialogue de base', () => {
       },
       'osef'
     );
-    expect(etape.reponse).toBe('Combien de temps souhaites-tu partir ?');
+    expect(etape.reponse).toBe('Sur combien de temps veux-tu organiser ça ?');
     expect(etape.reponse).not.toContain('adultes');
   });
 

@@ -266,10 +266,10 @@ export function libelleChampBase(champ: ChampBase): string {
 }
 
 const QUESTIONS_CHAMPS_BASE: Record<ChampBase, string> = {
-  intention: 'Qu’as-tu envie de vivre pendant ce voyage ?',
-  avecQui: 'Tu voyages seul, en couple, en famille, entre amis ou en groupe ?',
-  duree: 'Combien de temps souhaites-tu partir ?',
-  dates: 'À quelle date souhaites-tu partir, même approximativement ?',
+  intention: 'Qu’as-tu envie de vivre ?',
+  avecQui: 'Tu seras seul, en couple, en famille, entre amis ou en groupe ?',
+  duree: 'Sur combien de temps veux-tu organiser ça ?',
+  dates: 'À quelle date souhaites-tu le faire, même approximativement ?',
 };
 
 /**

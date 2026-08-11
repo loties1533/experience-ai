@@ -215,21 +215,44 @@ function extraireIntention(
 
 /**
  * Secours honnête quand le fournisseur omet l'intention : uniquement une
- * formulation d'envie explicite, conservée depuis le message utilisateur sans
- * enrichissement sémantique ni facette ajoutée.
+ * formulation d'envie explicitement mono-intention, conservée sans
+ * enrichissement sémantique ni facette ajoutée. Dès qu'une autre donnée métier
+ * est détectable, on préfère redemander l'envie plutôt que copier un bloc mêlant
+ * intention, localisation, durée, date, budget ou accompagnement.
  */
 function intentionExpliciteDuMessage(
   message: string,
-  briefActuel: BriefPartiel
+  briefActuel: BriefPartiel,
+  briefBrut: unknown
 ): string | undefined {
   if (briefActuel.intention !== undefined) return undefined;
   const texte = sanitizeInput(message).trim();
   const normalise = normaliserPourPreuve(texte);
-  return /\b(je veux|je souhaite|j aimerais|j ai envie de|envie de|je reve de)\b/.test(
-    normalise
-  )
-    ? texte
-    : undefined;
+  const envieExplicite =
+    /\b(je veux|je souhaite|j aimerais|j ai envie de|envie de|je reve de)\b/.test(
+      normalise
+    );
+  if (!envieExplicite) return undefined;
+
+  const autreChampFourni =
+    estObjet(briefBrut) &&
+    Object.keys(briefBrut).some((champ) => champ !== 'intention');
+  const repereTemporel =
+    /\b(aujourd hui|aujourdhui|demain|apres-demain|ce week-end|ce weekend|week-end prochain|weekend prochain|janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)\b/.test(
+      normalise
+    ) || /\b\d{1,4}[/-]\d{1,2}(?:[/-]\d{1,4})?\b/.test(normalise);
+  const localisationPossible =
+    /\b(aller|partir|se rendre)\b[^.!?]*\b(a|au|aux|en|dans|vers)\b/.test(
+      normalise
+    );
+  const autreInformationExplicite =
+    extraireAvecQuiExplicite(texte) !== undefined ||
+    extraireDureeExplicite(texte) !== undefined ||
+    repereTemporel ||
+    localisationPossible ||
+    /\b(avec|budget|euros?|depenser|cher|chere)\b|€/.test(normalise);
+
+  return autreChampFourni || autreInformationExplicite ? undefined : texte;
 }
 
 /**
@@ -1577,7 +1600,11 @@ La réponse de l'utilisateur répond à une clarification de préparation. Extra
     : undefined;
   const intentionExtraite =
     extraireIntention(sortie.data.brief, briefActuel) ??
-    intentionExpliciteDuMessage(messageUtilisateur, briefActuel);
+    intentionExpliciteDuMessage(
+      messageUtilisateur,
+      briefActuel,
+      sortie.data.brief
+    );
   const extractionHebergement = extraireHebergement(
     sortie.data.brief,
     messageUtilisateur,

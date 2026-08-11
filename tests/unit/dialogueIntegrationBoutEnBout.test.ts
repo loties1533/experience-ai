@@ -43,7 +43,7 @@ describe('F7-C — scénario 1 : parcours progressif simple, un champ de base pa
     const tour1 = await avancerDialogue({}, 'Je veux organiser un week-end détente');
     expect(tour1.estComplet).toBe(false);
     expect(tour1.reponse).toBe(
-      'Tu voyages seul, en couple, en famille, entre amis ou en groupe ?'
+      'Tu seras seul, en couple, en famille, entre amis ou en groupe ?'
     );
     expect(tour1.brief).toEqual({ intention: 'un week-end détente' });
 
@@ -55,7 +55,7 @@ describe('F7-C — scénario 1 : parcours progressif simple, un champ de base pa
 
     const tour2 = await avancerDialogue(tour1.brief, 'en couple');
     expect(tour2.estComplet).toBe(false);
-    expect(tour2.reponse).toBe('Combien de temps souhaites-tu partir ?');
+    expect(tour2.reponse).toBe('Sur combien de temps veux-tu organiser ça ?');
     expect(tour2.brief).toEqual({ intention: 'un week-end détente', avecQui: 'couple' });
     const promptTour2 = vi.mocked(callAI).mock.calls[1][0];
     expect(promptTour2).toContain('Champ de base attendu maintenant pour interpréter une réponse courte : avec qui il part.');
@@ -67,7 +67,7 @@ describe('F7-C — scénario 1 : parcours progressif simple, un champ de base pa
     const tour3 = await avancerDialogue(tour2.brief, '2 jours');
     expect(tour3.estComplet).toBe(false);
     expect(tour3.reponse).toBe(
-      'À quelle date souhaites-tu partir, même approximativement ?'
+      'À quelle date souhaites-tu le faire, même approximativement ?'
     );
     expect(tour3.brief.duree).toEqual({ valeur: 2, unite: 'jours' });
     const promptTour3 = vi.mocked(callAI).mock.calls[2][0];
@@ -195,7 +195,7 @@ describe('F7-C — scénario 4 : message sans information nouvelle', () => {
       'd’accord'
     );
     expect(etape.brief).toEqual({ intention: 'un séjour détente', avecQui: 'solo' });
-    expect(etape.reponse).toBe('Combien de temps souhaites-tu partir ?');
+    expect(etape.reponse).toBe('Sur combien de temps veux-tu organiser ça ?');
     expect(etape.estComplet).toBe(false);
   });
 

@@ -69,8 +69,49 @@ describe('PR7 — décision serveur du prochain champ', () => {
     );
 
     expect(resultat.reponse).toBe(
-      'Tu voyages seul, en couple, en famille, entre amis ou en groupe ?'
+      'Tu seras seul, en couple, en famille, entre amis ou en groupe ?'
     );
+    expect(nombreQuestions(resultat.reponse)).toBe(1);
+  });
+
+  it('reste neutre pour une soirée improvisée', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      sortie({
+        intention: {
+          texte: 'une soirée improvisée',
+          nature: 'remplacement',
+        },
+      })
+    );
+
+    const resultat = await avancerDialogue(
+      {},
+      'Je veux une soirée improvisée'
+    );
+
+    expect(resultat.reponse).toBe(
+      'Tu seras seul, en couple, en famille, entre amis ou en groupe ?'
+    );
+    expect(resultat.reponse).not.toMatch(/voyage|voyager|partir/i);
+    expect(nombreQuestions(resultat.reponse)).toBe(1);
+  });
+
+  it('reste neutre pour un EVG local', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(
+      sortie({
+        intention: {
+          texte: 'organiser un EVG local',
+          nature: 'remplacement',
+        },
+      })
+    );
+
+    const resultat = await avancerDialogue({}, 'Je veux organiser un EVG local');
+
+    expect(resultat.reponse).toBe(
+      'Tu seras seul, en couple, en famille, entre amis ou en groupe ?'
+    );
+    expect(resultat.reponse).not.toMatch(/voyage|voyager|partir/i);
     expect(nombreQuestions(resultat.reponse)).toBe(1);
   });
 
@@ -83,6 +124,33 @@ describe('PR7 — décision serveur du prochain champ', () => {
     expect(resultat.reponse).toContain('seul, en couple');
   });
 
+  it.each([
+    ['absente', {}],
+    [
+      'malformée',
+      {
+        intention: 'Je veux aller 3 jours à Paris en octobre avec ma femme',
+        duree: { valeur: 3, unite: 'jours' },
+        lieux: [{ nom: 'Paris', type: 'ville' }],
+      },
+    ],
+  ])(
+    'n’utilise pas le message mixte comme intention verbatim quand l’intention LLM est %s',
+    async (_cas, briefExtrait) => {
+      vi.mocked(callAI).mockResolvedValueOnce(sortie(briefExtrait));
+
+      const resultat = await avancerDialogue(
+        {},
+        'Je veux aller 3 jours à Paris en octobre avec ma femme'
+      );
+
+      expect(resultat.brief.intention).toBeUndefined();
+      expect(resultat.reponse).toBe('Qu’as-tu envie de vivre ?');
+      expect(resultat.reponse).not.toMatch(/Paris|3 jours|octobre|femme/i);
+      expect(nombreQuestions(resultat.reponse)).toBe(1);
+    }
+  );
+
   it('priorise la durée essentielle sur une préférence facultative proposée par le modèle', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
       sortie({}, 'Quel type de musée et quel type de restaurant préfères-tu ?')
@@ -93,7 +161,7 @@ describe('PR7 — décision serveur du prochain champ', () => {
       'Je n’ai pas de préférence particulière.'
     );
 
-    expect(resultat.reponse).toBe('Combien de temps souhaites-tu partir ?');
+    expect(resultat.reponse).toBe('Sur combien de temps veux-tu organiser ça ?');
     expect(nombreQuestions(resultat.reponse)).toBe(1);
   });
 
@@ -110,7 +178,7 @@ describe('PR7 — décision serveur du prochain champ', () => {
     );
 
     expect(resultat.reponse).toBe(
-      'À quelle date souhaites-tu partir, même approximativement ?'
+      'À quelle date souhaites-tu le faire, même approximativement ?'
     );
     expect(resultat.reponse).not.toContain('préciser ta demande');
   });
@@ -230,7 +298,9 @@ describe('PR7 — clarifications PR5 et PR6', () => {
     expect(envie.reponse).toContain('seul, en couple');
     expect(envie.brief.avecQui).toBeUndefined();
     expect(envie.brief.duree).toBeUndefined();
-    expect(accompagnement.reponse).toContain('Combien de temps');
+    expect(accompagnement.reponse).toBe(
+      'Sur combien de temps veux-tu organiser ça ?'
+    );
     expect(duree.reponse).toContain('À quelle date');
     expect(dates.estComplet).toBe(true);
     expect([envie.reponse, accompagnement.reponse, duree.reponse, dates.reponse].every(
