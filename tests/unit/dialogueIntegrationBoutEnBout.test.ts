@@ -42,21 +42,23 @@ describe('F7-C — scénario 1 : parcours progressif simple, un champ de base pa
     );
     const tour1 = await avancerDialogue({}, 'Je veux organiser un week-end détente');
     expect(tour1.estComplet).toBe(false);
-    expect(tour1.reponse).toBe('Avec qui pars-tu ?');
+    expect(tour1.reponse).toBe(
+      'Tu voyages seul, en couple, en famille, entre amis ou en groupe ?'
+    );
     expect(tour1.brief).toEqual({ intention: 'un week-end détente' });
 
     vi.mocked(callAI).mockResolvedValueOnce(
       reponseIntake({ avecQui: 'couple' }, 'Combien de temps ?')
     );
     const promptTour1 = vi.mocked(callAI).mock.calls[0][0];
-    expect(promptTour1).toContain('Champ de base à demander maintenant, et uniquement celui-ci : l’intention.');
+    expect(promptTour1).toContain('Champ de base attendu maintenant pour interpréter une réponse courte : l’intention.');
 
     const tour2 = await avancerDialogue(tour1.brief, 'en couple');
     expect(tour2.estComplet).toBe(false);
-    expect(tour2.reponse).toBe('Combien de temps ?');
+    expect(tour2.reponse).toBe('Combien de temps souhaites-tu partir ?');
     expect(tour2.brief).toEqual({ intention: 'un week-end détente', avecQui: 'couple' });
     const promptTour2 = vi.mocked(callAI).mock.calls[1][0];
-    expect(promptTour2).toContain('Champ de base à demander maintenant, et uniquement celui-ci : avec qui il part.');
+    expect(promptTour2).toContain('Champ de base attendu maintenant pour interpréter une réponse courte : avec qui il part.');
     expect(promptTour2).toContain('Champs de base déjà validés (ne jamais les redemander) : l’intention');
 
     vi.mocked(callAI).mockResolvedValueOnce(
@@ -64,17 +66,19 @@ describe('F7-C — scénario 1 : parcours progressif simple, un champ de base pa
     );
     const tour3 = await avancerDialogue(tour2.brief, '2 jours');
     expect(tour3.estComplet).toBe(false);
-    expect(tour3.reponse).toBe('Et pour quand ?');
+    expect(tour3.reponse).toBe(
+      'À quelle date souhaites-tu partir, même approximativement ?'
+    );
     expect(tour3.brief.duree).toEqual({ valeur: 2, unite: 'jours' });
     const promptTour3 = vi.mocked(callAI).mock.calls[2][0];
-    expect(promptTour3).toContain('Champ de base à demander maintenant, et uniquement celui-ci : la durée.');
+    expect(promptTour3).toContain('Champ de base attendu maintenant pour interpréter une réponse courte : la durée.');
     expect(promptTour3).toContain('Champs de base déjà validés (ne jamais les redemander) : l’intention, avec qui il part');
 
     // F7-A : "le week-end prochain" est résolu déterministement, jamais par le LLM.
     vi.mocked(callAI).mockResolvedValueOnce(reponseIntake({}));
     const tour4 = await avancerDialogue(tour3.brief, 'le week-end prochain');
     const promptTour4 = vi.mocked(callAI).mock.calls[3][0];
-    expect(promptTour4).toContain('Champ de base à demander maintenant, et uniquement celui-ci : les dates.');
+    expect(promptTour4).toContain('Champ de base attendu maintenant pour interpréter une réponse courte : les dates.');
     expect(tour4.estComplet).toBe(true);
     expect(tour4.brief.dates).toEqual({
       debut: '2026-08-07T22:00:00.000Z',
@@ -191,7 +195,7 @@ describe('F7-C — scénario 4 : message sans information nouvelle', () => {
       'd’accord'
     );
     expect(etape.brief).toEqual({ intention: 'un séjour détente', avecQui: 'solo' });
-    expect(etape.reponse).toBe('Et la durée ?');
+    expect(etape.reponse).toBe('Combien de temps souhaites-tu partir ?');
     expect(etape.estComplet).toBe(false);
   });
 
@@ -206,7 +210,9 @@ describe('F7-C — scénario 4 : message sans information nouvelle', () => {
     const etape = await avancerDialogue(briefComplet, 'oui');
     expect(etape.estComplet).toBe(true);
     expect(etape.brief).toEqual(briefComplet);
-    expect(etape.reponse).toContain('Je n’ai pas compris ce changement'.replace('’', "'"));
+    expect(etape.reponse).toBe(
+      'Je n’ai pas pu appliquer ce changement ; le cadrage confirmé reste inchangé.'
+    );
   });
 });
 
@@ -246,7 +252,7 @@ describe('F7-C — scénario 5 : transition déterministe vers hébergement/tran
 
     // Un champ de base n'est jamais redemandé pendant la collecte transport.
     const promptOrigine = vi.mocked(callAI).mock.calls[1][0];
-    expect(promptOrigine).not.toContain('Champ de base à demander maintenant');
+    expect(promptOrigine).not.toContain('Champ de base attendu maintenant');
   });
 
   it('reste déterministe : la même ville répétée ne fait pas régresser le tronçon en cours', async () => {

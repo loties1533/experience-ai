@@ -265,6 +265,21 @@ export function libelleChampBase(champ: ChampBase): string {
   return LIBELLES_CHAMPS_BASE_COURTS[champ];
 }
 
+const QUESTIONS_CHAMPS_BASE: Record<ChampBase, string> = {
+  intention: 'Qu’as-tu envie de vivre pendant ce voyage ?',
+  avecQui: 'Tu voyages seul, en couple, en famille, entre amis ou en groupe ?',
+  duree: 'Combien de temps souhaites-tu partir ?',
+  dates: 'À quelle date souhaites-tu partir, même approximativement ?',
+};
+
+/**
+ * Formulation serveur stable du prochain champ essentiel. Le modèle comprend
+ * le dernier message, mais ne choisit ni la cible ni le nombre de questions.
+ */
+export function questionChampBase(champ: ChampBase): string {
+  return QUESTIONS_CHAMPS_BASE[champ];
+}
+
 const LIBELLES_HEBERGEMENT = {
   adultes: 'le nombre d’adultes pour l’hébergement',
   enfants: 'le nombre d’enfants pour l’hébergement, même s’il est égal à zéro',
