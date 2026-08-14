@@ -133,7 +133,7 @@ export default function ParcoursPartage() {
                         <button
                           key={avis}
                           className={`btn-secondaire min-h-[44px] text-xs ${
-                            monAvis(element) === avis ? '!border-terracotta !text-terracotta font-bold' : ''
+                            monAvis(element) === avis ? '!border-terracotta !text-terracotta-dark font-bold' : ''
                           }`}
                           aria-pressed={monAvis(element) === avis}
                           disabled={reaction.isPending}
