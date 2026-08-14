@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
-import type { TravelMode, EventSearchResult } from '../lib/types.js';
+import type { TravelMode } from '../lib/types.js';
 import { encoderURL } from '../lib/url.js';
 import {
   causeErreurHttp,
@@ -445,26 +445,4 @@ export async function rechercherEvenementsPredictHQ(
     console.warn('PredictHQ indisponible :', (erreur as Error).message);
     return rechercheIndisponible('PredictHQ', raison);
   }
-}
-
-/**
- * Export public historique conservé pendant la migration F2. Le chemin de
- * génération utilise le contrat discriminé de `rechercherEvenementsPredictHQ`.
- */
-export async function predictHQEventsSearch(
-  city: string,
-  dateFrom: string,
-  dateTo: string,
-  mode: TravelMode
-): Promise<EventSearchResult[]> {
-  const recherche = await rechercherEvenementsPredictHQ(city, dateFrom, dateTo, mode);
-  if (recherche.statut !== 'ok') return [];
-  return recherche.resultats.map((evenement) => ({
-    id: evenement.identifiantExterne,
-    title: evenement.nom,
-    category: evenement.categorieFournisseur,
-    start: evenement.dateDebut.slice(0, 10),
-    venue: evenement.salle ?? evenement.villeDemandee,
-    description: evenement.description,
-  }));
 }

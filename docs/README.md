@@ -30,6 +30,7 @@
 | 12 | [glossaire](12-glossaire.md) | ✅ |
 | 13 | [principes-evolution](13-principes-evolution.md) | ✅ |
 | 14 | [fiabilite-parcours](14-fiabilite-parcours.md) | 🟡 chantier F4 en cours (C1/C2 internes, C3 à venir) |
+| 17 | [dettes et backlog](17-finitions-techniques.md) | 🟡 registre canonique courant |
 
 **Suivi d'exécution :** [SPRINTS](SPRINTS.md) — historique R1 → R8 et suivi
 des sprints de fiabilité F0 → F9.
@@ -46,6 +47,7 @@ des sprints de fiabilité F0 → F9.
 | [SPRINTS.md](SPRINTS.md) | **Avancement réel** — board par sprint, revues reliées à leur PR | Une décision de fond ou une trajectoire produit |
 | [09-roadmap.md](09-roadmap.md) | **Trajectoire** — vue haute des couches et des chantiers, sans détail d'implémentation | Le détail d'un sous-lot |
 | [14-fiabilite-parcours.md](14-fiabilite-parcours.md) | **Plan détaillé de fiabilité** — critères de terminé, dépendances entre sprints F0 → F9 | Un compte de tests ou un détail de PR |
+| [17-finitions-techniques.md](17-finitions-techniques.md) | **Dettes et backlog** — registre canonique, classification, priorité et état courants | Un historique détaillé de sprint ou de PR |
 | [architecture/README.md](architecture/README.md) | **Architecture technique actuelle** — diagrammes de ce qui tourne réellement | Un historique de décision |
 
 Pour l'état d'avancement courant, consulter [`docs/SPRINTS.md`](SPRINTS.md).
