@@ -36,6 +36,7 @@ import {
   questionTransport,
   prochainChampTransport,
   prochainChampBase,
+  questionChampBase,
   premiereLocalisationInconnue,
   libelleChampBase,
   ORDRE_CHAMPS_BASE,
@@ -66,7 +67,7 @@ import { doitDiffererSejoursHebergementNBA } from './generation/demandeNBA.js';
 // la génération est le rôle de l'orchestrateur (generation.ts).
 
 const SYSTEM_INTAKE = `Tu aides à comprendre l'envie d'un utilisateur pour construire un parcours personnalisé.
-Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
+Réponds UNIQUEMENT en JSON valide : {"brief": objet}. Le serveur formule lui-même la prochaine question.
 - "brief" : uniquement les champs que le DERNIER message permet d'établir, parmi :
   intention ({"texte": string, "nature": "complement"|"remplacement"} — jamais une destination. "texte" ne porte QUE
   l'information NOUVELLE de ce dernier message, jamais une fusion avec ce qui précède : la fusion se fait ailleurs, ne
@@ -77,9 +78,8 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
   l'utilisateur donne les DEUX bornes explicitement), dateDebut (ISO — UNIQUEMENT si l'utilisateur donne une VRAIE date
   de départ, même approximative : "mi-août", "le 15 août", "dans deux semaines". Sans année précisée, suppose la
   prochaine occurrence future de cette date. Ne devine JAMAIS dateDebut s'il n'a rien dit sur le moment où il part —
-  ce champ concerne QUAND il part, jamais D'OÙ il part : une ville reste "lieux", pas "dateDebut". Si "reponse" pose
-  une question de confirmation sur une date que l'utilisateur vient de donner, structure QUAND MÊME ta meilleure
-  interprétation dans "dateDebut" ou "dates" — ne laisse jamais "reponse" évoquer une date absente de "brief"),
+  ce champ concerne QUAND il part, jamais D'OÙ il part : une ville reste "lieux", pas "dateDebut". Structure TOUJOURS
+  ta meilleure interprétation dans "dateDebut" ou "dates" lorsqu'une date est exprimée),
   lieux ([{"nom": string, "type": "ville"|"zone"|"pays"|"inconnue", "codePays"?: "FR"}]),
   budgetTotal (number, en euros), ambiance (string), contraintes (string[]),
   hebergement (UNIQUEMENT si l'utilisateur exprime explicitement qu'un hébergement est nécessaire ou non) :
@@ -111,12 +111,10 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
   pour l'hébergement. Conserve les dates hôtelières sans heure au format AAAA-MM-JJ.
 - "duree" GARDE TOUJOURS l'unité EXACTE que l'utilisateur emploie, ne la convertis JAMAIS toi-même :
   "3 semaines" → {"valeur": 3, "unite": "semaines"}, jamais {"valeur": 3, "unite": "jours"}.
-- "reponse" : UNE question courte et chaleureuse en français sur UN champ requis manquant (intention, avecQui, duree,
-  une date de départ approximative — jamais "point de départ", qui prête à confusion avec une ville). Jamais deux
-  questions. TUTOIE toujours l'utilisateur (« tu », jamais « vous »).
-- Le message précise "Champ de base à demander maintenant" : c'est le SEUL champ de base sur lequel porter "reponse"
-  tant qu'il est indiqué. Ne redemande jamais un champ listé dans "Champs de base déjà validés", même reformulé
-  autrement — sauf si l'utilisateur vient de le corriger explicitement dans son dernier message.
+- Ne formule aucune question et ne décide jamais du prochain champ : le serveur le fait après validation.
+- Le message précise le champ de base actuellement ciblé uniquement pour t'aider à interpréter une réponse courte.
+  Ne réémets jamais un champ listé dans "Champs de base déjà validés", sauf si l'utilisateur vient de le corriger
+  explicitement dans son dernier message.
 - N'invente jamais un champ que l'utilisateur n'a pas exprimé.
 - Le message peut contenir un repère temporel ("Repère temporel : ...") et des dates déjà résolues
   ("Dates déjà résolues : ..."). Si des dates déjà résolues sont fournies, reprends-les TELLES QUELLES
@@ -128,7 +126,6 @@ Réponds UNIQUEMENT en JSON valide : {"reponse": string, "brief": objet}.
   celui à venir ; "le week-end prochain" est toujours celui qui suit "ce week-end".`;
 
 const SortieIntakeSchema = z.object({
-  reponse: z.string().min(1),
   brief: z.unknown(),
 });
 
@@ -217,10 +214,52 @@ function extraireIntention(
 }
 
 /**
+ * Secours honnête quand le fournisseur omet l'intention : uniquement une
+ * formulation d'envie explicitement mono-intention, conservée sans
+ * enrichissement sémantique ni facette ajoutée. Dès qu'une autre donnée métier
+ * est détectable, on préfère redemander l'envie plutôt que copier un bloc mêlant
+ * intention, localisation, durée, date, budget ou accompagnement.
+ */
+function intentionExpliciteDuMessage(
+  message: string,
+  briefActuel: BriefPartiel,
+  briefBrut: unknown
+): string | undefined {
+  if (briefActuel.intention !== undefined) return undefined;
+  const texte = sanitizeInput(message).trim();
+  const normalise = normaliserPourPreuve(texte);
+  const envieExplicite =
+    /\b(je veux|je souhaite|j aimerais|j ai envie de|envie de|je reve de)\b/.test(
+      normalise
+    );
+  if (!envieExplicite) return undefined;
+
+  const autreChampFourni =
+    estObjet(briefBrut) &&
+    Object.keys(briefBrut).some((champ) => champ !== 'intention');
+  const repereTemporel =
+    /\b(aujourd hui|aujourdhui|demain|apres-demain|ce week-end|ce weekend|week-end prochain|weekend prochain|janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)\b/.test(
+      normalise
+    ) || /\b\d{1,4}[/-]\d{1,2}(?:[/-]\d{1,4})?\b/.test(normalise);
+  const localisationPossible =
+    /\b(aller|partir|se rendre)\b[^.!?]*\b(a|au|aux|en|dans|vers)\b/.test(
+      normalise
+    );
+  const autreInformationExplicite =
+    extraireAvecQuiExplicite(texte) !== undefined ||
+    extraireDureeExplicite(texte) !== undefined ||
+    repereTemporel ||
+    localisationPossible ||
+    /\b(avec|budget|euros?|depenser|cher|chere)\b|€/.test(normalise);
+
+  return autreChampFourni || autreInformationExplicite ? undefined : texte;
+}
+
+/**
  * Filet déterministe pour une plage écrite en chiffres ("du 15/08 au 10/09") :
- * constaté en recette, le LLM la comprend très bien — il la reformule dans
- * "reponse" — mais ne la structure pas toujours dans "brief". On ne dépend
- * pas de lui seul pour un champ aussi structurant. Motif générique : aucune
+ * constaté en recette, le LLM la comprend mais ne la structure pas toujours
+ * dans "brief". On ne dépend pas de lui seul pour un champ aussi structurant.
+ * Motif générique : aucune
  * date câblée en dur, marche pour n'importe quelle plage JJ/MM.
  */
 function construireDateUTC(
@@ -392,6 +431,126 @@ function extraireChampsValides(brut: unknown): BriefPartiel {
   }
 
   return retenu as BriefPartiel;
+}
+
+function normaliserPourPreuve(texte: string): string {
+  return texte
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function extraireAvecQuiExplicite(
+  message: string
+): BriefPartiel['avecQui'] | undefined {
+  const texte = normaliserPourPreuve(message);
+  const motifs: Record<NonNullable<BriefPartiel['avecQui']>, RegExp> = {
+    solo: /\b(seul|seule|solo)\b/,
+    couple: /\b(couple|a deux|tous les deux|toutes les deux)\b/,
+    famille: /\bfamille\b/,
+    amis: /\b(ami|amie|amis|amies|copain|copains|copine|copines)\b/,
+    groupe: /\bgroupe\b/,
+  };
+  const valeurs = (Object.entries(motifs) as [
+    NonNullable<BriefPartiel['avecQui']>,
+    RegExp,
+  ][]).flatMap(([valeur, motif]) => (motif.test(texte) ? [valeur] : []));
+  return valeurs.length === 1 ? valeurs[0] : undefined;
+}
+
+const NOMBRES_FRANCAIS: Record<string, number> = {
+  un: 1,
+  une: 1,
+  deux: 2,
+  trois: 3,
+  quatre: 4,
+  cinq: 5,
+  six: 6,
+  sept: 7,
+  huit: 8,
+  neuf: 9,
+  dix: 10,
+  onze: 11,
+  douze: 12,
+  treize: 13,
+  quatorze: 14,
+  quinze: 15,
+  seize: 16,
+  'dix-sept': 17,
+  'dix-huit': 18,
+  'dix-neuf': 19,
+  vingt: 20,
+  trente: 30,
+};
+
+const MOTIF_NOMBRE_DUREE =
+  '(\\d+(?:[.,]\\d+)?|un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|treize|quatorze|quinze|seize|dix-sept|dix-huit|dix-neuf|vingt|trente)';
+
+function extraireDureeExplicite(
+  message: string
+): BriefPartiel['duree'] | undefined {
+  const texte = normaliserPourPreuve(message);
+  const motif = new RegExp(
+    `\\b${MOTIF_NOMBRE_DUREE}\\s*(heures?|jour(?:s|nees?)?|semaines?)\\b`
+  );
+  const trouve = texte.match(motif);
+  if (!trouve || new RegExp(`\\bdans\\s+${MOTIF_NOMBRE_DUREE}\\s*${trouve[2]}\\b`).test(texte)) {
+    return undefined;
+  }
+  const valeur = NOMBRES_FRANCAIS[trouve[1]] ?? Number(trouve[1].replace(',', '.'));
+  const unite = trouve[2].startsWith('heure')
+    ? 'heures'
+    : trouve[2].startsWith('semaine')
+      ? 'semaines'
+      : 'jours';
+  const resultat = BriefPartielSchema.shape.duree.safeParse({ valeur, unite });
+  return resultat.success ? resultat.data : undefined;
+}
+
+function messageDeclareDates(message: string): boolean {
+  const texte = normaliserPourPreuve(message);
+  return (
+    /\b(aujourd'hui|aujourdhui|demain|apres-demain|week-end|weekend|janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)\b/.test(
+      texte
+    ) ||
+    /\bdans\s+(?:\d+|un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix)\s+(?:jours?|semaines?)\b/.test(
+      texte
+    ) ||
+    /\b\d{1,4}[/-]\d{1,2}(?:[/-]\d{1,4})?\b/.test(texte)
+  );
+}
+
+/**
+ * Avec qui, durée et dates ne peuvent venir d'une simple inférence du modèle,
+ * lors de leur première acquisition comme lors d'une correction. Une valeur
+ * n'est admise que si le dernier message porte sa preuve lexicale.
+ */
+function protegerChampsBaseProuves(
+  extrait: BriefPartiel,
+  messageUtilisateur: string
+): BriefPartiel {
+  const protege = { ...extrait };
+  const avecQuiExplicite = extraireAvecQuiExplicite(messageUtilisateur);
+  const dureeExplicite = extraireDureeExplicite(messageUtilisateur);
+
+  if (avecQuiExplicite) {
+    protege.avecQui = avecQuiExplicite;
+  } else {
+    delete protege.avecQui;
+  }
+  if (dureeExplicite) {
+    protege.duree = dureeExplicite;
+  } else {
+    delete protege.duree;
+  }
+  if (
+    protege.dates !== undefined &&
+    !messageDeclareDates(messageUtilisateur)
+  ) {
+    delete protege.dates;
+  }
+
+  return protege;
 }
 
 type HebergementExtrait =
@@ -1135,6 +1294,52 @@ function questionLocalisation(nom: string): string {
   return `Quand tu dis « ${nom} », parles-tu d’une ville, d’un pays ou d’une zone géographique (région, massif ou continent) ?`;
 }
 
+function questionConfirmationDates(etat: Extract<EtatDialogue, { champ: 'dates' }>): string {
+  if (etat.dureeCandidate) {
+    const jours = etat.dureeCandidate.valeur;
+    return (
+      `La plage du ${enFrancais(etat.valeurCandidate.debut)} au ` +
+      `${enFrancais(etat.valeurCandidate.fin)} couvre ${jours} jour(s). ` +
+      `Veux-tu garder cette plage et ajuster la durée à ${jours} jour(s) ?`
+    );
+  }
+  return `Tu confirmes donc le ${enFrancais(etat.valeurCandidate.debut)} ? Réponds « oui » pour confirmer, ou donne une autre date.`;
+}
+
+/**
+ * Frontière de décision du dialogue : une seule cible nécessaire, dans
+ * l'ordre base → localisation → hébergement → transport. La formulation du
+ * modèle n'entre jamais dans cette décision.
+ */
+function prochaineQuestionRequise(
+  brief: BriefPartiel,
+  champInvalideHebergement: ChampHebergement | undefined,
+  champInvalideTransport: ChampTransport | undefined,
+  differerSejoursHebergement: boolean,
+  etatDialogueEnCours?: EtatDialogue
+): string | undefined {
+  const champBase = prochainChampBase(brief);
+  if (champBase) {
+    if (champBase === 'dates' && etatDialogueEnCours?.champ === 'dates') {
+      return questionConfirmationDates(etatDialogueEnCours);
+    }
+    return questionChampBase(champBase);
+  }
+
+  const localisationInconnue = premiereLocalisationInconnue(brief);
+  if (localisationInconnue) {
+    return questionLocalisation(localisationInconnue.localisation.nom);
+  }
+
+  return (
+    questionHebergement(
+      brief,
+      champInvalideHebergement,
+      differerSejoursHebergement
+    ) ?? questionTransport(brief, champInvalideTransport)
+  );
+}
+
 function typeDepuisClarificationLocalisation(
   message: string
 ): 'ville' | 'zone' | 'pays' | undefined {
@@ -1180,11 +1385,10 @@ function finaliserEtape(
   auMoinsUnChampNouveau: boolean,
   champInvalideHebergement: ChampHebergement | undefined,
   champInvalideTransport: ChampTransport | undefined,
-  reponseSiIncomplet: string
+  etatDialogueEnCours?: EtatDialogue
 ): { reponse: string; estComplet: boolean } {
   const complet = BriefSchema.safeParse(brief);
   const differerSejoursHebergement = doitDiffererSejoursHebergementNBA(brief);
-  const localisationInconnue = premiereLocalisationInconnue(brief);
   // « Complet » exige aussi un point de départ (dates) : une durée seule
   // n'ancre le parcours à aucune vraie date, et les connecteurs chercheraient
   // alors sur une date inventée, sans rapport avec le vrai séjour.
@@ -1207,29 +1411,29 @@ function finaliserEtape(
       ).length === 0;
     if (!auMoinsUnChampNouveau && briefActuelDejaTermine) {
       return {
-        reponse: "Je n'ai pas compris ce changement — peux-tu préciser autrement (ex. une date au format JJ/MM/AAAA) ?",
+        reponse:
+          "Je n’ai pas pu appliquer ce changement ; le cadrage confirmé reste inchangé.",
         estComplet: true,
       };
     }
     return { reponse: `${reformulerBrief(complet.data)} C'est bien ça ?`, estComplet: true };
   }
-  // Tant qu'un champ de base manque, c'est lui — et lui seul — qui doit être
-  // demandé : l'hébergement et le transport n'entrent en jeu qu'une fois les
-  // 4 champs de base validés.
+
+  const question = prochaineQuestionRequise(
+    brief,
+    champInvalideHebergement,
+    champInvalideTransport,
+    differerSejoursHebergement,
+    etatDialogueEnCours
+  );
+  if (!question) {
+    throw new AppError(
+      'Le cadrage du dialogue est invalide malgré l’absence de champ requis identifiable.',
+      500
+    );
+  }
   return {
-    reponse:
-      prochainChampBase(brief) === undefined
-        ? (localisationInconnue
-            ? questionLocalisation(localisationInconnue.localisation.nom)
-            : undefined) ??
-          questionHebergement(
-            brief,
-            champInvalideHebergement,
-            differerSejoursHebergement
-          ) ??
-          questionTransport(brief, champInvalideTransport) ??
-          reponseSiIncomplet
-        : reponseSiIncomplet,
+    reponse: question,
     estComplet: false,
   };
 }
@@ -1262,8 +1466,7 @@ export async function avancerDialogue(
         briefActuel,
         true,
         undefined,
-        undefined,
-        'Peux-tu préciser ta demande ?'
+        undefined
       );
       const inconnueSuivante = premiereLocalisationInconnue(brief);
       return {
@@ -1303,8 +1506,7 @@ export async function avancerDialogue(
         briefActuel,
         true,
         undefined,
-        undefined,
-        'Peux-tu préciser ta demande ?'
+        undefined
       );
       return { reponse, brief, estComplet };
     }
@@ -1362,8 +1564,8 @@ Champs de base déjà validés (ne jamais les redemander) : ${
   }
 ${
     champBaseCible
-      ? `Champ de base à demander maintenant, et uniquement celui-ci : ${libelleChampBase(champBaseCible)}.`
-      : 'Tous les champs de base sont déjà validés : ne pose plus aucune question sur intention, avecQui, duree ou dates, sauf correction explicite de l’utilisateur.'
+      ? `Champ de base attendu maintenant pour interpréter une réponse courte : ${libelleChampBase(champBaseCible)}.`
+      : 'Tous les champs de base sont déjà validés : n’en extrais une nouvelle valeur qu’en cas de correction explicite de l’utilisateur.'
   }
 Repère temporel : nous sommes le ${dateReferenceLisible(contexteTemporel)} (fuseau ${contexteTemporel.fuseau}).${
     plageExpliciteResolue
@@ -1386,14 +1588,23 @@ La réponse de l'utilisateur répond à une clarification de préparation. Extra
     throw new AppError('Je n’ai pas réussi à comprendre, peux-tu reformuler ?', 502);
   }
 
-  const extrait = extraireChampsValides(sortie.data.brief);
+  const extrait = protegerChampsBaseProuves(
+    extraireChampsValides(sortie.data.brief),
+    messageUtilisateur
+  );
   const localisationsExtraites = estObjet(sortie.data.brief)
     ? extraireLocalisationsDeclarees(
         sortie.data.brief.lieux,
         messageUtilisateur
       )
     : undefined;
-  const intentionExtraite = extraireIntention(sortie.data.brief, briefActuel);
+  const intentionExtraite =
+    extraireIntention(sortie.data.brief, briefActuel) ??
+    intentionExpliciteDuMessage(
+      messageUtilisateur,
+      briefActuel,
+      sortie.data.brief
+    );
   const extractionHebergement = extraireHebergement(
     sortie.data.brief,
     messageUtilisateur,
@@ -1481,7 +1692,9 @@ La réponse de l'utilisateur répond à une clarification de préparation. Extra
   let candidateFraichementProduite = false;
   if (!brief.dates && brief.duree) {
     const dateDebut =
-      extraireDateDebut(sortie.data.brief) ?? extraireDateSeuleExplicite(messageUtilisateur);
+      (messageDeclareDates(messageUtilisateur)
+        ? extraireDateDebut(sortie.data.brief)
+        : undefined) ?? extraireDateSeuleExplicite(messageUtilisateur);
     if (dateDebut) {
       etatDialogueResultant = {
         champ: 'dates',
@@ -1490,11 +1703,6 @@ La réponse de l'utilisateur répond à une clarification de préparation. Extra
       candidateFraichementProduite = true;
     }
   }
-
-  const reponseSiIncomplet =
-    candidateFraichementProduite && etatDialogueResultant
-      ? `Tu pars donc le ${enFrancais(etatDialogueResultant.valeurCandidate.debut)} ? Réponds « oui » pour confirmer, ou donne une autre date.`
-      : sortie.data.reponse;
 
   const auMoinsUnChampNouveau =
     Object.keys(extrait).length > 0 ||
@@ -1512,7 +1720,7 @@ La réponse de l'utilisateur répond à une clarification de préparation. Extra
     auMoinsUnChampNouveau,
     extractionHebergement.champInvalide,
     extractionTransport.champInvalide,
-    reponseSiIncomplet
+    etatDialogueResultant
   );
   const localisationInconnue = premiereLocalisationInconnue(brief);
   if (

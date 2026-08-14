@@ -254,14 +254,16 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     const etape = await avancerDialogue({}, 'je rêve de vivre la NBA');
     expect(etape.estComplet).toBe(false);
     expect(etape.brief.intention).toBe('vivre la NBA');
-    expect(etape.reponse).toBe('Avec qui partez-vous ?');
+    expect(etape.reponse).toBe(
+      'Tu seras seul, en couple, en famille, entre amis ou en groupe ?'
+    );
   });
 
   it('propose une date candidate en attente de confirmation, puis la commet sur "oui" (doc 05, étape 4)', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
       JSON.stringify({
         reponse: 'ok',
-        brief: { duree: { valeur: 21, unite: 'jours' }, dateDebut: '2026-08-15T00:00:00Z' },
+        brief: { duree: { valeur: 3, unite: 'semaines' }, dateDebut: '2026-08-15T00:00:00Z' },
       })
     );
     const propose = await avancerDialogue(
@@ -381,7 +383,9 @@ describe('intake (IA de dialogue) — extraction validée, jamais de confiance a
     vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
     const etape = await avancerDialogue(briefDejaComplet, 'oui');
     expect(etape.estComplet).toBe(true);
-    expect(etape.reponse).toContain('Je n’ai pas compris ce changement'.replace('’', "'"));
+    expect(etape.reponse).toBe(
+      'Je n’ai pas pu appliquer ce changement ; le cadrage confirmé reste inchangé.'
+    );
   });
 
   it('ignore une extraction invalide au lieu de la propager', async () => {
@@ -450,7 +454,7 @@ describe('intake — fusion de l’intention (complément vs remplacement, discr
     expect(etape.brief.intention).toBe('vivre la NBA');
   });
 
-  it('ignore un discriminant "nature" mal formé plutôt que de le propager', async () => {
+  it('ignore un discriminant "nature" mal formé mais conserve l’envie explicite verbatim', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
       JSON.stringify({
         reponse: 'ok',
@@ -458,7 +462,7 @@ describe('intake — fusion de l’intention (complément vs remplacement, discr
       })
     );
     const etape = await avancerDialogue({}, 'je rêve de vivre la NBA');
-    expect(etape.brief.intention).toBeUndefined();
+    expect(etape.brief.intention).toBe('je rêve de vivre la NBA');
   });
 });
 
@@ -521,7 +525,7 @@ describe('intake F7-B — état déterministe du dialogue de base', () => {
     vi.mocked(callAI).mockResolvedValue(JSON.stringify({ reponse: 'ok', brief: {} }));
     await avancerDialogue({ intention: 'vivre la NBA', avecQui: 'solo' }, 'osef');
     const prompt = vi.mocked(callAI).mock.calls[0][0];
-    expect(prompt).toContain('Champ de base à demander maintenant, et uniquement celui-ci : la durée.');
+    expect(prompt).toContain('Champ de base attendu maintenant pour interpréter une réponse courte : la durée.');
     expect(prompt).toContain('Champs de base déjà validés (ne jamais les redemander) : l’intention, avec qui il part');
   });
 
@@ -534,7 +538,7 @@ describe('intake F7-B — état déterministe du dialogue de base', () => {
     await avancerDialogue(briefAvecDates, 'et pour la suite ?');
     const prompt = vi.mocked(callAI).mock.calls[0][0];
     expect(prompt).toContain('Tous les champs de base sont déjà validés');
-    expect(prompt).not.toContain('Champ de base à demander maintenant');
+    expect(prompt).not.toContain('Champ de base attendu maintenant');
   });
 
   it('une réponse donnée une fois n’est jamais redemandée (intention conservée sur les tours suivants)', async () => {
@@ -553,7 +557,7 @@ describe('intake F7-B — état déterministe du dialogue de base', () => {
     const deuxiemeTour = await avancerDialogue(premierTour.brief, 'seul');
     expect(deuxiemeTour.brief.intention).toBe('vivre la NBA');
     const prompt = vi.mocked(callAI).mock.calls[1][0];
-    expect(prompt).toContain('Champ de base à demander maintenant, et uniquement celui-ci : avec qui il part.');
+    expect(prompt).toContain('Champ de base attendu maintenant pour interpréter une réponse courte : avec qui il part.');
     expect(prompt).toContain('Champs de base déjà validés (ne jamais les redemander) : l’intention');
   });
 
@@ -632,7 +636,7 @@ describe('intake F7-B — état déterministe du dialogue de base', () => {
       },
       'osef'
     );
-    expect(etape.reponse).toBe('Et la durée ?');
+    expect(etape.reponse).toBe('Sur combien de temps veux-tu organiser ça ?');
     expect(etape.reponse).not.toContain('adultes');
   });
 
