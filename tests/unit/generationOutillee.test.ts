@@ -537,6 +537,64 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
 });
 
 describe('F5-B — isolation technique des lots', () => {
+  it('déduplique globalement une même identité Foursquare rendue dans deux lots', async () => {
+    const briefMultiVille = BriefSchema.parse({
+      intention: 'découvrir Bordeaux et Lyon',
+      avecQui: 'amis',
+      duree: { valeur: 4, unite: 'jours' },
+      lieux: [
+        { nom: 'Bordeaux', type: 'ville' },
+        { nom: 'Lyon', type: 'ville' },
+      ],
+      transport: { necessaire: false },
+    });
+    vi.mocked(rechercherLieuxFoursquare).mockImplementation(
+      async (villeDemandee) => ({
+        statut: 'ok',
+        resultats: [
+          candidatLieu({
+            identifiantExterne: 'fsq-identite-partagee',
+            nom: 'Le lieu partagé',
+            villeDemandee,
+            typeMetierRecherche: 'activite',
+          }),
+        ],
+        recupereLe: DATE_RECUPERATION,
+      })
+    );
+    vi.mocked(callClaudeOutils).mockImplementation(
+      outilsParVille(['Bordeaux', 'Lyon'], (ville) => ({
+        recherche: tourOutil('chercher_lieux', {
+          ville,
+          requete: 'activité culturelle',
+          typeMetierRecherche: 'activite',
+        }),
+        conclusion: tourReponse('Le lieu partagé', {
+          ville,
+          type: 'activite',
+          identifiantExterne: 'fsq-identite-partagee',
+        }),
+      }))
+    );
+
+    const parcours = await genererParcours(briefMultiVille);
+    const elementsVerifies = parcours.timeline
+      .flatMap(({ elements }) => elements)
+      .filter(
+        ({ confiance }) =>
+          confiance.niveau === 'verifie' &&
+          confiance.identifiantExterne === 'fsq-identite-partagee'
+      );
+
+    expect(elementsVerifies).toHaveLength(1);
+    expect(elementsVerifies[0].nom).toBe('Le lieu partagé');
+    expect(
+      parcours.timeline
+        .flatMap(({ elements }) => elements)
+        .filter(({ type }) => type === 'activite')
+    ).toHaveLength(1);
+  });
+
   it('refuse techniquement une recherche hors ville du lot, même si l’autre ville appartient au brief global', async () => {
     const briefMultiVille = BriefSchema.parse({
       intention: 'découvrir Bordeaux et Lyon',
@@ -1162,7 +1220,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
-  it('déduplique deux occurrences du même établissement et partage le résultat accepté', async () => {
+  it('déduplique le lien et l’occurrence finale du même établissement', async () => {
     vi.mocked(resoudreLien).mockResolvedValueOnce(lienResolu());
     vi.mocked(callClaudeOutils)
       .mockResolvedValueOnce(
@@ -1212,21 +1270,13 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     const elements = parcours.timeline.flatMap((moment) => moment.elements);
 
     expect(resoudreLien).toHaveBeenCalledOnce();
-    expect(elements).toHaveLength(2);
-    expect(elements.map((element) => element.reservation)).toEqual([
-      {
-        lienExterne:
-          'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
-        fournisseur: 'Tavily',
-        typeLien: 'reservation',
-      },
-      {
-        lienExterne:
-          'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
-        fournisseur: 'Tavily',
-        typeLien: 'reservation',
-      },
-    ]);
+    expect(elements).toHaveLength(1);
+    expect(elements[0].reservation).toEqual({
+      lienExterne:
+        'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
+      fournisseur: 'Tavily',
+      typeLien: 'reservation',
+    });
   });
 
   it('isole une exception et laisse le worker poursuivre les liens facultatifs', async () => {

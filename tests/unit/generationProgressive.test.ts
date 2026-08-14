@@ -253,13 +253,12 @@ describe('F5-B — un appel IA par lot', () => {
         "Une durée mentionnée dans l'intention est globale et ne contredit jamais cette sous-plage locale."
       );
       return JSON.stringify({
+        ambiance: 'un week-end en bord de mer',
         moments: [momentActivite(projection.lieux?.[0])],
       });
     });
 
-    await expect(
-      genererParcours(brief, null, {}, contexte)
-    ).resolves.toBeTruthy();
+    const parcours = await genererParcours(brief, null, {}, contexte);
 
     expect(projections).toHaveLength(2);
     expect(projections.map((projection) => projection.duree)).toEqual([
@@ -289,6 +288,47 @@ describe('F5-B — un appel IA par lot', () => {
         fin: '2026-09-24T23:59:59.999Z',
       },
     ]);
+    expect(parcours.contexte.duree).toEqual({ valeur: 5, unite: 'jours' });
+    expect(parcours.ambiance).toBeUndefined();
+    expect(JSON.stringify(brief)).toBe(avant);
+  });
+
+  it('ne promeut pas la prose temporelle locale d’un lot en ambiance globale', async () => {
+    const brief = BriefSchema.parse({
+      intention: 'une semaine de gastronomie et de culture à Paris',
+      avecQui: 'couple',
+      duree: { valeur: 1, unite: 'semaines' },
+      lieux: [{ nom: 'Paris', type: 'ville' }],
+      dates: {
+        debut: '2026-10-05T00:00:00.000Z',
+        fin: '2026-10-11T23:59:59.999Z',
+      },
+      ambiance: 'culturelle',
+    });
+    const avant = JSON.stringify(brief);
+    const lots = planDuBrief(brief).lots;
+    expect(lots).toHaveLength(2);
+
+    vi.mocked(callAIAvecOutils).mockImplementation(
+      llmParLot(({ ville }) => ({
+        ambiance: 'ton week-end gourmand',
+        moments: [momentActivite(ville)],
+      }))
+    );
+
+    const parcours = await genererParcours(brief);
+
+    expect(parcours.contexte.duree).toEqual({
+      valeur: 1,
+      unite: 'semaines',
+    });
+    expect(parcours.ambiance).toBe('culturelle');
+    expect(
+      JSON.stringify({
+        contexte: parcours.contexte,
+        ambiance: parcours.ambiance,
+      })
+    ).not.toContain('week-end');
     expect(JSON.stringify(brief)).toBe(avant);
   });
 });
