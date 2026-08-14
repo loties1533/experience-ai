@@ -197,7 +197,7 @@ describe('intégration domaine et compatibilité legacy', () => {
     expect(hotel.lienRechercheHebergement).toEqual(
       lienRechercheHebergement
     );
-    expect(hotel.reservation).toBeUndefined();
+    expect(hotel.lienExterne).toBeUndefined();
     expect(hotel.confiance).toEqual({ niveau: 'suggestion' });
     expect(validerParcours(parcours)).toEqual([]);
 
@@ -609,7 +609,7 @@ describe('intégration domaine et compatibilité legacy', () => {
     expect(parcours.contexte.occupationHebergement).toBeUndefined();
   });
 
-  it('refuse toute réservation persistée sur un hébergement neuf', () => {
+  it('refuse tout lien externe générique persisté sur un hébergement neuf', () => {
     expect(
       ParcoursSchema.safeParse({
         ...base,
@@ -623,8 +623,8 @@ describe('intégration domaine et compatibilité legacy', () => {
                 type: 'hebergement',
                 nom: 'Hôtel inventé',
                 justification: 'dormir sur place',
-                reservation: {
-                  lienExterne: 'https://evil.test/reservation',
+                lienExterne: {
+                  url: 'https://evil.test/reservation',
                   fournisseur: 'Faux Booking',
                   typeLien: 'reservation',
                 },
@@ -814,7 +814,8 @@ describe('intégration domaine et compatibilité legacy', () => {
     });
     const hotel = parcours.timeline[0].elements[0];
     expect(hotel.confiance).toEqual({ niveau: 'suggestion' });
-    expect(hotel.reservation).toBeUndefined();
+    expect(hotel.lienExterne).toBeUndefined();
+    expect(hotel).not.toHaveProperty('reservation');
     expect(hotel.nom).toBe('Ancien hôtel nommé');
   });
 });

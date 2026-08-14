@@ -590,13 +590,13 @@ const schemas = {
       parcours: { $ref: '#/components/schemas/Parcours' },
     },
   },
-  Reservation: {
+  LienExterne: {
     type: 'object',
-    required: ['lienExterne', 'fournisseur', 'typeLien'],
+    required: ['url', 'fournisseur', 'typeLien'],
     additionalProperties: false,
     readOnly: true,
     properties: {
-      lienExterne: { type: 'string', format: 'uri' },
+      url: { type: 'string', format: 'uri' },
       fournisseur: { type: 'string' },
       typeLien: {
         type: 'string',
@@ -860,11 +860,11 @@ const schemas = {
         allOf: [{ $ref: '#/components/schemas/Confiance' }],
         readOnly: true,
       },
-      reservation: {
-        allOf: [{ $ref: '#/components/schemas/Reservation' }],
+      lienExterne: {
+        allOf: [{ $ref: '#/components/schemas/LienExterne' }],
         readOnly: true,
         description:
-          'Lien externe sécurisé pour les éléments non hôteliers. Un hébergement ne porte jamais une réservation.',
+          'Action externe typée pour les éléments non hôteliers. Sa présence ne prouve ni disponibilité, ni billet, ni réservation.',
       },
       lienRechercheHebergement: {
         allOf: [

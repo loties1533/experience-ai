@@ -446,7 +446,7 @@ describe('remplacement hôtelier — nouvelle preuve ou suggestion', () => {
       identifiantExterne: 'fsq-seeko-o',
       categorieFournisseur: 'Hotel',
     });
-    expect(hotel.reservation).toBeUndefined();
+    expect(hotel.lienExterne).toBeUndefined();
     expect(hotel).not.toHaveProperty('disponibilite');
     expect(hotel.lienRechercheHebergement?.url).toContain(
       'ss=H%C3%B4tel+Seeko%E2%80%99o+Bordeaux'

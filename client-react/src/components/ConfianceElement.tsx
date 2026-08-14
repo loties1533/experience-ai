@@ -17,19 +17,41 @@ export function BadgeConfiance({ element }: { element: Element }) {
 
 const LIBELLES_LIEN: Record<TypeLienExterne, string> = {
   officiel: 'Voir le site officiel',
-  billetterie: 'Voir la billetterie',
-  reservation: 'Voir la réservation',
+  billetterie: 'Ouvrir la billetterie',
+  reservation: 'Ouvrir la page de réservation',
   recherche: 'Consulter les résultats actuels',
   carte: 'Voir sur la carte',
 }
 
 export function libelleLien(element: Element) {
-  return element.reservation ? LIBELLES_LIEN[element.reservation.typeLien] : ''
+  return element.lienExterne ? LIBELLES_LIEN[element.lienExterne.typeLien] : ''
 }
 
-export function LibelleLien({ element }: { element: Element }) {
-  if (!element.reservation) return null
-  return <>{libelleLien(element)}</>
+export function LienExterneElement({ element }: { element: Element }) {
+  const lien = element.lienExterne
+  if (!lien) return null
+  const libelle = libelleLien(element)
+  return (
+    <a href={lien.url} target="_blank" rel="noopener noreferrer"
+      className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
+      aria-label={`${libelle} pour ${element.nom} (nouvel onglet)`}>
+      {libelle}
+    </a>
+  )
+}
+
+// Recherche Booking préremplie : elle ne prouve ni disponibilité, ni prix,
+// ni réservation. Le libellé spécialisé vient du serveur.
+export function LienRechercheHebergement({ element }: { element: Element }) {
+  const lien = element.lienRechercheHebergement
+  if (!lien) return null
+  return (
+    <a href={lien.url} target="_blank" rel="noopener noreferrer"
+      className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
+      aria-label={`${lien.libelle} pour « ${element.nom} » (recherche externe, nouvel onglet)`}>
+      {lien.libelle}
+    </a>
+  )
 }
 
 // Raccourci de recherche transport : présent seulement quand le serveur a

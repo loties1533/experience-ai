@@ -191,7 +191,7 @@ describe('POST /api/parcours — NBA event-first de bout en bout', () => {
         (hotel: Record<string, unknown>) =>
           hotel.sejourHebergement === undefined &&
           hotel.lienRechercheHebergement === undefined &&
-          hotel.reservation === undefined
+          hotel.lienExterne === undefined
       )
     ).toBe(true);
     expect(JSON.stringify(brief)).toBe(avant);

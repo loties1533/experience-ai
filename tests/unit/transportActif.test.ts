@@ -601,10 +601,10 @@ describe('invariants actifs du parcours transport', () => {
       },
     ],
     [
-      'une réservation',
+      'un lien externe',
       {
-        reservation: {
-          lienExterne: 'https://example.test',
+        lienExterne: {
+          url: 'https://example.test',
           fournisseur: 'Faux',
           typeLien: 'reservation',
         },
@@ -861,6 +861,7 @@ describe('modifications génériques et compatibilité legacy', () => {
       estAncre: false,
     });
     expect(transport).not.toHaveProperty('reservation');
+    expect(transport).not.toHaveProperty('lienExterne');
     expect(transport).not.toHaveProperty('lieu');
     expect(transport).not.toHaveProperty('plage');
     expect(ParcoursSchema.safeParse(lu).success).toBe(true);
@@ -919,6 +920,7 @@ describe('modifications génériques et compatibilité legacy', () => {
       });
       expect(transport.alternatives).toEqual([]);
       expect(transport).not.toHaveProperty('reservation');
+      expect(transport).not.toHaveProperty('lienExterne');
       expect(transport).not.toHaveProperty(
         'lienRechercheHebergement'
       );

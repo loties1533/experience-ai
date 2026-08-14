@@ -30,7 +30,7 @@ Réponds UNIQUEMENT en JSON valide, l'une de ces formes :
 - {"type": "remplacer_hotel", "elementId": string, "villeDemandee": string, "requete": string, "sejour"?: {"ville": string, "arrivee": "AAAA-MM-JJ", "depart": "AAAA-MM-JJ"}}
 Utilise UNIQUEMENT les ids listés. Chaque élément proposé porte une justification (pourquoi il sert l'intention).
 Un hébergement ne passe JAMAIS par remplacer_element ou ajouter_element : utilise remplacer_hotel, afin que le serveur recherche son identité.
-N'écris jamais confiance, provenance, fournisseur, source, recupereLe, identifiantExterne, adresse, reservation, disponibilité ni lien.
+N'écris jamais confiance, provenance, fournisseur, source, recupereLe, identifiantExterne, adresse, lienExterne, l'ancien champ reservation, disponibilité ni lien.
 Quand tu remplaces un élément qui a un prix, donne TOUJOURS le prix du remplaçant (en euros, même ordre de grandeur sauf si la demande implique le contraire) : un parcours sans prix fausse le budget.
 Ne mets jamais deux options dans un même "nom" (pas de « X ou Y ») : choisis-en une.`;
 

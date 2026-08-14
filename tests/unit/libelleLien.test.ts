@@ -8,19 +8,25 @@ function elementAvecLien(typeLien: TypeLienExterne) {
     type: 'activite',
     nom: 'Élément',
     justification: 'cohérent avec l’intention',
-    reservation: { lienExterne: 'https://exemple.test', fournisseur: 'Test', typeLien },
+    lienExterne: { url: 'https://exemple.test', fournisseur: 'Test', typeLien },
   });
 }
 
 describe('libelleLien — un libellé pour chaque type de lien du domaine', () => {
-  it.each<TypeLienExterne>(['officiel', 'billetterie', 'reservation', 'recherche', 'carte'])(
-    'renvoie un libellé non vide pour le type « %s »',
-    (typeLien) => {
-      expect(libelleLien(elementAvecLien(typeLien))).toBeTruthy();
+  it.each<[TypeLienExterne, string]>([
+    ['officiel', 'Voir le site officiel'],
+    ['billetterie', 'Ouvrir la billetterie'],
+    ['reservation', 'Ouvrir la page de réservation'],
+    ['recherche', 'Consulter les résultats actuels'],
+    ['carte', 'Voir sur la carte'],
+  ])(
+    'renvoie le libellé explicite pour le type « %s »',
+    (typeLien, libelle) => {
+      expect(libelleLien(elementAvecLien(typeLien))).toBe(libelle);
     },
   );
 
-  it('ne renvoie rien sans réservation', () => {
+  it('ne renvoie rien sans lien externe', () => {
     const element = ElementSchema.parse({
       id: 'e1',
       type: 'activite',

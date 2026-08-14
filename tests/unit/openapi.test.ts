@@ -103,7 +103,7 @@ describe('OpenAPI — localisations déclarées typées', () => {
 describe('OpenAPI F3-D — lecture et modification sont séparées', () => {
   it.each([
     ['confiance'],
-    ['reservation'],
+    ['lienExterne'],
     ['lienRechercheHebergement'],
     ['lienRechercheTransport'],
     ['sejourHebergement'],
@@ -244,7 +244,7 @@ describe('OpenAPI F3-D — lecture et modification sont séparées', () => {
       'identifiantExterne',
       'adresse',
       'lienRechercheHebergement',
-      'reservation',
+      'lienExterne',
       'disponibilite',
       'prixObserve',
     ]) {

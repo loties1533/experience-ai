@@ -133,6 +133,7 @@ describe('NBA event-first — génération progressive depuis des ancres fournis
     ]);
     expect(evenements.every((element) => element.estAncre)).toBe(true);
     expect(evenements.every((element) => element.confiance.niveau === 'verifie')).toBe(true);
+    expect(evenements.every((element) => element.lienExterne === undefined)).toBe(true);
     expect(evenements.map((element) => element.confiance.identifiantExterne)).toEqual([
       'evt-boston',
       'evt-new-york',
@@ -232,7 +233,7 @@ describe('NBA event-first — génération progressive depuis des ancres fournis
     ).toBe(true);
     expect(hotels.every((hotel) => hotel.sejourHebergement === undefined)).toBe(true);
     expect(hotels.every((hotel) => hotel.lienRechercheHebergement === undefined)).toBe(true);
-    expect(hotels.every((hotel) => hotel.reservation === undefined)).toBe(true);
+    expect(hotels.every((hotel) => hotel.lienExterne === undefined)).toBe(true);
     expect(JSON.stringify(BRIEF_HOTEL)).toBe(avant);
   });
 

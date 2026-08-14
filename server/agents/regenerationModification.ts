@@ -188,7 +188,7 @@ Si l'élément porte déjà un prix, donne un prix du même ordre de grandeur, s
  * `modifier_demande_transport`), exactement comme au premier remplacement —
  * inventer un hôtel ou un trajet ici romprait la loi produit.
  *
- * Aucune preuve de l'ancien contenu ne survit : `lieu`, `reservation`,
+ * Aucune preuve de l'ancien contenu ne survit : `lieu`, `lienExterne`,
  * `contraintes` et `reactions` de l'ancien élément décrivaient un contenu
  * qui n'existe plus. `statut` et `alternatives` repartent aussi de zéro —
  * une suggestion reconstruite n'a pas hérité de l'arbitrage rendu sur
@@ -249,7 +249,7 @@ ${
     estAncre: cible.estAncre,
     alternatives: [],
     contraintes: [],
-    reservation: undefined,
+    lienExterne: undefined,
     reactions: [],
   };
 }
