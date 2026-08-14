@@ -272,12 +272,12 @@ export function validerParcours(parcours: Parcours): string[] {
     if (dependancesTransitives(elements, element.id).has(element.id)) {
       erreurs.push(`la chaîne de dépendances de « ${element.nom} » boucle sur elle-même`);
     }
-    if (element.type === 'temps_libre' && element.reservation) {
-      erreurs.push(`un temps libre ne se réserve pas (« ${element.nom} »)`);
+    if (element.type === 'temps_libre' && element.lienExterne) {
+      erreurs.push(`un temps libre ne porte pas de lien externe (« ${element.nom} »)`);
     }
-    if (element.type === 'hebergement' && element.reservation) {
+    if (element.type === 'hebergement' && element.lienExterne) {
       erreurs.push(
-        `un hébergement porte un lien de recherche, jamais une réservation (« ${element.nom} »)`
+        `un hébergement porte son raccourci de recherche spécialisé, jamais un lien externe générique (« ${element.nom} »)`
       );
     }
     if (element.type === 'transport') {
@@ -301,7 +301,7 @@ export function validerParcours(parcours: Parcours): string[] {
         );
       }
       if (
-        element.reservation ||
+        element.lienExterne ||
         element.plage ||
         element.lieu ||
         element.lienRechercheHebergement ||
@@ -383,12 +383,12 @@ export function validerParcours(parcours: Parcours): string[] {
       erreurs.push(`le séjour hôtelier de « ${element.nom} » sort des dates du parcours`);
     }
     if (
-      element.reservation &&
-      element.reservation.typeLien !== 'recherche' &&
+      element.lienExterne &&
+      element.lienExterne.typeLien !== 'recherche' &&
       element.confiance.niveau !== 'verifie'
     ) {
       erreurs.push(
-        `un lien ${element.reservation.typeLien} exige un élément vérifié (« ${element.nom} »)`
+        `un lien ${element.lienExterne.typeLien} exige un élément vérifié (« ${element.nom} »)`
       );
     }
     if (element.type === 'evenement' && element.estAncre && element.confiance.niveau !== 'verifie') {

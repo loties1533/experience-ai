@@ -1,6 +1,6 @@
 import type {
   Confiance,
-  Reservation,
+  LienExterne,
   TypeElement,
 } from '../../domaine/parcours/index.js';
 import type { CandidatJournal } from '../../services/claude/outils.js';
@@ -60,9 +60,10 @@ export function nomSuggestion(type: TypeElement, ville?: string): string {
  * lorsque le pipeline F2-B retourne `resolu` après sélection, validation URL,
  * contrôle DNS/SSRF et redirections.
  *
- * Aucun résultat ambigu, refusé, introuvable ou indisponible ne déclenche de
- * repli par nom ou par carte. F3-B sait vérifier l'identité d'un hébergement,
- * mais ses liens restent volontairement hors de ce sous-lot.
+ * Un résultat Web non résolu ne devient jamais un lien exact. Pour un lieu
+ * Foursquare vérifié, le lien carte déjà porté par le candidat reste toutefois
+ * une action honnête de type `carte`. F3-B sait vérifier l'identité d'un
+ * hébergement, mais ses liens restent volontairement hors de ce sous-lot.
  */
 export function tracerLieuReel(
   element: ElementGenere,
@@ -75,7 +76,7 @@ export function tracerLieuReel(
   nom: string;
   lieu?: string;
   confiance: Confiance;
-  reservation?: Reservation;
+  lienExterne?: LienExterne;
 } {
   if (element.type === 'transport') {
     return {
@@ -128,10 +129,25 @@ export function tracerLieuReel(
         nom: candidat.nom,
         lieu,
         confiance,
-        reservation: {
-          lienExterne: resolutionLien.url,
+        lienExterne: {
+          url: resolutionLien.url,
           fournisseur: resolutionLien.fournisseurRecherche,
           typeLien: resolutionLien.typeLien,
+        },
+      };
+    }
+    if (
+      candidat.fournisseur === 'Foursquare' &&
+      'lienCarte' in candidat
+    ) {
+      return {
+        nom: candidat.nom,
+        lieu,
+        confiance,
+        lienExterne: {
+          url: candidat.lienCarte,
+          fournisseur: 'Google Maps',
+          typeLien: 'carte',
         },
       };
     }

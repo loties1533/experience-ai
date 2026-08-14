@@ -99,7 +99,7 @@ function lienIntrouvable(): ResultatResolutionLien {
 
 function lienResolu(
   url = 'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
-  typeLien: 'reservation' | 'billetterie' = 'reservation',
+  typeLien: 'officiel' | 'reservation' | 'billetterie' = 'reservation',
 ): ResultatResolutionLien {
   return {
     statut: 'resolu',
@@ -383,7 +383,11 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
     expect(resultats[0].content).toContain('Le Point Rouge');
 
     expect(parcours.timeline[0].elements[0].nom).toBe('Le Point Rouge');
-    expect(parcours.timeline[0].elements[0].reservation).toBeUndefined();
+    expect(parcours.timeline[0].elements[0].lienExterne).toEqual({
+      url: CANDIDAT_POINT_ROUGE.lienCarte,
+      fournisseur: 'Google Maps',
+      typeLien: 'carte',
+    });
     expect(resoudreLien).toHaveBeenCalledOnce();
   });
 
@@ -458,8 +462,10 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
     expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
-  it('intègre un lien accepté avec son type sans remplacer la provenance métier', async () => {
-    vi.mocked(resoudreLien).mockResolvedValueOnce(lienResolu());
+  it('intègre un site officiel résolu sans le promouvoir en réservation', async () => {
+    vi.mocked(resoudreLien).mockResolvedValueOnce(
+      lienResolu('https://le-point-rouge.example/officiel', 'officiel')
+    );
     vi.mocked(callClaudeOutils)
       .mockResolvedValueOnce(
         tourOutil('chercher_lieux', {
@@ -484,11 +490,10 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
       fournisseurMetier: 'Foursquare',
       sourceMetier: 'https://places-api.foursquare.com/places/search',
     } satisfies DemandeResolutionLien);
-    expect(element.reservation).toEqual({
-      lienExterne:
-        'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
+    expect(element.lienExterne).toEqual({
+      url: 'https://le-point-rouge.example/officiel',
       fournisseur: 'Tavily',
-      typeLien: 'reservation',
+      typeLien: 'officiel',
     });
     expect(element.confiance).toMatchObject({
       niveau: 'verifie',
@@ -513,7 +518,7 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
 
     const [element] = (await genererParcours(brief)).timeline[0].elements;
 
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
     expect(element.lieu).toBeUndefined();
   });
 
@@ -754,7 +759,7 @@ describe('la dégradation explicite des données réelles', () => {
     expect(element.nom).toBe('Une sortie à choisir à Bordeaux');
     expect(element.lieu).toBeUndefined();
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
   });
 
   it('signale une panne technique quand la boucle d’outils elle-même échoue', async () => {
@@ -1041,8 +1046,8 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       dateDebut: '2026-09-05T20:00:00Z',
       dateFin: '2026-09-05T23:00:00Z',
     } satisfies DemandeResolutionLien);
-    expect(element.reservation).toEqual({
-      lienExterne:
+    expect(element.lienExterne).toEqual({
+      url:
         'https://www.ticketmaster.fr/fr/manifestation/festival-du-port/12345',
       fournisseur: 'Tavily',
       typeLien: 'billetterie',
@@ -1111,11 +1116,19 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
 
     const [element] = (await genererParcours(brief)).timeline[0].elements;
 
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toEqual({
+      url: CANDIDAT_POINT_ROUGE.lienCarte,
+      fournisseur: 'Google Maps',
+      typeLien: 'carte',
+    });
     expect(element.confiance.niveau).toBe('verifie');
   });
 
   it.each([
+    [
+      'introuvable',
+      lienIntrouvable(),
+    ],
     [
       'refuse',
       {
@@ -1136,7 +1149,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       } satisfies ResultatResolutionLien,
     ],
   ])(
-    'ne produit aucun lien ni repli quand le contrôle est %s',
+    'ne produit aucun lien Web exact et conserve seulement la carte quand le contrôle est %s',
     async (_statut, resultatLien) => {
       vi.mocked(resoudreLien).mockResolvedValueOnce(resultatLien);
       vi.mocked(callClaudeOutils)
@@ -1156,7 +1169,11 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       const [element] = (await genererParcours(brief)).timeline[0]
         .elements;
 
-      expect(element.reservation).toBeUndefined();
+      expect(element.lienExterne).toEqual({
+        url: CANDIDAT_POINT_ROUGE.lienCarte,
+        fournisseur: 'Google Maps',
+        typeLien: 'carte',
+      });
       expect(element.confiance.niveau).toBe('verifie');
       expect(resoudreLiensReels).not.toHaveBeenCalled();
     },
@@ -1188,7 +1205,11 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
 
     const [element] = (await genererParcours(brief)).timeline[0].elements;
 
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toEqual({
+      url: candidatGenerique.lienCarte,
+      fournisseur: 'Google Maps',
+      typeLien: 'carte',
+    });
     expect(resoudreLien).not.toHaveBeenCalled();
     expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
@@ -1215,7 +1236,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
 
     const [element] = (await genererParcours(brief)).timeline[0].elements;
 
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
     expect(resoudreLien).not.toHaveBeenCalled();
     expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
@@ -1271,8 +1292,8 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
 
     expect(resoudreLien).toHaveBeenCalledOnce();
     expect(elements).toHaveLength(1);
-    expect(elements[0].reservation).toEqual({
-      lienExterne:
+    expect(elements[0].lienExterne).toEqual({
+      url:
         'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
       fournisseur: 'Tavily',
       typeLien: 'reservation',
@@ -1335,13 +1356,17 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     const elements = parcours.timeline[0].elements;
 
     expect(resoudreLien).toHaveBeenCalledTimes(4);
-    expect(elements[0].reservation).toBeUndefined();
+    expect(elements[0].lienExterne).toEqual({
+      url: candidats[0].lienCarte,
+      fournisseur: 'Google Maps',
+      typeLien: 'carte',
+    });
     expect(elements[0].confiance.niveau).toBe('verifie');
     expect(
       elements.slice(1).every(
         (element) =>
-          element.reservation?.fournisseur === 'Tavily' &&
-          element.reservation.typeLien === 'reservation',
+          element.lienExterne?.fournisseur === 'Tavily' &&
+          element.lienExterne.typeLien === 'reservation',
       ),
     ).toBe(true);
     expect(avertir).toHaveBeenCalledWith(
@@ -1375,7 +1400,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
 
     const [element] = (await genererParcours(brief)).timeline[0].elements;
     expect(element.nom).toBe('Un événement à confirmer à Bordeaux');
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
     expect(resoudreLien).not.toHaveBeenCalled();
     expect(resoudreLiensReels).not.toHaveBeenCalled();
@@ -1432,7 +1457,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       prix: 210,
       prixEstime: true,
     });
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
     expect(resoudreLien).not.toHaveBeenCalled();
     expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
@@ -1471,7 +1496,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     expect(element.nom).toBe('Hôtel sans adresse');
     expect(element.lieu).toBeUndefined();
     expect(element.confiance.niveau).toBe('verifie');
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
   });
 
   it('dégrade un hôtel vers une suggestion quand Foursquare est indisponible', async () => {
@@ -1500,7 +1525,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     expect(element.nom).toBe('Un hébergement à choisir à Bordeaux');
     expect(element.lieu).toBeUndefined();
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
     expect(resoudreLien).not.toHaveBeenCalled();
   });
 
@@ -1533,7 +1558,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       confiance: { niveau: 'suggestion' },
     });
     expect(element.lieu).toBeUndefined();
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
     expect(resoudreLien).not.toHaveBeenCalled();
   });
 
@@ -1571,7 +1596,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
 
     expect(element.nom).toBe('Un hébergement à choisir à Bordeaux');
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
   });
 
   it('ne rattache aucun lien externe à un hébergement non vérifié', async () => {
@@ -1603,7 +1628,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
 
     expect(element.nom).toBe('Un hébergement à choisir à Bordeaux');
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
     expect(resoudreLien).not.toHaveBeenCalled();
   });
 
@@ -1811,7 +1836,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       prix: 210,
       prixEstime: true,
     });
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
     expect(element).not.toHaveProperty('disponibilite');
     expect(element.lienRechercheHebergement).toMatchObject({
       type: 'recherche',
@@ -1907,7 +1932,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
 
     expect(element.nom).toBe('Un hébergement à choisir à Bordeaux');
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
     expect(lien?.libelle).toBe(
       'Rechercher des hébergements sur Booking'
     );
@@ -2765,7 +2790,7 @@ describe('la génération — ville et catégorie du candidat', () => {
 
     expect(element.nom).toBe('Un événement à confirmer à Bordeaux');
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
-    expect(element.reservation).toBeUndefined();
+    expect(element.lienExterne).toBeUndefined();
     expect(element.estAncre).toBe(false);
   });
 
@@ -2941,7 +2966,9 @@ describe('la génération — ville et catégorie du candidat', () => {
     ).toEqual(candidats.map((candidat) => candidat.nom));
     expect(
       parcours.timeline[0].elements.every(
-        (element) => element.reservation === undefined,
+        (element, index) =>
+          element.lienExterne?.typeLien === 'carte' &&
+          element.lienExterne.url === candidats[index].lienCarte,
       ),
     ).toBe(true);
     expect(resoudreLiensReels).not.toHaveBeenCalled();

@@ -75,8 +75,8 @@ describe('sauvegarderParcours — l’écriture dérive les projections', () => 
                 recupereLe: '2026-07-28T08:15:00.000Z',
                 identifiantExterne: 'fsq-point-rouge',
               },
-              reservation: {
-                lienExterne:
+              lienExterne: {
+                url:
                   'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
                 fournisseur: 'Tavily',
                 typeLien: 'reservation',
@@ -245,9 +245,87 @@ describe('chargerParcours — la lecture revalide le contenu', () => {
     const parcours = await chargerParcours(PROPRIETAIRE, 'p1');
     const element = parcours?.timeline[0].elements[0];
     expect(element?.confiance).toEqual({ niveau: 'suggestion' });
-    expect(element?.reservation).toEqual({
-      lienExterne: 'https://example.com/recherche',
+    expect(element?.lienExterne).toEqual({
+      url: 'https://example.com/recherche',
       fournisseur: 'Inconnu (legacy)',
+      typeLien: 'recherche',
+    });
+    expect(element).not.toHaveProperty('reservation');
+  });
+
+  it.each([
+    'officiel',
+    'billetterie',
+    'reservation',
+    'recherche',
+    'carte',
+  ] as const)(
+    'conserve la nature legacy connue « %s » sous le nouveau contrat',
+    async (typeLien) => {
+      prismaMock.parcours.findFirst.mockResolvedValue({
+        contenu: {
+          ...parcoursValide,
+          timeline: [
+            {
+              id: 'm-legacy-type',
+              titre: 'Ancien parcours',
+              elements: [
+                {
+                  id: 'e-legacy-type',
+                  type: 'activite',
+                  nom: 'Ancienne activité',
+                  justification: 'ancienne donnée persistée',
+                  reservation: {
+                    lienExterne: 'https://example.test/action',
+                    fournisseur: 'Ancien fournisseur',
+                    typeLien,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      const parcours = await chargerParcours(PROPRIETAIRE, 'p1');
+      const element = parcours?.timeline[0].elements[0];
+      expect(element?.lienExterne).toEqual({
+        url: 'https://example.test/action',
+        fournisseur: 'Ancien fournisseur',
+        typeLien,
+      });
+      expect(element).not.toHaveProperty('reservation');
+    }
+  );
+
+  it('rabaisse un type de lien legacy inconnu vers recherche', async () => {
+    prismaMock.parcours.findFirst.mockResolvedValue({
+      contenu: {
+        ...parcoursValide,
+        timeline: [
+          {
+            id: 'm-legacy-inconnu',
+            titre: 'Ancien parcours',
+            elements: [
+              {
+                id: 'e-legacy-inconnu',
+                type: 'activite',
+                nom: 'Ancienne activité',
+                justification: 'ancienne donnée persistée',
+                reservation: {
+                  lienExterne: 'https://example.test/action',
+                  fournisseur: 'Ancien fournisseur',
+                  typeLien: 'acheter',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const parcours = await chargerParcours(PROPRIETAIRE, 'p1');
+    expect(parcours?.timeline[0].elements[0].lienExterne).toMatchObject({
       typeLien: 'recherche',
     });
   });
@@ -310,6 +388,7 @@ describe('chargerParcours — la lecture revalide le contenu', () => {
     expect(transport).not.toHaveProperty('lieu');
     expect(transport).not.toHaveProperty('plage');
     expect(transport).not.toHaveProperty('reservation');
+    expect(transport).not.toHaveProperty('lienExterne');
   });
 
   it('neutralise les preuves hôtelières legacy ambiguës avant toute réécriture', async () => {
@@ -350,7 +429,8 @@ describe('chargerParcours — la lecture revalide le contenu', () => {
     if (!parcours) throw new Error('parcours attendu');
     const hotel = parcours.timeline[0].elements[0];
     expect(hotel.confiance).toEqual({ niveau: 'suggestion' });
-    expect(hotel.reservation).toBeUndefined();
+    expect(hotel.lienExterne).toBeUndefined();
+    expect(hotel).not.toHaveProperty('reservation');
 
     await sauvegarderParcours(PROPRIETAIRE, parcours);
     const contenu =
@@ -359,7 +439,7 @@ describe('chargerParcours — la lecture revalide le contenu', () => {
       niveau: 'suggestion',
     });
     expect(
-      contenu.timeline[0].elements[0].reservation
+      contenu.timeline[0].elements[0].lienExterne
     ).toBeUndefined();
   });
 

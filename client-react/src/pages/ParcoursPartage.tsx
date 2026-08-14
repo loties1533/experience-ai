@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
 import AvisGroupe from '../components/AvisGroupe'
-import { BadgeConfiance, LibelleLien, libelleLien, LienRechercheTransport } from '../components/ConfianceElement'
+import { BadgeConfiance, LienExterneElement, LienRechercheHebergement, LienRechercheTransport } from '../components/ConfianceElement'
 import {
   chargerParcoursPartage, reagirSurElement,
   type Avis, type Element,
@@ -121,13 +121,8 @@ export default function ParcoursPartage() {
                           <> · {element.prix} €{element.prixEstime && ' estimés'}</>
                         )}
                       </p>
-                      {element.reservation && (
-                        <a href={element.reservation.lienExterne} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
-                          aria-label={`${libelleLien(element)} pour ${element.nom} (nouvel onglet)`}>
-                          <LibelleLien element={element} />
-                        </a>
-                      )}
+                      <LienExterneElement element={element} />
+                      <LienRechercheHebergement element={element} />
                       <LienRechercheTransport element={element} />
                       <p className="text-sm text-encre-light mt-2 italic">« {element.justification} »</p>
                       <AvisGroupe parcours={parcours} element={element} />

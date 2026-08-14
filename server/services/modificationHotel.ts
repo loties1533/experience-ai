@@ -116,7 +116,7 @@ function reconstruireLien(
 ): Element {
   const {
     lienRechercheHebergement: _ancienLien,
-    reservation: _ancienneReservation,
+    lienExterne: _ancienLienExterne,
     ...sansDerives
   } = element;
   const avecSejour: Element = {

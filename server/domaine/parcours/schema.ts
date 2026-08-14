@@ -375,11 +375,11 @@ export const TypeLienExterneSchema = z.enum([
   'carte',
 ]);
 
-export const ReservationSchema = z.object({
-  lienExterne: z.url(),
+export const LienExterneSchema = z.object({
+  url: z.url(),
   fournisseur: z.string().min(1),
   typeLien: TypeLienExterneSchema,
-});
+}).strict();
 
 const URL_RECHERCHE_BOOKING = 'https://www.booking.com/searchresults.html';
 const PARAMETRES_RECHERCHE_BOOKING = [
@@ -510,7 +510,12 @@ export const ElementSchema = z.object({
   dependDe: z.array(z.string().min(1)).default([]),
   alternatives: z.array(AlternativeSchema).default([]),
   contraintes: z.array(ContrainteSchema).default([]),
-  reservation: ReservationSchema.optional(),
+  // Action Web neutre : sa nature est portée par `typeLien`. Ce champ ne
+  // signifie jamais à lui seul réservation, billet ou disponibilité.
+  lienExterne: LienExterneSchema.optional(),
+  // Champ persistant antérieur à PR9. Les lectures legacy le normalisent en
+  // amont ; une nouvelle écriture ne doit plus pouvoir le réintroduire.
+  reservation: z.never().optional(),
   // Recherche locale préremplie : distincte d'une réservation et sans preuve
   // de disponibilité. F3-C2 ne la produit que pour un séjour hôtelier validé.
   lienRechercheHebergement: LienRechercheHebergementSchema.optional(),
@@ -620,6 +625,7 @@ function normaliserParcoursLegacy(valeur: unknown): unknown {
         if (element.type === 'hebergement') {
           const {
             reservation: _reservationAmbigue,
+            lienExterne: _lienExterneAmbigu,
             confiance: confianceLegacy,
             ...hotelSansReservation
           } = element;
@@ -638,6 +644,7 @@ function normaliserParcoursLegacy(valeur: unknown): unknown {
         if (element.type === 'transport') {
           const {
             reservation: _reservationTransport,
+            lienExterne: _lienExterneTransport,
             lienRechercheHebergement: _lienHotelier,
             sejourHebergement: _sejourHotelier,
             confiance: _confianceTransport,
@@ -662,20 +669,30 @@ function normaliserParcoursLegacy(valeur: unknown): unknown {
           };
         }
 
-        if (!estObjet(element.reservation)) return element;
-        const reservation = element.reservation;
+        const {
+          reservation: reservationLegacy,
+          ...elementSansReservation
+        } = element;
+        if (
+          estObjet(elementSansReservation.lienExterne) ||
+          !estObjet(reservationLegacy)
+        ) {
+          return elementSansReservation;
+        }
+        const typeLienLegacy = TypeLienExterneSchema.safeParse(
+          reservationLegacy.typeLien
+        );
         return {
-          ...element,
-          reservation: {
-            ...reservation,
+          ...elementSansReservation,
+          lienExterne: {
+            url: reservationLegacy.lienExterne,
             fournisseur:
-              reservation.fournisseur === undefined
+              reservationLegacy.fournisseur === undefined
                 ? 'Inconnu (legacy)'
-                : reservation.fournisseur,
-            typeLien:
-              reservation.typeLien === undefined
-                ? 'recherche'
-                : reservation.typeLien,
+                : reservationLegacy.fournisseur,
+            typeLien: typeLienLegacy.success
+              ? typeLienLegacy.data
+              : 'recherche',
           },
         };
       });
@@ -738,7 +755,7 @@ export const ParcoursSchema = z
     ]);
     parcours.timeline.forEach((moment, indexMoment) => {
       moment.elements.forEach((element, indexElement) => {
-        if (element.type === 'hebergement' && element.reservation) {
+        if (element.type === 'hebergement' && element.lienExterne) {
           contexte.addIssue({
             code: 'custom',
             message:
@@ -748,7 +765,7 @@ export const ParcoursSchema = z
               indexMoment,
               'elements',
               indexElement,
-              'reservation',
+              'lienExterne',
             ],
           });
         }
@@ -899,7 +916,7 @@ export const ParcoursSchema = z
             });
           }
           for (const champ of [
-            'reservation',
+            'lienExterne',
             'plage',
             'lieu',
             'lienRechercheHebergement',
@@ -1039,7 +1056,7 @@ export type Alternative = z.infer<typeof AlternativeSchema>;
 export type NiveauConfiance = z.infer<typeof NiveauConfianceSchema>;
 export type Confiance = z.infer<typeof ConfianceSchema>;
 export type TypeLienExterne = z.infer<typeof TypeLienExterneSchema>;
-export type Reservation = z.infer<typeof ReservationSchema>;
+export type LienExterne = z.infer<typeof LienExterneSchema>;
 export type LienRechercheHebergement = z.infer<
   typeof LienRechercheHebergementSchema
 >;

@@ -30,8 +30,18 @@ function parcoursFixture(): Parcours {
       titre: 'Jour 1',
       elements: [{
         id: 'e1', type: 'activite', nom: 'Randonnée', lieu: 'Chamonix', justification: 'ça correspond à l’envie',
-        prixEstime: true, confiance: { niveau: 'suggestion' }, statut: 'propose', estAncre: false,
+        prixEstime: true, confiance: {
+          niveau: 'verifie',
+          source: 'https://places-api.foursquare.com/places/search',
+          fournisseur: 'Foursquare',
+          recupereLe: '2026-08-14T10:00:00.000Z',
+        }, statut: 'propose', estAncre: false,
         dependDe: [], alternatives: [], contraintes: [], reactions: [],
+        lienExterne: {
+          url: 'https://www.google.com/maps/search/?api=1&query=Chamonix',
+          fournisseur: 'Google Maps',
+          typeLien: 'carte',
+        },
       }],
     }],
     historique: [],
@@ -68,5 +78,17 @@ describe('ParcoursPartage (rendu complet)', () => {
     const blocContenu = nom.closest('div.w-full')
     expect(blocContenu).not.toBeNull()
     expect(blocContenu?.className).toContain('sm:w-auto')
+  })
+
+  it('rend aussi le lien actionnable dans la vue partagée', async () => {
+    vi.mocked(chargerParcoursPartage).mockResolvedValue({
+      parcours: parcoursFixture(),
+      participant: { id: 'part1', nom: 'Ines', role: 'organisateur' },
+    })
+    rendreParcoursPartage()
+
+    const lien = await screen.findByRole('link', { name: /Voir sur la carte pour Randonnée/ })
+    expect(lien).toHaveAttribute('target', '_blank')
+    expect(lien).toHaveAttribute('rel', 'noopener noreferrer')
   })
 })

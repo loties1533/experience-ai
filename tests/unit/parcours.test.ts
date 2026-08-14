@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ParcoursSchema,
-  ReservationSchema,
+  LienExterneSchema,
   ElementSchema,
   PlageHoraireSchema,
   elementsDependants,
@@ -204,7 +204,7 @@ describe('validerParcours — cohérence structurelle', () => {
     expect(validerParcours(parcours)).toHaveLength(1);
   });
 
-  it('refuse une réservation sur un temps libre', () => {
+  it('refuse un lien externe sur un temps libre', () => {
     const parcours = parcoursMinimal({
       timeline: [
         {
@@ -219,8 +219,8 @@ describe('validerParcours — cohérence structurelle', () => {
                 fournisseur: 'Test',
                 recupereLe: '2026-07-28T10:00:00Z',
               },
-              reservation: {
-                lienExterne: 'https://exemple.fr/resa',
+              lienExterne: {
+                url: 'https://exemple.fr/resa',
                 fournisseur: 'Test',
                 typeLien: 'officiel',
               },
@@ -241,8 +241,8 @@ describe('validerParcours — cohérence structurelle', () => {
           elements: [
             element('resto', {
               type: 'restaurant',
-              reservation: {
-                lienExterne: 'https://exemple.fr',
+              lienExterne: {
+                url: 'https://exemple.fr',
                 fournisseur: 'Web',
                 typeLien: 'officiel',
               },
@@ -284,8 +284,8 @@ describe('validerParcours — cohérence structurelle', () => {
           titre: 'Recherche',
           elements: [
             element('idee', {
-              reservation: {
-                lienExterne: 'https://example.com/recherche?q=activite',
+              lienExterne: {
+                url: 'https://example.com/recherche?q=activite',
                 fournisseur: 'Moteur de recherche',
                 typeLien: 'recherche',
               },
@@ -298,16 +298,16 @@ describe('validerParcours — cohérence structurelle', () => {
     expect(parcours.timeline[0].elements[0].confiance.niveau).toBe('suggestion');
   });
 
-  it('exige les métadonnées de lien pour une nouvelle réservation', () => {
+  it('exige les métadonnées pour un nouveau lien externe', () => {
     expect(
-      ReservationSchema.safeParse({ lienExterne: 'https://example.com/recherche' }).success
+      LienExterneSchema.safeParse({ url: 'https://example.com/recherche' }).success
     ).toBe(false);
   });
 
   it('conserve le type reservation produit par le pipeline sécurisé', () => {
     expect(
-      ReservationSchema.safeParse({
-        lienExterne:
+      LienExterneSchema.safeParse({
+        url:
           'https://www.thefork.fr/restaurant/le-point-rouge-r12345',
         fournisseur: 'Tavily',
         typeLien: 'reservation',

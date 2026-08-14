@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
 import AvisGroupe from '../components/AvisGroupe'
-import { BadgeConfiance, LibelleLien, libelleLien, LienRechercheTransport } from '../components/ConfianceElement'
+import { BadgeConfiance, LienExterneElement, LienRechercheHebergement, LienRechercheTransport } from '../components/ConfianceElement'
 import PanneauPartage from '../components/PanneauPartage'
 import { Bouton } from '../components/ui/Bouton'
 import { BanniereStatutMetier } from '../components/ui/StatutMetier'
@@ -178,14 +178,8 @@ export default function ParcoursDetail() {
                           Détails
                         </summary>
                         <div className="mt-2 space-y-2">
-                          {/* Un vrai lieu, trouvé pour ce parcours : on y conduit, on ne vend rien */}
-                          {element.reservation && (
-                            <a href={element.reservation.lienExterne} target="_blank" rel="noopener noreferrer"
-                              className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
-                              aria-label={`${libelleLien(element)} pour ${element.nom} (nouvel onglet)`}>
-                              <LibelleLien element={element} />
-                            </a>
-                          )}
+                          <LienExterneElement element={element} />
+                          <LienRechercheHebergement element={element} />
                           <LienRechercheTransport element={element} />
                           <p className="text-sm text-encre-light italic">« {element.justification} »</p>
                           {/* Ce que le groupe en pense — ça éclaire, ça ne décide pas */}

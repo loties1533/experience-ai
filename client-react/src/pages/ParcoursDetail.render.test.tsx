@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { HelmetProvider } from 'react-helmet-async'
 import ParcoursDetail from './ParcoursDetail'
 import type { Parcours } from '../lib/api'
+import type { TypeLienExterne } from '../../../server/domaine/parcours'
 
 vi.mock('../lib/api', async () => {
   const reel = await vi.importActual<typeof import('../lib/api')>('../lib/api')
@@ -16,7 +17,7 @@ import { chargerParcours, modifierParcours, chargerPartage } from '../lib/api'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function parcoursFixture(): Parcours {
+function parcoursFixture(typeLien: TypeLienExterne | null = 'reservation'): Parcours {
   return {
     id: 'p1',
     intention: { texte: 'Un week-end au vert', motsCles: [] },
@@ -30,9 +31,16 @@ function parcoursFixture(): Parcours {
       titre: 'Jour 1',
       elements: [{
         id: 'e1', type: 'activite', nom: 'Randonnée', lieu: 'Chamonix', justification: 'ça correspond à l’envie',
-        prixEstime: true, confiance: { niveau: 'suggestion' }, statut: 'propose', estAncre: false,
+        prixEstime: true, confiance: {
+          niveau: 'verifie',
+          source: 'https://api.foursquare.com/v3/places/fsq-1',
+          fournisseur: 'Foursquare',
+          recupereLe: '2026-08-14T10:00:00.000Z',
+        }, statut: 'propose', estAncre: false,
         dependDe: [], alternatives: [], contraintes: [], reactions: [],
-        reservation: { lienExterne: 'https://exemple.fr/resa', fournisseur: 'Exemple', typeLien: 'reservation' },
+        ...(typeLien === null ? {} : {
+          lienExterne: { url: 'https://exemple.fr/action', fournisseur: 'Exemple', typeLien },
+        }),
       }],
     }],
     historique: [],
@@ -54,13 +62,72 @@ function rendreParcoursDetail() {
 }
 
 describe('ParcoursDetail (rendu complet)', () => {
-  it('ne montre jamais « Réserver » — un lien de recherche n’est pas une réservation', async () => {
-    vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture() })
+  it.each<[TypeLienExterne, string]>([
+    ['officiel', 'Voir le site officiel'],
+    ['billetterie', 'Ouvrir la billetterie'],
+    ['reservation', 'Ouvrir la page de réservation'],
+    ['carte', 'Voir sur la carte'],
+  ])('affiche le CTA explicite « %s » sans promesse de disponibilité', async (typeLien, libelle) => {
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture(typeLien) })
     rendreParcoursDetail()
 
     expect(await screen.findByText('Randonnée')).toBeInTheDocument()
-    expect(screen.queryByText(/^Réserver$/)).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Voir la réservation pour Randonnée/ })).toBeInTheDocument()
+    const lien = screen.getByRole('link', { name: new RegExp(`${libelle} pour Randonnée`) })
+    expect(lien).toHaveAttribute('href', 'https://exemple.fr/action')
+    expect(lien).toHaveAttribute('target', '_blank')
+    expect(lien).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(screen.queryByText(/réserver maintenant/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/billets disponibles|réservation confirmée|disponibilité/i)).not.toBeInTheDocument()
+  })
+
+  it('n’affiche ni CTA ni URL technique lorsqu’aucun lien utilisateur n’est prouvé', async () => {
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture(null) })
+    rendreParcoursDetail()
+
+    expect(await screen.findByText('Randonnée')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Randonnée/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /foursquare/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('https://api.foursquare.com/v3/places/fsq-1')).not.toBeInTheDocument()
+  })
+
+  it('affiche le raccourci Booking comme une recherche, sans promesse de réservation', async () => {
+    const parcours = parcoursFixture(null)
+    const hotel = parcours.timeline[0].elements[0]
+    hotel.type = 'hebergement'
+    hotel.lienRechercheHebergement = {
+      type: 'recherche',
+      fournisseur: 'Booking',
+      url: 'https://www.booking.com/searchresults.html?ss=Chamonix&checkin=2026-09-10&checkout=2026-09-12&group_adults=2&group_children=0&no_rooms=1',
+      libelle: 'Rechercher des hébergements sur Booking',
+      genereLe: '2026-08-14T10:00:00.000Z',
+    }
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours })
+    rendreParcoursDetail()
+
+    const lien = await screen.findByRole('link', { name: /Rechercher des hébergements sur Booking/ })
+    expect(lien).toHaveAttribute('target', '_blank')
+    expect(lien).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(screen.queryByText(/réserver maintenant|chambre disponible/i)).not.toBeInTheDocument()
+  })
+
+  it('affiche le raccourci transport comme une recherche, jamais comme un billet', async () => {
+    const parcours = parcoursFixture(null)
+    const transport = parcours.timeline[0].elements[0]
+    transport.type = 'transport'
+    transport.lienRechercheTransport = {
+      type: 'recherche_vol',
+      fournisseur: 'Google Flights',
+      url: 'https://www.google.com/travel/flights',
+      libelle: 'Rechercher des vols sur Google Flights',
+      genereLe: '2026-08-14T10:00:00.000Z',
+    }
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours })
+    rendreParcoursDetail()
+
+    const lien = await screen.findByRole('link', { name: /Rechercher des vols sur Google Flights/ })
+    expect(lien).toHaveAttribute('target', '_blank')
+    expect(lien).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(screen.queryByText(/acheter|billet disponible/i)).not.toBeInTheDocument()
   })
 
   it('garde la description de la dernière modification affichée jusqu’à la fermeture explicite', async () => {

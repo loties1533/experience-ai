@@ -536,7 +536,17 @@ describe('POST /api/parcours/:id/modifications — validation de la demande', ()
       },
     ],
     [
-      'réservation',
+      'lien externe',
+      {
+        lienExterne: {
+          url: 'https://evil.test/reserver',
+          fournisseur: 'Faux',
+          typeLien: 'reservation',
+        },
+      },
+    ],
+    [
+      'ancien champ réservation',
       {
         reservation: {
           lienExterne: 'https://evil.test/reserver',
@@ -900,7 +910,8 @@ describe('POST /api/parcours/:id/modifications — validation de la demande', ()
     const hotel = res.body.parcours.timeline[0].elements[0];
     expect(hotel.justification).toBe('justification corrigée');
     expect(hotel.confiance).toEqual({ niveau: 'suggestion' });
-    expect(hotel.reservation).toBeUndefined();
+    expect(hotel.lienExterne).toBeUndefined();
+    expect(hotel).not.toHaveProperty('reservation');
   });
 
   it('503 sans persistance si Foursquare est requis et indisponible', async () => {
