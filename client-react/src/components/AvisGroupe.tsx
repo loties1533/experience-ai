@@ -16,7 +16,7 @@ export default function AvisGroupe({ parcours, element }: { parcours: Parcours; 
     <p className="text-xs text-brume mt-2 flex flex-wrap gap-x-4 gap-y-1">
       {pour.length > 0 && (
         <span>
-          <span className="font-semibold text-lagon-dark">Pour</span> · {pour.join(', ')}
+          <span className="font-semibold text-laiton-dark">Pour</span> · {pour.join(', ')}
         </span>
       )}
       {contre.length > 0 && (

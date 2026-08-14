@@ -29,7 +29,7 @@ export function Header() {
   const classeLien = (vers: string, mobile = false) =>
     `${mobile ? 'px-4 py-3' : 'px-4 py-1.5'} rounded-xl text-sm font-medium transition-colors ${
       emplacement.pathname === vers
-        ? 'text-white bg-soleil'
+        ? 'text-white bg-terracotta-dark'
         : 'text-brume hover:text-encre hover:bg-sable-dark'
     }`
 
@@ -37,10 +37,10 @@ export function Header() {
     <header className="sticky top-0 z-40 bg-white/70 backdrop-blur-md border-b border-encre/10">
       <div className="conteneur h-16 flex items-center justify-between gap-4">
         <Link to="/" className="flex items-center gap-2.5" onClick={() => setMenuOuvert(false)}>
-          <Logo size={40} className="text-soleil" />
+          <Logo size={40} className="text-laiton" />
           <div className="flex flex-col">
             <span className="font-heading font-bold text-encre text-xl leading-none tracking-tight">Experience AI</span>
-            <span className="hidden sm:block text-[10px] text-lagon-dark font-bold uppercase tracking-widest mt-1">Qu'as-tu envie de vivre ?</span>
+            <span className="hidden sm:block text-[10px] text-laiton-dark font-bold uppercase tracking-widest mt-1">Qu'as-tu envie de vivre ?</span>
           </div>
         </Link>
 
@@ -102,7 +102,7 @@ export function Header() {
               </button>
             ) : (
               <Link to="/login" onClick={() => setMenuOuvert(false)}
-                className="px-4 py-3 rounded-xl text-sm font-bold bg-soleil text-white text-center">
+                className="px-4 py-3 rounded-xl text-sm font-bold bg-terracotta-dark text-white text-center">
                 Connexion
               </Link>
             )}
@@ -146,7 +146,7 @@ export function PageLayout({ children, piedDePage = true }: { children: React.Re
         <footer className="mt-24 border-t border-encre/10 bg-sable-dark/60">
           <div className="conteneur py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2.5">
-              <Logo size={28} className="text-soleil" />
+              <Logo size={28} className="text-laiton" />
               <span className="font-heading font-bold text-encre">Experience AI</span>
             </div>
             <p className="text-brume text-sm text-center sm:text-left max-w-md">

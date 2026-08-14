@@ -62,15 +62,15 @@ function IconeRefus({ className }: { className?: string }) {
 export const PRESENTATION_STATUT: Record<StatutMetier, PresentationStatut> = {
   verifie: {
     libelle: 'Vérifié',
-    classeBadge: 'bg-lagon/10 text-lagon-dark',
-    classeBanniere: 'border-lagon/30 bg-lagon/5 text-lagon-dark',
+    classeBadge: 'bg-sauge/10 text-sauge-dark',
+    classeBanniere: 'border-sauge/30 bg-sauge/5 text-sauge-dark',
     descriptionParDefaut: 'Donnée confirmée par une source vérifiée.',
     icone: IconeCoche,
   },
   estime: {
     libelle: 'Estimé',
-    classeBadge: 'bg-soleil/10 text-soleil-dark',
-    classeBanniere: 'border-soleil/30 bg-soleil/5 text-soleil-dark',
+    classeBadge: 'bg-laiton/10 text-laiton-dark',
+    classeBanniere: 'border-laiton/30 bg-laiton/5 text-laiton-dark',
     descriptionParDefaut: 'Information approximative, à confirmer.',
     icone: IconeApprox,
   },
