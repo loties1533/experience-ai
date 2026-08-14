@@ -52,6 +52,7 @@ import {
   type MomentPrepare,
 } from './generation/resolution.js';
 import { tracerLieuReel } from './generation/confiance.js';
+import { dedoublonnerElementsVerifies } from './generation/assemblage.js';
 import {
   briefPourLot,
   genererLot,
@@ -313,7 +314,7 @@ async function genererEtAssemblerLots(
   blocPreferences: string,
   demandeTransport: DemandeTransport | undefined,
   options: OptionsGenerationParcours = {}
-): Promise<{ moments: MomentGenere[]; ambiance?: string; boiteAgregat: BoiteAOutils }> {
+): Promise<{ moments: MomentGenere[]; boiteAgregat: BoiteAOutils }> {
   const plan = deriverPlan(contextePlanifiable);
   console.info(
     `[plan] strategy=${contextePlanifiable.strategie} steps=${contextePlanifiable.etapes.length} lots=${plan.lots.length}`
@@ -321,7 +322,6 @@ async function genererEtAssemblerLots(
   const villesDuContexte = villesPlanifiees(contextePlanifiable);
   const momentsParLot: MomentGenere[][] = [];
   const candidatsValides: CandidatJournal[] = [];
-  let ambiance: string | undefined;
   const destinationsResoluesApresIntake =
     destinationsResoluesPourGeneration(brief, contextePlanifiable);
 
@@ -368,9 +368,6 @@ Consigne temporelle du lot : "intention" et "temporalite.voyageGlobal" décriven
           integrerAncresLot(lot, sortie.moments)
         );
         validerScopeLot(lot, moments);
-        // La première ambiance proposée par le modèle habille l'ensemble ; à
-        // défaut, celle du brief prend le relais plus loin.
-        ambiance ??= sortie.ambiance;
         console.info(
           `[génération] lot ${index + 1}/${plan.lots.length} ` +
             `(${lot.ville}${lot.plage ? ` ${lot.plage.debut}→${lot.plage.fin}` : ''}) ` +
@@ -425,7 +422,7 @@ Consigne temporelle du lot : "intention" et "temporalite.voyageGlobal" décriven
     candidatsInitiaux: candidatsValides,
   });
 
-  return { moments: momentsAssembles, ambiance, boiteAgregat };
+  return { moments: momentsAssembles, boiteAgregat };
 }
 
 // Le pipeline de bout en bout, une étape par bloc lisible ci-dessous :
@@ -434,6 +431,7 @@ Consigne temporelle du lot : "intention" et "temporalite.voyageGlobal" décriven
 //         → génération des lots outillés (generation/lot) et assemblage
 //         → transport déterministe (generation/transport)
 //         → résolution des preuves (generation/resolution)
+//         → dédoublonnage global des identités fournisseur (generation/assemblage)
 //         → confiance / anti-hallucination (generation/confiance)
 //         → construction du Parcours + attribution des ids serveur
 //         → enrichissements (liens hébergement puis transport)
@@ -480,29 +478,18 @@ ${JSON.stringify(preferences, null, 2)}`
   // dans l'ordre du plan. La boîte d'agrégat rendue ne porte que les candidats
   // des tentatives validées ; la suite (transport déterministe, ids, liens,
   // enrichissements, validation) ne s'exécute qu'une fois, sur l'agrégat.
-  const {
-    moments: momentsAssembles,
-    ambiance: ambianceGeneree,
-    boiteAgregat,
-  } = await genererEtAssemblerLots(
-    brief,
-    contextePlanifiable,
-    blocPreferences,
-    demandeTransport,
-    options
-  );
+  const { moments: momentsAssembles, boiteAgregat } =
+    await genererEtAssemblerLots(
+      brief,
+      contextePlanifiable,
+      blocPreferences,
+      demandeTransport,
+      options
+    );
   const momentsNettoyes = nettoyerMomentsTransport(
     momentsAssembles,
     demandeTransport
   );
-
-  // Attribution des ids côté serveur : les refs du LLM ne sortent pas d'ici.
-  const idParRef = new Map<string, string>();
-  for (const moment of momentsNettoyes) {
-    for (const element of moment.elements) {
-      if (!idParRef.has(element.ref)) idParRef.set(element.ref, randomUUID());
-    }
-  }
 
   // F2-B5 : seules les identités structurées réellement rapprochées sont
   // résolues. Les demandes identiques sont dédupliquées, puis exécutées avec
@@ -512,11 +499,23 @@ ${JSON.stringify(preferences, null, 2)}`
     boiteAgregat,
     villesPlanifiees(contextePlanifiable),
   );
+  const momentsDedupliques = dedoublonnerElementsVerifies(
+    preparation.moments
+  );
+
+  // Attribution des ids côté serveur après la déduplication : une dépendance
+  // ne peut ainsi jamais pointer vers une occurrence retirée de l'assemblage.
+  const idParRef = new Map<string, string>();
+  for (const moment of momentsDedupliques) {
+    for (const { element } of moment.elements) {
+      if (!idParRef.has(element.ref)) idParRef.set(element.ref, randomUUID());
+    }
+  }
   const resolutionsLien = await resoudreDemandesLien(
     preparation.demandes,
   );
   const nombresHebergementsParVille = compterHebergementsParVille(
-    preparation.moments
+    momentsDedupliques
   );
 
   const parcoursSansLiensHotel = ParcoursSchema.parse({
@@ -537,8 +536,10 @@ ${JSON.stringify(preferences, null, 2)}`
     },
     participants: [{ id: randomUUID(), nom: 'Organisateur', role: 'organisateur' }],
     budget: { mode: 'individuel', montantTotal: brief.budgetTotal },
-    ambiance: ambianceGeneree ?? brief.ambiance,
-    timeline: preparation.moments.map(({ moment, ville, elements }) => {
+    // Une prose issue d'un lot local ne décrit pas honnêtement l'ensemble du
+    // parcours. Seule l'ambiance déclarée dans le Brief global est conservée.
+    ambiance: brief.ambiance,
+    timeline: momentsDedupliques.map(({ moment, ville, elements }) => {
       return {
         id: randomUUID(),
         titre: moment.titre,
