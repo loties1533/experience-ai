@@ -157,17 +157,3 @@ export async function resoudreLien(
     statutHttp: controle.statutHttp,
   };
 }
-
-/**
- * Compatibilité historique explicitement neutralisée. La génération utilise
- * `resoudreLien` avec une identité métier structurée ; cet adaptateur ne lance
- * aucun appel externe et ne doit jamais redevenir un repli par nom seul.
- */
-export async function resoudreLiensReels(
-  noms: string[],
-  _destination: string
-): Promise<Map<string, string | null>> {
-  return new Map<string, string | null>(
-    noms.map((nom) => [nom, null]),
-  );
-}

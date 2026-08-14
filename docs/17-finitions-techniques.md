@@ -24,16 +24,17 @@ Dernière consolidation : 14 août 2026, sur `main` à
 | DETTE-010 | backlog_produit | P2 | ouverte | Après PR5 | Le contrat sait qu’une zone n’est pas une ville, mais ne prouve pas encore l’appartenance ville→zone. | Une demande « Alpes » peut honnêtement clarifier ou refuser au lieu de proposer des villes. | Étudier une preuve géographique fournisseur, sans table régionale codée en dur. | Source géographique fiable. |
 | DETTE-011 | backlog_produit | P2 | ouverte | Après PR5 | Les facettes prouvables ne couvrent pas encore précisément spa, bien-être et détente. | Ces envies peuvent être clarifiées ou refusées honnêtement. | Définir preuves et fournisseur avant d’étendre les facettes. | Contrat de preuve produit validé. |
 | DETTE-012 | backlog_produit | P3 | ouverte | Roadmap fournisseurs | Aucun nouveau fournisseur n’est requis par un défaut de vérité actuel. | Couverture réelle limitée aux capacités déjà intégrées. | Ajouter un fournisseur uniquement pour un besoin produit priorisé et mesurable. | Besoin produit et contrat de vérité. |
-| DETTE-013 | dette_technique | P2 | a_verifier | Compatibilité F2-B | `resoudreLiensReels` n’a plus d’appelant de production ; des tests garantissent encore explicitement sa neutralisation. | Surface publique legacy et mocks entretenus. | Auditer les consommateurs externes avant une suppression dédiée. | Preuve d’absence de compatibilité externe. |
-| DETTE-014 | dette_technique | P2 | a_verifier | Compatibilité Foursquare historique | `foursquareRechercheLieux` n’a plus d’appelant de production identifié, mais conserve un test de compatibilité historique. | Ancien adaptateur maintenu en parallèle du contrat actuel. | Auditer les consommateurs externes avant une suppression dédiée. | Preuve d’absence de compatibilité externe. |
+| DETTE-013 | dette_technique | P2 | resolue | Compatibilité F2-B | Aucun consommateur produit, package, route ou réexport contractuel ; l’ancien adaptateur `resoudreLiensReels` a été supprimé en PR11. | Surface publique legacy et mocks supprimés. | Aucune. | Aucune. |
+| DETTE-014 | dette_technique | P2 | resolue | Compatibilité Foursquare historique | Aucun consommateur produit, package, route ou réexport contractuel ; l’ancien adaptateur `foursquareRechercheLieux` et son type exclusif `LieuReel` ont été supprimés en PR11. | Ancien adaptateur parallèle supprimé ; chemin typé intact. | Aucune. | Aucune. |
 | DETTE-015 | dette_technique | P3 | ouverte | Audit architecture | `server/routes/auth.ts` accède directement à Prisma ; aucun dépôt utilisateur ni second consommateur ne justifie encore une abstraction. | Écart local à la convention des dépôts, sans duplication actuelle. | Créer un dépôt seulement si un second consommateur utilisateur apparaît. | Second consommateur ou besoin de test concret. |
 | DETTE-016 | resolu | P2 | resolue | Audit historique | `generation.ts`, autrefois signalé à 1 419 lignes, a été découpé et mesure environ 602 lignes sur le socle PR10. | L’ancienne proposition de découpage n’est plus une dette actuelle. | Aucune. | Aucune. |
 | DETTE-017 | resolu | P1 | resolue | PR5-C | `compatibilite_sans_localisation` est absent des contrats et du code actif ; ses occurrences restantes sont des tests de rejet. | Aucun parcours planifiable sans ville ne subsiste. | Conserver les tests de non-régression. | Aucune. |
 
 ## Lecture rapide
 
-- Ouvertes ou à vérifier : 10 sujets, dont 2 validations live bloquées.
+- Ouvertes ou à vérifier : 8 sujets, dont 2 validations live bloquées.
 - Résolues par PR10 : 5 sujets (`DETTE-003` à `DETTE-007`).
+- Résolues par PR11 : 2 sujets (`DETTE-013`, `DETTE-014`).
 - Historiquement déjà résolues : 2 sujets (`DETTE-016`, `DETTE-017`).
 - Aucune entrée `P0` : aucun risque de faux résultat ou de corruption encore
   démontré par cet audit.

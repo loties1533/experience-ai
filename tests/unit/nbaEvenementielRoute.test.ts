@@ -25,7 +25,7 @@ vi.mock('../../server/services/claude/core.js', async (importOriginal) => {
 });
 vi.mock('../../server/services/liens.js', async (importOriginal) => {
   const reel = await importOriginal<typeof import('../../server/services/liens.js')>();
-  return { ...reel, resoudreLien: vi.fn(), resoudreLiensReels: vi.fn() };
+  return { ...reel, resoudreLien: vi.fn() };
 });
 
 const { prismaMock } = vi.hoisted(() => ({

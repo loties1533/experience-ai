@@ -14,13 +14,11 @@ vi.mock('../../server/services/claude/core.js', async (importOriginal) => {
 });
 vi.mock('../../server/services/liens.js', async (importOriginal) => {
   const reel = await importOriginal<typeof import('../../server/services/liens.js')>();
-  return { ...reel, resoudreLien: vi.fn(), resoudreLiensReels: vi.fn() };
+  return { ...reel, resoudreLien: vi.fn() };
 });
 
 const { callAIAvecOutils } = await import('../../server/services/claude/core.js');
-const { resoudreLien, resoudreLiensReels } = await import(
-  '../../server/services/liens.js'
-);
+const { resoudreLien } = await import('../../server/services/liens.js');
 const { genererParcours, deriverPlan } = await import(
   '../../server/agents/generation.js'
 );
@@ -157,7 +155,6 @@ function briefTransport(): Brief {
 beforeEach(() => {
   vi.mocked(callAIAvecOutils).mockReset();
   vi.mocked(resoudreLien).mockReset();
-  vi.mocked(resoudreLiensReels).mockReset();
 });
 
 describe('F5-B — un appel IA par lot', () => {
@@ -788,14 +785,13 @@ describe('F5-B — transport et enrichissements sur l’agrégat', () => {
     expect(noms[4]).toContain('Lyon');
   });
 
-  it('n’appelle jamais resoudreLiensReels et n’expose aucun lien réel inventé', async () => {
+  it('n’expose aucun lien réel inventé sans candidat journalisé', async () => {
     vi.mocked(callAIAvecOutils).mockImplementation(
       llmParLot(({ ville }) => ({ moments: [momentActivite(ville)] }))
     );
 
     await genererParcours(briefMulti);
 
-    expect(resoudreLiensReels).not.toHaveBeenCalled();
     // Sans recherche outillée, aucun candidat n’est journalisé : pas de
     // résolution de lien réel, exécutée une seule fois au plus sur l’agrégat.
     expect(resoudreLien).not.toHaveBeenCalled();
