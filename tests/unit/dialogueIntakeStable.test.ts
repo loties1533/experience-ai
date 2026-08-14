@@ -249,17 +249,38 @@ describe('PR7 — protection des champs acquis', () => {
     }
   );
 
-  it.each(['avec une copine', 'avec un copain'])(
-    'ne transforme pas automatiquement « %s » en couple',
-    async (message) => {
-      vi.mocked(callAI).mockResolvedValueOnce(sortie({ avecQui: 'couple' }));
+  it.each([
+    ['avec une copine', 'couple'],
+    ['avec une copine', 'amis'],
+    ['avec un copain', 'couple'],
+    ['avec un copain', 'amis'],
+  ] as const)(
+    'laisse « %s » sans catégorie quand le modèle propose %s',
+    async (message, avecQuiPropose) => {
+      vi.mocked(callAI).mockResolvedValueOnce(
+        sortie({ avecQui: avecQuiPropose })
+      );
 
       const resultat = await avancerDialogue(
         { intention: 'découvrir une nouvelle ville' },
         `Je souhaite le faire ${message}.`
       );
 
-      expect(resultat.brief.avecQui).not.toBe('couple');
+      expect(resultat.brief.avecQui).toBeUndefined();
+    }
+  );
+
+  it.each(['avec une amie', 'avec mes amis'])(
+    'reconnaît « %s » comme une preuve explicite d’amis',
+    async (message) => {
+      vi.mocked(callAI).mockResolvedValueOnce(sortie({ avecQui: 'amis' }));
+
+      const resultat = await avancerDialogue(
+        { intention: 'découvrir une nouvelle ville' },
+        `Je souhaite le faire ${message}.`
+      );
+
+      expect(resultat.brief.avecQui).toBe('amis');
     }
   );
 
