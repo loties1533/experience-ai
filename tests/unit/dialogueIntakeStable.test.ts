@@ -227,6 +227,65 @@ describe('PR7 — décision serveur du prochain champ', () => {
 });
 
 describe('PR7 — protection des champs acquis', () => {
+  it.each([
+    ['avec ma femme', 'couple'],
+    ['avec mon mari', 'couple'],
+    ['avec mon épouse', 'couple'],
+    ['avec mon époux', 'couple'],
+    ['avec mes enfants', 'famille'],
+    ['avec mon fils', 'famille'],
+    ['avec ma fille', 'famille'],
+  ] as const)(
+    'reconnaît la preuve relationnelle explicite « %s » comme %s',
+    async (message, avecQui) => {
+      vi.mocked(callAI).mockResolvedValueOnce(sortie({ avecQui }));
+
+      const resultat = await avancerDialogue(
+        { intention: 'découvrir une nouvelle ville' },
+        `Je souhaite le faire ${message}.`
+      );
+
+      expect(resultat.brief.avecQui).toBe(avecQui);
+    }
+  );
+
+  it.each(['avec une copine', 'avec un copain'])(
+    'ne transforme pas automatiquement « %s » en couple',
+    async (message) => {
+      vi.mocked(callAI).mockResolvedValueOnce(sortie({ avecQui: 'couple' }));
+
+      const resultat = await avancerDialogue(
+        { intention: 'découvrir une nouvelle ville' },
+        `Je souhaite le faire ${message}.`
+      );
+
+      expect(resultat.brief.avecQui).not.toBe('couple');
+    }
+  );
+
+  it('n’accepte aucune catégorie relationnelle sans preuve dans le message', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(sortie({ avecQui: 'famille' }));
+
+    const resultat = await avancerDialogue(
+      { intention: 'découvrir une nouvelle ville' },
+      'Je préfère un rythme tranquille.'
+    );
+
+    expect(resultat.brief.avecQui).toBeUndefined();
+  });
+
+  it('ne rouvre pas un accompagnement déjà confirmé sans nouvelle preuve', async () => {
+    vi.mocked(callAI).mockResolvedValueOnce(sortie({ avecQui: 'couple' }));
+
+    const resultat = await avancerDialogue(
+      BRIEF_COMPLET,
+      'Je préfère simplement un restaurant tranquille.'
+    );
+
+    expect(resultat.brief.avecQui).toBe('solo');
+    expect(resultat.reponse).not.toMatch(/avec qui/i);
+  });
+
   it('ignore avecQui, durée et dates réémis sans preuve dans le dernier message', async () => {
     vi.mocked(callAI).mockResolvedValueOnce(
       sortie({

@@ -446,8 +446,10 @@ function extraireAvecQuiExplicite(
   const texte = normaliserPourPreuve(message);
   const motifs: Record<NonNullable<BriefPartiel['avecQui']>, RegExp> = {
     solo: /\b(seul|seule|solo)\b/,
-    couple: /\b(couple|a deux|tous les deux|toutes les deux)\b/,
-    famille: /\bfamille\b/,
+    couple:
+      /\b(couple|a deux|tous les deux|toutes les deux)\b|\b(?:avec|et)\s+(?:ma femme|mon mari|mon epouse|mon epoux)\b/,
+    famille:
+      /\bfamille\b|\b(?:avec|et)\s+(?:mon enfant|mes enfants|mon fils|ma fille)\b/,
     amis: /\b(ami|amie|amis|amies|copain|copains|copine|copines)\b/,
     groupe: /\bgroupe\b/,
   };

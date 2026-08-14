@@ -18,6 +18,7 @@ import { avancerDialogue, genererParcours } from '../lib/api'
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 beforeEach(() => {
+  sessionStorage.clear()
   Element.prototype.scrollIntoView = vi.fn()
   useDialogueStore.setState({ messages: [], brief: {}, estComplet: false, etatDialogue: undefined })
   useAuthStore.setState({ user: { id: 'u1', email: 'a@b.fr' } })
@@ -35,6 +36,18 @@ function rendreEnvie() {
 }
 
 describe('Envie', () => {
+  it('restaure une envie mise en attente sans envoi automatique', () => {
+    sessionStorage.setItem('experience-ai:envie-en-attente', 'Un festival entre amis')
+
+    rendreEnvie()
+
+    expect(screen.getByRole('textbox', { name: 'Décris ton envie' })).toHaveValue(
+      'Un festival entre amis'
+    )
+    expect(sessionStorage.getItem('experience-ai:envie-en-attente')).toBeNull()
+    expect(avancerDialogue).not.toHaveBeenCalled()
+  })
+
   it('affiche les suggestions au premier contact et une bande éditoriale sans photo réelle', () => {
     rendreEnvie()
     expect(screen.getByText('Vivre la NBA pendant 3 semaines')).toBeInTheDocument()

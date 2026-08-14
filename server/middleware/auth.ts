@@ -3,11 +3,9 @@ import type { Request, Response, NextFunction } from 'express';
 import type { JwtPayload } from '../lib/types.js';
 import { NOM_COOKIE_AUTH } from '../lib/constants.js';
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: JwtPayload;
-    }
+declare module 'express-serve-static-core' {
+  interface Request {
+    user?: JwtPayload;
   }
 }
 

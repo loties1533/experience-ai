@@ -26,7 +26,13 @@ const ENVIE_EN_ATTENTE = 'experience-ai:envie-en-attente'
 export default function Envie() {
   const { user } = useAuthStore()
   const { messages, brief, estComplet, etatDialogue, ajouterMessage, mettreAJourBrief, reinitialiser } = useDialogueStore()
-  const [saisie, setSaisie] = useState('')
+  const [saisie, setSaisie] = useState(() => {
+    if (!user) return ''
+    const enAttente = sessionStorage.getItem(ENVIE_EN_ATTENTE)
+    if (!enAttente) return ''
+    sessionStorage.removeItem(ENVIE_EN_ATTENTE)
+    return enAttente
+  })
   const [enCours, setEnCours] = useState(false)
   const [generationEnCours, setGenerationEnCours] = useState(false)
   const [erreurGeneration, setErreurGeneration] = useState<{ statut: 'refus' | 'indisponible'; message: string } | null>(null)
@@ -36,16 +42,6 @@ export default function Envie() {
   useEffect(() => {
     finListe.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages.length, enCours])
-
-  // Retour de connexion : l'envie mise de côté revient dans le champ, prête à
-  // partir. On ne l'envoie pas d'office — c'est à l'utilisateur de décider.
-  useEffect(() => {
-    if (!user) return
-    const enAttente = sessionStorage.getItem(ENVIE_EN_ATTENTE)
-    if (!enAttente) return
-    sessionStorage.removeItem(ENVIE_EN_ATTENTE)
-    setSaisie(enAttente)
-  }, [user])
 
   const envoyer = async (texte: string) => {
     if (!texte.trim() || enCours) return

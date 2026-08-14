@@ -30,7 +30,7 @@ export function validateParams<T extends ZodTypeAny>(schema: T) {
       next(new AppError(formaterErreurZod(result.error), 400));
       return;
     }
-    req.params = result.data as any;
+    req.params = result.data as Request['params'];
     next();
   };
 }
