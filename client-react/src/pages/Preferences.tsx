@@ -95,8 +95,8 @@ function Formulaire({ initiales }: { initiales: PreferencesParcours }) {
                     onClick={() => setForm((f) => ({ ...f, rythme: f.rythme === r.valeur ? undefined : r.valeur }))}
                     className={`min-h-[44px] px-4 rounded-xl text-sm font-medium border transition-colors cursor-pointer ${
                       form.rythme === r.valeur
-                        ? 'bg-soleil text-white border-soleil'
-                        : 'bg-white text-encre border-encre/15 hover:border-soleil'
+                        ? 'bg-terracotta-dark text-white border-terracotta-dark'
+                        : 'bg-white text-encre border-sable hover:border-laiton'
                     }`}
                   >
                     {r.libelle}

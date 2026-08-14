@@ -78,7 +78,7 @@ export default function ParcoursPartage() {
       <Seo title={`${parcours.intention.texte} — Experience AI`} />
 
       <header className="mb-8">
-        <p className="text-xs font-bold uppercase tracking-widest text-lagon-dark">Le parcours du groupe</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-laiton-dark">Le parcours du groupe</p>
         <h1 className="text-2xl sm:text-3xl font-bold text-encre mt-1">{parcours.intention.texte}</h1>
         <p className="text-brume text-sm mt-2">
           {parcours.contexte.avecQui} · {parcours.contexte.duree.valeur} {parcours.contexte.duree.unite}
@@ -88,7 +88,7 @@ export default function ParcoursPartage() {
           )}
           {parcours.contexte.lieux.length > 0 && <> · {parcours.contexte.lieux.join(', ')}</>}
         </p>
-        <p className="text-sm text-encre mt-3 rounded-xl bg-lagon/10 px-4 py-3">
+        <p className="text-sm text-encre mt-3 rounded-xl bg-laiton/10 px-4 py-3">
           Vous consultez ce parcours en tant que <strong>{participant.nom}</strong>. Dites ce que vous en pensez :
           c'est {parcours.participants.find((p) => p.role === 'organisateur')?.nom ?? "l'organisateur"} qui tranche.
         </p>
@@ -98,7 +98,7 @@ export default function ParcoursPartage() {
         {parcours.timeline.map((moment, index) => (
           <li key={moment.id} className="carte p-5">
             <div className="flex items-baseline gap-3 mb-4">
-              <span className="w-7 h-7 rounded-full bg-lagon/10 text-lagon-dark font-heading font-bold text-sm
+              <span className="w-7 h-7 rounded-full bg-laiton/10 text-laiton-dark font-heading font-bold text-sm
                                flex items-center justify-center shrink-0">{index + 1}</span>
               <h2 className="font-heading font-semibold text-lg text-encre">{moment.titre}</h2>
             </div>
@@ -133,7 +133,7 @@ export default function ParcoursPartage() {
                         <button
                           key={avis}
                           className={`btn-secondaire min-h-[44px] text-xs ${
-                            monAvis(element) === avis ? '!border-soleil !text-soleil font-bold' : ''
+                            monAvis(element) === avis ? '!border-terracotta !text-terracotta-dark font-bold' : ''
                           }`}
                           aria-pressed={monAvis(element) === avis}
                           disabled={reaction.isPending}

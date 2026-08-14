@@ -48,8 +48,8 @@ export default function Login() {
       <div className="max-w-sm mx-auto py-12 sm:py-16">
         <form onSubmit={envoyer} className="carte p-8 shadow-card-lg">
           <div className="text-center mb-6">
-            <div className="w-12 h-12 rounded-xl bg-soleil/10 border border-soleil/20 flex items-center justify-center mx-auto mb-3">
-              <Logo size={24} className="text-soleil" />
+            <div className="w-12 h-12 rounded-xl bg-laiton/10 border border-laiton/20 flex items-center justify-center mx-auto mb-3">
+              <Logo size={24} className="text-laiton" />
             </div>
             <h1 className="text-2xl font-bold text-encre">Experience AI</h1>
             <p className="text-sm text-brume mt-1">Transforme une envie en parcours</p>

@@ -1,6 +1,6 @@
 // Logo Experience AI — un parcours : des moments reliés par un chemin.
 // Emblème vectoriel unique, réutilisé partout (en-tête, pied de page, connexion).
-// La couleur suit `currentColor` : on la pilote via une classe Tailwind (ex. text-soleil).
+// La couleur suit `currentColor` : on la pilote via une classe Tailwind (ex. text-laiton).
 export default function Logo({ size = 40, className = '' }: { size?: number; className?: string }) {
   return (
     <svg

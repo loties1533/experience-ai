@@ -4,22 +4,26 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans:    ['"Open Sans"', 'sans-serif'],
-        heading: ['Poppins', 'sans-serif'],
+        sans:    ['Inter', 'sans-serif'],  // interface — très lisible
+        heading: ['Fraunces', 'serif'],    // titres — éditorial, chaleureux
       },
-      // Palette « aventure » (UI/UX Pro Max : adventure orange + map teal)
+      // Palette « Papier & Lumière » : surfaces chaudes claires, brun profond en
+      // texte, doré patiné (laiton) en détail et terracotta en accent d'action.
+      // Le doré reste un DÉTAIL (filets, labels, états), jamais un aplat dominant.
       colors: {
-        soleil: { DEFAULT: '#EA580C', light: '#FED7AA', dark: '#C2410C' }, // primaire — orange coucher de soleil
-        lagon:  { DEFAULT: '#0891B2', light: '#CFFAFE', dark: '#0E7490' }, // secondaire — teal carte
-        sable:  { DEFAULT: '#FFF7ED', dark: '#FDF0E3' },                   // surfaces claires
-        encre:  { DEFAULT: '#0F172A', light: '#334155' },                  // texte
-        brume:  '#64748B',                                                 // texte secondaire
-        sauge:  { DEFAULT: '#16A34A', dark: '#166534' },                   // sémantique : succès
-        corail: '#DC2626',                                                 // sémantique : danger
+        ivoire: '#FAF6EF',                                          // fond principal
+        creme:  '#F3EBDD',                                          // surface secondaire, bulle produit
+        sable:  { DEFAULT: '#E7DAC5', dark: '#DBCBB0' },            // filets, bords, skeletons
+        encre:  { DEFAULT: '#2E241B', light: '#4A3D30' },           // texte principal
+        brume:  '#6F6152',                                          // texte secondaire
+        terracotta: { DEFAULT: '#BE5A38', light: '#EBC9B8', dark: '#9A4526' }, // accent d'action (CTA)
+        laiton:     { DEFAULT: '#B98A3E', light: '#E7CE9B', dark: '#8A6520' }, // doré patiné (détail)
+        sauge:  { DEFAULT: '#4F7A5B', dark: '#3C5E46' },            // succès + statut « vérifié »
+        corail: '#B4462F',                                          // danger + refus
       },
       boxShadow: {
-        'card':    '0 4px 24px rgba(15,23,42,0.06)',
-        'card-lg': '0 12px 48px rgba(15,23,42,0.12)',
+        'card':    '0 4px 24px rgba(46,36,27,0.07)',
+        'card-lg': '0 14px 44px rgba(46,36,27,0.12)',
       },
     },
   },

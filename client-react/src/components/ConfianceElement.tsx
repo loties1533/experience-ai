@@ -33,7 +33,7 @@ export function LienExterneElement({ element }: { element: Element }) {
   const libelle = libelleLien(element)
   return (
     <a href={lien.url} target="_blank" rel="noopener noreferrer"
-      className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
+      className="inline-flex items-center min-h-[44px] text-xs text-laiton-dark underline underline-offset-2 hover:decoration-2 hover:underline-offset-4"
       aria-label={`${libelle} pour ${element.nom} (nouvel onglet)`}>
       {libelle}
     </a>
@@ -47,7 +47,7 @@ export function LienRechercheHebergement({ element }: { element: Element }) {
   if (!lien) return null
   return (
     <a href={lien.url} target="_blank" rel="noopener noreferrer"
-      className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
+      className="inline-flex items-center min-h-[44px] text-xs text-laiton-dark underline underline-offset-2 hover:decoration-2 hover:underline-offset-4"
       aria-label={`${lien.libelle} pour « ${element.nom} » (recherche externe, nouvel onglet)`}>
       {lien.libelle}
     </a>
@@ -62,7 +62,7 @@ export function LienRechercheTransport({ element }: { element: Element }) {
   if (!lien) return null
   return (
     <a href={lien.url} target="_blank" rel="noopener noreferrer"
-      className="inline-flex items-center min-h-[44px] text-xs text-lagon-dark underline underline-offset-2 hover:text-lagon"
+      className="inline-flex items-center min-h-[44px] text-xs text-laiton-dark underline underline-offset-2 hover:decoration-2 hover:underline-offset-4"
       aria-label={`${lien.libelle} pour « ${element.nom} » (recherche externe, nouvel onglet)`}>
       {lien.libelle}
     </a>

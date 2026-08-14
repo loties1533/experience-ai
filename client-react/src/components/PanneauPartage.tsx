@@ -87,7 +87,7 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
             <label
               key={v.valeur}
               className={`rounded-xl border p-3 cursor-pointer transition-colors ${
-                partage.visibilite === v.valeur ? 'border-soleil bg-soleil/5' : 'border-encre/10 hover:border-encre/25'
+                partage.visibilite === v.valeur ? 'border-laiton bg-laiton/5' : 'border-encre/10 hover:border-encre/25'
               }`}
             >
               <span className="flex items-center gap-2">
@@ -98,7 +98,7 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
                   checked={partage.visibilite === v.valeur}
                   onChange={() => visibilite.mutate(v.valeur)}
                   disabled={visibilite.isPending}
-                  className="accent-soleil"
+                  className="accent-terracotta"
                 />
                 <span className="font-semibold text-encre text-sm">{v.titre}</span>
               </span>
@@ -158,7 +158,7 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
             placeholder="Son prénom"
             className="w-full px-4 py-2.5 rounded-xl border border-encre/15 bg-white text-encre
                        placeholder:text-brume transition-colors
-                       focus:border-soleil focus:outline-none focus:ring-2 focus:ring-soleil/25"
+                       focus:border-laiton-dark focus:outline-none focus:ring-2 focus:ring-laiton/30"
           />
         </div>
         <div>
@@ -169,7 +169,7 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
             id="role-participant"
             value={role}
             onChange={(e) => setRole(e.target.value as Role)}
-            className="px-4 py-2.5 rounded-xl border border-encre/15 bg-white text-encre transition-colors focus:border-soleil focus:outline-none focus:ring-2 focus:ring-soleil/25"
+            className="px-4 py-2.5 rounded-xl border border-encre/15 bg-white text-encre transition-colors focus:border-laiton-dark focus:outline-none focus:ring-2 focus:ring-laiton/30"
           >
             <option value="participant">Participant</option>
             <option value="heros">Pour qui c'est</option>

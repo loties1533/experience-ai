@@ -122,7 +122,7 @@ export default function ParcoursDetail() {
         {parcours.timeline.map((moment, index) => (
           <li key={moment.id} className="carte p-5">
             <div className="flex items-baseline gap-3 mb-4">
-              <span className="w-7 h-7 rounded-full bg-lagon/10 text-lagon-dark font-heading font-bold text-sm
+              <span className="w-7 h-7 rounded-full bg-laiton/10 text-laiton-dark font-heading font-bold text-sm
                                flex items-center justify-center shrink-0">{index + 1}</span>
               <h2 className="titre-section">{moment.titre}</h2>
             </div>
@@ -134,10 +134,10 @@ export default function ParcoursDetail() {
                 <li key={element.id}
                   className={`rounded-xl border border-l-4 p-4 transition-colors ${
                     aRegenerer.includes(element.id)
-                      ? 'border-soleil bg-soleil/5'
+                      ? 'border-terracotta bg-terracotta/5'
                       : logistique
-                        ? 'border-encre/10 border-l-lagon/60 bg-white'
-                        : 'border-encre/10 border-l-soleil/40 bg-white'
+                        ? 'border-encre/10 border-l-laiton/60 bg-white'
+                        : 'border-encre/10 border-l-terracotta/40 bg-white'
                   }`}>
                   <div className="flex flex-col sm:flex-row sm:flex-wrap items-start gap-2">
                     {/* Ligne principale : identité + statut de confiance — lisible en un coup d'œil.
@@ -150,7 +150,7 @@ export default function ParcoursDetail() {
                         <span className="text-[11px] font-bold uppercase tracking-wide text-brume">
                           {LIBELLES_TYPE[element.type]}
                         </span>
-                        {element.estAncre && <span className="badge-statut bg-lagon/10 text-lagon-dark">Ancre</span>}
+                        {element.estAncre && <span className="badge-statut bg-laiton/10 text-laiton-dark">Ancre</span>}
                         <BadgeConfiance element={element} />
                         {element.statut === 'accepte' && <span className="badge-accepte">Accepté</span>}
                         {element.statut === 'propose' && <span className="badge-propose">Proposé</span>}
@@ -174,7 +174,7 @@ export default function ParcoursDetail() {
                       {/* Détail secondaire, replié par défaut : justification, avis du groupe, liens externes.
                           Reste ouvert d'office sur un élément à revoir après modification. */}
                       <details className="mt-2" open={aRegenerer.includes(element.id)}>
-                        <summary className="text-xs text-lagon-dark cursor-pointer select-none w-fit">
+                        <summary className="text-xs text-laiton-dark cursor-pointer select-none w-fit">
                           Détails
                         </summary>
                         <div className="mt-2 space-y-2">
@@ -219,7 +219,7 @@ export default function ParcoursDetail() {
       {/* Ce qui vient d'être modifié — reste affiché tant que l'utilisateur ne l'a pas fermé,
           contrairement au toast qui disparaît seul. */}
       {derniereModification && (
-        <div className="carte mt-6 p-4 border-lagon/30 flex items-start justify-between gap-3">
+        <div className="carte mt-6 p-4 border-laiton/30 flex items-start justify-between gap-3">
           <p className="text-sm text-encre">
             <span className="font-semibold">Dernière modification</span> — {derniereModification}
             {aRegenerer.length > 0 && (
@@ -270,7 +270,7 @@ export default function ParcoursDetail() {
           placeholder='Ex. : « change le resto du moment 2, plutôt italien »'
           className="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-encre/15 bg-white text-encre
                      placeholder:text-brume transition-colors
-                     focus:border-soleil focus:outline-none focus:ring-2 focus:ring-soleil/25"
+                     focus:border-laiton-dark focus:outline-none focus:ring-2 focus:ring-laiton/30"
           maxLength={500}
         />
         <Bouton type="submit" className="!py-2.5" disabled={!phrase.trim()}

@@ -47,7 +47,7 @@ export function ImageContextuelle({
 function RepliGraphique() {
   return (
     <div
-      className="w-full h-full bg-gradient-to-br from-soleil/15 via-sable-dark to-lagon/10"
+      className="w-full h-full bg-gradient-to-br from-terracotta/15 via-sable-dark to-laiton/10"
       aria-hidden="true"
     >
       <svg className="w-full h-full opacity-[0.15]" viewBox="0 0 100 100" preserveAspectRatio="none">
