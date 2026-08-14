@@ -142,8 +142,8 @@ Preuves de livraison :
 - distinction déterministe entre refus métier `422` et panne technique
   essentielle `503` ;
 - ville propre à chaque moment pour les parcours multi-villes ;
-- comportement générique de `foursquareRechercheLieux` préservé pour les
-  restaurants, bars/sorties et activités ;
+- chemin Foursquare typé conservé pour les restaurants, bars/sorties,
+  activités et hébergements ;
 - 361/361 tests réussis localement, typecheck et lint réussis.
 
 #### F2-B — Résolution fiable des liens — Terminé
@@ -175,10 +175,9 @@ introuvable. Une URL accessible ne suffit pas à prouver un site officiel et,
 faute de preuve externe forte, F2-B ne produit actuellement aucun lien
 `officiel`.
 
-> **Précision technique.** L'ancienne fonction `resoudreLiensReels` (résolution
-> groupée par ville, antérieure à F2-B) reste présente dans le code et sa
-> suite de tests, mais n'est plus appelée par la génération active — seule
-> `resoudreLien` (au singulier, le pipeline F2-B) l'est désormais.
+> **Précision technique.** L'ancien adaptateur de résolution groupée par ville
+> a été supprimé après confirmation de l'absence de consommateur. Seul
+> `resoudreLien` (au singulier, le pipeline F2-B) reste actif.
 
 Le chantier F2 est donc **terminé** : F2-A (identité) puis F2-B1 à B5
 (résolution, sécurisation et intégration des liens).

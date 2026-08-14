@@ -146,10 +146,9 @@ forte, F2-B ne produit actuellement aucun lien qualifié d'officiel.
 
 La résolution sécurisée des liens est **intégrée dans la génération active**
 (F2-B1 à F2-B5) : `resoudreLien` est appelé depuis `agents/generation.ts` pour
-chaque demande de lien rattachée à une identité métier. L'ancienne fonction
-`resoudreLiensReels` (résolution groupée par ville, antérieure à F2-B) reste
-dans le code et sa suite de tests, mais n'est plus appelée par le flux actif.
-Le
+chaque demande de lien rattachée à une identité métier. L'ancien adaptateur
+groupé par ville, sans identité métier, a été supprimé après confirmation de
+l'absence de consommateur. Le
 [pipeline détaillé](docs/architecture/README.md#pipeline-de-résolution-des-liens)
 est documenté avec ses limites actuelles.
 

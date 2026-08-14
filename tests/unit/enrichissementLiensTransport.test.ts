@@ -394,8 +394,6 @@ describe('F4-D2 — architecture', () => {
     expect(contenu).toContain('ajouterLiensRechercheTransport');
     expect(contenu).not.toContain('travel/flights');
     expect(contenu).not.toContain('/maps/dir/');
-    // La génération ne réactive pas le résolveur legacy.
-    expect(contenu).not.toContain('resoudreLiensReels');
   });
 
   it('l’enrichissement délègue les URLs aux constructeurs F4-D1', () => {

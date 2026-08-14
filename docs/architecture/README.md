@@ -75,10 +75,9 @@ jamais transformée en résultat `introuvable`.
 **F2-B5 est actif.** `resoudreLien` (au singulier) est appelé depuis
 `agents/generation.ts` pour chaque demande de lien rattachée à une identité
 métier — ce pipeline complet (sélection puis contrôle réseau) tourne
-aujourd'hui dans la génération réelle des parcours. L'ancienne fonction
-`resoudreLiensReels` (résolution groupée par ville, antérieure à F2-B) reste
-présente dans le code et sa suite de tests, mais **n'est plus appelée par le
-flux actif**.
+aujourd'hui dans la génération réelle des parcours. L'ancien adaptateur groupé
+par ville, sans identité métier, a été supprimé après confirmation de l'absence
+de consommateur.
 
 #### Deux failles corrigées en revue contradictoire (F2-B4)
 

@@ -36,7 +36,6 @@ vi.mock('../../server/services/liens.js', async (importOriginal) => {
   return {
     ...reel,
     resoudreLien: vi.fn(),
-    resoudreLiensReels: vi.fn(),
   };
 });
 
@@ -44,9 +43,7 @@ const { callClaude, callClaudeOutils } = await import('../../server/services/pro
 const { rechercherLieuxFoursquare } = await import('../../server/services/foursquare.js');
 const { rechercherEvenementsPredictHQ } = await import('../../server/services/predictHQ.js');
 const { getRealWeather } = await import('../../server/services/weather.js');
-const { resoudreLien, resoudreLiensReels } = await import(
-  '../../server/services/liens.js'
-);
+const { resoudreLien } = await import('../../server/services/liens.js');
 const { creerBoiteAOutils } = await import('../../server/services/claude/outils.js');
 const { MAX_TOURS_OUTILS } = await import('../../server/services/claude/core.js');
 const { viderCacheMemoire } = await import('../../server/lib/cacheMemoire.js');
@@ -347,7 +344,6 @@ beforeEach(() => {
     .mockResolvedValue(RECHERCHE_EVENEMENTS_VIDE);
   vi.mocked(getRealWeather).mockReset().mockResolvedValue(null);
   vi.mocked(resoudreLien).mockReset().mockResolvedValue(lienIntrouvable());
-  vi.mocked(resoudreLiensReels).mockReset().mockResolvedValue(new Map());
   viderCacheMemoire();
 });
 
@@ -459,7 +455,6 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
     expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
     expect(getRealWeather).not.toHaveBeenCalled();
     expect(resoudreLien).not.toHaveBeenCalled();
-    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
   it('intègre un site officiel résolu sans le promouvoir en réservation', async () => {
@@ -1175,7 +1170,6 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
         typeLien: 'carte',
       });
       expect(element.confiance.niveau).toBe('verifie');
-      expect(resoudreLiensReels).not.toHaveBeenCalled();
     },
   );
 
@@ -1211,7 +1205,6 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       typeLien: 'carte',
     });
     expect(resoudreLien).not.toHaveBeenCalled();
-    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
   it('n’appelle pas le résolveur avec une identité externe incomplète', async () => {
@@ -1238,7 +1231,6 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
 
     expect(element.lienExterne).toBeUndefined();
     expect(resoudreLien).not.toHaveBeenCalled();
-    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
   it('déduplique le lien et l’occurrence finale du même établissement', async () => {
@@ -1373,7 +1365,6 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       'Résolution facultative de lien indisponible après une erreur technique inattendue.',
     );
     avertir.mockRestore();
-    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
   it('ne laisse jamais un lien Web seul vérifier un événement sans trace PredictHQ', async () => {
@@ -1403,7 +1394,6 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     expect(element.lienExterne).toBeUndefined();
     expect(element.confiance).toEqual({ niveau: 'suggestion' });
     expect(resoudreLien).not.toHaveBeenCalled();
-    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
   it('vérifie un hôtel Foursquare sans lancer de résolution de lien', async () => {
@@ -1459,7 +1449,6 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
     });
     expect(element.lienExterne).toBeUndefined();
     expect(resoudreLien).not.toHaveBeenCalled();
-    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
   it('ne conserve jamais une adresse hôtelière venant seulement du LLM', async () => {
@@ -1855,7 +1844,6 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       no_rooms: '1',
     });
     expect(resoudreLien).not.toHaveBeenCalled();
-    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
   it('ajoute à une suggestion générique une recherche par ville sans reprendre le nom ni l’URL du LLM', async () => {
@@ -1945,7 +1933,6 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
       no_rooms: '2',
     });
     expect(resoudreLien).not.toHaveBeenCalled();
-    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 
   it('rattache deux séjours uniquement à leur ville dans un parcours multi-ville', async () => {
@@ -2971,6 +2958,5 @@ describe('la génération — ville et catégorie du candidat', () => {
           element.lienExterne.url === candidats[index].lienCarte,
       ),
     ).toBe(true);
-    expect(resoudreLiensReels).not.toHaveBeenCalled();
   });
 });

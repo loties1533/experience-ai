@@ -22,17 +22,12 @@ vi.mock(
     controlerAccessibiliteLien: vi.fn(),
   }),
 );
-vi.mock('../../server/services/claude/core.js', () => ({
-  callAI: vi.fn(),
-}));
-
 const { rechercherWeb } = await import(
   '../../server/services/tools/webSearch.js'
 );
 const { controlerAccessibiliteLien } = await import(
   '../../server/services/liens/controleRedirections.js'
 );
-const { callAI } = await import('../../server/services/claude/core.js');
 const {
   cleDemandeResolutionLien,
   DemandeResolutionLienInvalide,
@@ -43,7 +38,6 @@ const {
   nomsCorrespondent,
   normaliserNomLien,
   resoudreLien,
-  resoudreLiensReels,
   selectionnerLien,
   validerUrlReelle,
 } = await import('../../server/services/liens.js');
@@ -183,7 +177,6 @@ beforeEach(() => {
       redirections: [],
       controleLe: DATE_RECUPERATION,
     }));
-  vi.mocked(callAI).mockReset();
 });
 
 afterEach(() => {
@@ -1145,31 +1138,5 @@ describe('intégration structurée et compatibilité', () => {
     );
 
     expect(requeteReseau).not.toHaveBeenCalled();
-  });
-
-  it('désactive toute résolution historique fondée sur le nom seul', async () => {
-    const liens = await resoudreLiensReels(
-      ['Le Point Rouge', 'Festival du Port'],
-      'Bordeaux',
-    );
-
-    expect(liens).toEqual(
-      new Map([
-        ['Le Point Rouge', null],
-        ['Festival du Port', null],
-      ]),
-    );
-    expect(rechercherWeb).not.toHaveBeenCalled();
-    expect(controlerAccessibiliteLien).not.toHaveBeenCalled();
-    expect(callAI).not.toHaveBeenCalled();
-  });
-
-  it('conserve une Map vide sans nom et sans aucun appel externe', async () => {
-    const liens = await resoudreLiensReels([], 'Bordeaux');
-
-    expect(liens.size).toBe(0);
-    expect(rechercherWeb).not.toHaveBeenCalled();
-    expect(controlerAccessibiliteLien).not.toHaveBeenCalled();
-    expect(callAI).not.toHaveBeenCalled();
   });
 });

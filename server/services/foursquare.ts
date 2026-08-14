@@ -163,17 +163,6 @@ function categorieCorrespondante(
   );
 }
 
-// Un lieu réel, dit dans le vocabulaire du domaine (nom, adresse, lien carte).
-// C'est ce que l'orchestrateur reçoit quand il cherche où poser un moment.
-export interface LieuReel {
-  identifiantExterne: string;
-  nom: string;
-  categorie: string;
-  adresse?: string;
-  lienCarte: string;
-}
-
-
 function etiquettePrix(price?: number): string {
   return ['', '$', '$$', '$$$', '$$$$'][price ?? 2] ?? '$$';
 }
@@ -358,32 +347,4 @@ export async function rechercherLieuxFoursquare(
       }
     ),
   };
-}
-
-/**
- * Export public historique conservé pendant la migration F2. Le nouveau chemin
- * de génération utilise `rechercherLieuxFoursquare`, qui expose les statuts.
- */
-export async function foursquareRechercheLieux(
-  ville: string,
-  requete: string,
-  limite = 4,
-): Promise<LieuReel[]> {
-  // Compatibilité de l'export historique : cette recherche est volontairement
-  // générique et ne connaît pas le type métier F2-A. Le filtre conservateur
-  // reste réservé à `rechercherLieuxFoursquare`.
-  const recherche = await rechercherLieuxBruts(
-    ville,
-    requete,
-    Math.min(Math.max(limite, 1), 8)
-  );
-  if (recherche.statut !== 'ok') return [];
-  return recherche.resultats.map((lieu) => ({
-    identifiantExterne: lieu.fsq_place_id,
-    nom: lieu.name,
-    categorie: lieu.categories[0]?.name ?? 'Lieu',
-    adresse:
-      [lieu.location.address, lieu.location.locality].filter(Boolean).join(', ') || undefined,
-    lienCarte: lienGoogleMaps(lieu.name, ville),
-  }));
 }
