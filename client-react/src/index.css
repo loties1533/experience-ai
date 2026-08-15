@@ -37,13 +37,15 @@
   }
 
   /* Bulles du dialogue */
+  /* Bulles du dialogue — chaudes et calmes ; distinction par alignement et
+     tonalité, jamais par un grand aplat saturé. */
   .bulle-produit {
-    @apply bg-creme text-encre rounded-xl rounded-bl-sm px-4 py-3
+    @apply bg-creme text-encre rounded-2xl rounded-bl-md px-4 py-3
            border border-sable text-[15px] leading-relaxed;
   }
   .bulle-utilisateur {
-    @apply bg-terracotta-dark text-white rounded-xl rounded-br-sm px-4 py-3
-           text-[15px] leading-relaxed font-medium;
+    @apply bg-terracotta/10 text-encre rounded-2xl rounded-br-md px-4 py-3
+           border border-terracotta/25 text-[15px] leading-relaxed;
   }
 
   /* Chip (choix rapide) — survol en doré discret */
