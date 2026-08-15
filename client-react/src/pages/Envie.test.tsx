@@ -48,12 +48,13 @@ describe('Envie', () => {
     expect(avancerDialogue).not.toHaveBeenCalled()
   })
 
-  it('affiche les suggestions au premier contact et une bande éditoriale sans photo réelle', () => {
+  it('affiche le hero immersif et les suggestions au premier contact', () => {
     rendreEnvie()
     expect(screen.getByText('Vivre la NBA pendant 3 semaines')).toBeInTheDocument()
-    // Aucune vraie photo disponible dans le dépôt à ce stade : le repli graphique s'affiche
-    // (le seul <img> possible serait la bande éditoriale — le logo, lui, est un svg role="img").
-    expect(screen.queryByRole('img', { name: /bande éditoriale/i })).not.toBeInTheDocument()
+    // Le hero rend une vraie photographie : la première ambiance porte l'alt d'émotion.
+    expect(screen.getByRole('img', { name: /énergie d'une salle comble/i })).toBeInTheDocument()
+    // Le titre reste centré sur l'intention, jamais sur une destination.
+    expect(screen.getByRole('heading', { name: /qu'as-tu envie de vivre/i })).toBeInTheDocument()
   })
 
   it('affiche un état de construction honnête pendant la génération, sans inventer d’étapes', async () => {
