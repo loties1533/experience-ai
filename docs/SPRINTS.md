@@ -243,6 +243,27 @@ F4 est désormais **terminé** : B1, B2, C1, C2 et C3 (a, b, c) posés en
 interne, puis D1, D2 et E qui les branchent réellement dans la génération, la
 modification, l'OpenAPI et le front.
 
+### Revue UI-3 — dialogue « Papier & Lumière » (15/08)
+
+PR : https://github.com/loties1533/experience-ai/pull/89
+
+- **Suite de la refonte « Papier & Lumière » (UI-1 fondations, UI-2 hero/header).**
+  UI-3 refond uniquement l'expérience visuelle du dialogue, sans toucher au métier.
+- **Hero compact** : dès le premier échange, le hero devient une bande évocatrice
+  (~34vh / ~24svh) — la conversation prend la main. Rotation et comportement
+  initial inchangés (prop `compact`).
+- **Colonne de lecture** : suppression de la carte blanche et du scroll interne ;
+  le fil suit le scroll de la page. Bulles adoucies (utilisateur en surface chaude
+  claire + texte encre, contraste AA).
+- **Récap déterministe** : uniquement les champs confirmés du `brief` (avec qui,
+  durée, dates) ; jamais une valeur candidate encore en attente, aucun champ de
+  store ajouté.
+- **Composer** collant dans le flux (sticky, jamais `fixed`), une seule instance,
+  safe-area respectée. Micro-copie plus humaine ; « brief » retiré de l'UI.
+- **Garanties** : pas de chips de clarification, pas de focus forcé vers les
+  bandeaux 422/503, auto-scroll respectant `reduced-motion` et la lecture en cours.
+  Suite complète verte (2188), typecheck serveur+client, lint, build, `diff --check`.
+
 ### Revue UI-A — audit front et direction visuelle (01/08)
 
 - **Un audit, pas une refonte.** Le métier (F0→F8) est fiable ; le front n'avait

@@ -31,7 +31,17 @@ function prefereMouvementReduit() {
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 }
 
-export function Hero({ ambiances, children }: { ambiances: AmbianceHero[]; children: ReactNode }) {
+export function Hero({
+  ambiances,
+  children,
+  compact = false,
+}: {
+  ambiances: AmbianceHero[]
+  children: ReactNode
+  /** Mode réduit (bande évocatrice) une fois le dialogue commencé — purement
+      visuel : ni le comportement initial, ni la rotation ne changent. */
+  compact?: boolean
+}) {
   const { setPhotoActive } = useEnteteImmersive()
   const [courant, setCourant] = useState(0)
   const [reduit, setReduit] = useState(prefereMouvementReduit)
@@ -112,8 +122,11 @@ export function Hero({ ambiances, children }: { ambiances: AmbianceHero[]; child
 
   return (
     <section
-      className="relative w-full overflow-hidden bg-encre
-                 h-[66svh] min-h-[560px] max-h-[860px] md:h-[65vh]"
+      className={`relative w-full overflow-hidden bg-encre ${
+        compact
+          ? 'h-[26svh] min-h-[190px] max-h-[320px] md:h-[34vh]'
+          : 'h-[66svh] min-h-[560px] max-h-[860px] md:h-[65vh]'
+      }`}
       aria-label="Accueil"
     >
       {/* Couches photographiques empilées : seule l'actuelle est opaque. */}
@@ -156,7 +169,7 @@ export function Hero({ ambiances, children }: { ambiances: AmbianceHero[]; child
       <div className="absolute inset-0 bg-gradient-to-t from-encre/85 via-encre/45 to-encre/25" aria-hidden="true" />
 
       {/* Contenu stable — ne change jamais pendant la rotation. */}
-      <div className="relative z-10 h-full flex flex-col items-center justify-center text-center conteneur-etroit pb-14 pt-20">
+      <div className={`relative z-10 h-full flex flex-col items-center justify-center text-center conteneur-etroit pt-20 ${compact ? 'pb-8' : 'pb-14'}`}>
         {children}
       </div>
 

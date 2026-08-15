@@ -7,8 +7,34 @@ import { Bouton } from '../components/ui/Bouton'
 import { Hero, type AmbianceHero } from '../components/ui/Hero'
 import { BanniereStatutMetier } from '../components/ui/StatutMetier'
 import { useAuthStore, useDialogueStore } from '../store'
-import { avancerDialogue, genererParcours, type Brief } from '../lib/api'
+import { avancerDialogue, genererParcours, type Brief, type BriefPartiel } from '../lib/api'
 import { statutMetierDepuisErreur } from '../lib/erreurAffichage'
+
+// Récap de compréhension : purement front, déterministe, construit UNIQUEMENT
+// depuis les champs réellement présents dans le brief. Jamais une valeur encore
+// en attente de confirmation (etatDialogue.valeurCandidate), jamais une donnée
+// déduite ou inventée.
+const LIBELLES_AVEC_QUI: Record<'solo' | 'couple' | 'famille' | 'amis' | 'groupe', string> = {
+  solo: 'Solo', couple: 'En couple', famille: 'En famille', amis: 'Entre amis', groupe: 'En groupe',
+}
+const UNITE_SINGULIER: Record<'heures' | 'jours' | 'semaines', string> = {
+  heures: 'heure', jours: 'jour', semaines: 'semaine',
+}
+
+function formaterDuree(d: { valeur: number; unite: 'heures' | 'jours' | 'semaines' }): string {
+  return `${d.valeur} ${d.valeur === 1 ? UNITE_SINGULIER[d.unite] : d.unite}`
+}
+
+function resumeEnvie(brief: BriefPartiel): { label: string; valeur: string }[] {
+  const lignes: { label: string; valeur: string }[] = []
+  if (brief.avecQui) lignes.push({ label: 'Avec qui', valeur: LIBELLES_AVEC_QUI[brief.avecQui] })
+  if (brief.duree) lignes.push({ label: 'Durée', valeur: formaterDuree(brief.duree) })
+  if (brief.dates) lignes.push({
+    label: 'Quand',
+    valeur: `du ${new Date(brief.dates.debut).toLocaleDateString('fr-FR')} au ${new Date(brief.dates.fin).toLocaleDateString('fr-FR')}`,
+  })
+  return lignes
+}
 
 // La page d'entrée : « Qu'as-tu envie de vivre ? » (doc 05, étapes 1→5).
 // Dialogue de cadrage → brief reformulé → confirmation → génération.
@@ -51,9 +77,22 @@ export default function Envie() {
   const [erreurGeneration, setErreurGeneration] = useState<{ statut: 'refus' | 'indisponible'; message: string } | null>(null)
   const navigate = useNavigate()
   const finListe = useRef<HTMLDivElement>(null)
+  // On ne « colle au bas » que si l'utilisateur y est déjà : consulter un
+  // message précédent ne doit jamais être interrompu par un saut automatique.
+  const suitLeBas = useRef(true)
 
   useEffect(() => {
-    finListe.current?.scrollIntoView({ behavior: 'smooth' })
+    const surScroll = () => {
+      suitLeBas.current = window.innerHeight + window.scrollY >= document.body.scrollHeight - 120
+    }
+    window.addEventListener('scroll', surScroll, { passive: true })
+    return () => window.removeEventListener('scroll', surScroll)
+  }, [])
+
+  useEffect(() => {
+    if (messages.length === 0 || !suitLeBas.current) return
+    const reduit = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    finListe.current?.scrollIntoView({ behavior: reduit ? 'auto' : 'smooth', block: 'end' })
   }, [messages.length, enCours])
 
   const envoyer = async (texte: string) => {
@@ -122,7 +161,7 @@ export default function Envie() {
         id="envie"
         value={saisie}
         onChange={(e) => setSaisie(e.target.value)}
-        placeholder={messages.length === 0 ? 'Ex. : voir un match NBA avec mon frère…' : 'Réponds ou corrige ici…'}
+        placeholder={messages.length === 0 ? 'Ex. : voir un match NBA avec mon frère…' : 'Réponds ou précise ici…'}
         className="flex-1 min-w-0 px-4 py-3.5 rounded-xl bg-white text-encre shadow-card border border-sable
                    placeholder:text-brume focus:outline-none focus:ring-2 focus:ring-laiton"
         maxLength={500}
@@ -134,22 +173,29 @@ export default function Envie() {
     </form>
   )
 
+  const enDialogue = messages.length > 0
+  const resume = resumeEnvie(brief)
+
   return (
     <PageLayout piedDePage={false} heroImmersif>
       <Seo title="Experience AI — Qu'as-tu envie de vivre ?" />
 
-      {/* Hero immersif : plusieurs expériences derrière une question stable. Au
-          premier contact, le hero porte le point d'entrée (champ + suggestions). */}
-      <Hero ambiances={AMBIANCES_HERO}>
-        <h1 className="font-heading font-semibold text-white text-4xl sm:text-5xl leading-[1.08] drop-shadow-[0_2px_12px_rgba(23,18,14,0.45)]">
+      {/* Hero : point d'entrée immersif au premier contact ; bande évocatrice
+          compacte dès qu'un échange a commencé — la conversation prend la main. */}
+      <Hero ambiances={AMBIANCES_HERO} compact={enDialogue}>
+        <h1
+          className={`font-heading font-semibold text-white drop-shadow-[0_2px_12px_rgba(23,18,14,0.45)] ${
+            enDialogue ? 'text-2xl sm:text-3xl' : 'text-4xl sm:text-5xl leading-[1.08]'
+          }`}
+        >
           Qu'as-tu envie de vivre&nbsp;?
         </h1>
-        <p className="mt-4 text-ivoire/90 text-base sm:text-lg drop-shadow-[0_1px_8px_rgba(23,18,14,0.5)]">
-          Décris ton envie — pas une destination.
-        </p>
 
-        {messages.length === 0 && (
+        {!enDialogue && (
           <>
+            <p className="mt-4 text-ivoire/90 text-base sm:text-lg drop-shadow-[0_1px_8px_rgba(23,18,14,0.5)]">
+              Décris ton envie — pas une destination.
+            </p>
             <div className="mt-7 w-full max-w-xl">{composer}</div>
             {/* Suggestions au premier contact — défilables horizontalement sur mobile */}
             <div className="hero-chips mt-5 w-full max-w-xl">
@@ -161,41 +207,48 @@ export default function Envie() {
         )}
       </Hero>
 
-      {/* Dialogue et suite du flux — sous le hero, quand il y a quelque chose à montrer */}
-      {(messages.length > 0 || estComplet || generationEnCours || erreurGeneration) && (
-        <section className="conteneur-etroit py-8 space-y-4">
+      {/* Conversation — colonne de lecture calme, sans carte ni scroll interne. */}
+      {(enDialogue || estComplet || generationEnCours || erreurGeneration) && (
+        <section className="conteneur-etroit py-8">
+          {/* Récap discret de ce qui est compris — uniquement des champs confirmés du brief. */}
+          {enDialogue && resume.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 pb-5 mb-6 border-b border-sable">
+              {resume.map((l) => (
+                <span key={l.label} className="text-sm text-encre">
+                  <span className="label-champ mr-2">{l.label}</span>{l.valeur}
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Fil du dialogue */}
-          {messages.length > 0 && (
-            <div className="carte p-4 sm:p-6 space-y-3 max-h-[60vh] overflow-y-auto" role="log" aria-live="polite">
+          {enDialogue && (
+            <div className="space-y-5" role="log" aria-live="polite">
               {messages.map((m) => (
                 <div key={m.id} className={`msg-enter flex ${m.de === 'utilisateur' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={m.de === 'utilisateur' ? 'bulle-utilisateur max-w-[85%]' : 'bulle-produit max-w-[85%]'}>
+                  <div className={m.de === 'utilisateur' ? 'bulle-utilisateur max-w-[34rem]' : 'bulle-produit max-w-[34rem]'}>
                     {m.texte}
                   </div>
                 </div>
               ))}
               {enCours && (
                 <div className="flex justify-start">
-                  <div className="bulle-produit inline-flex gap-1.5" aria-label="Le produit réfléchit">
+                  <div className="bulle-produit inline-flex gap-1.5" aria-label="Experience AI réfléchit">
                     <span className="typing-dot w-2 h-2 rounded-full bg-brume inline-block" />
                     <span className="typing-dot w-2 h-2 rounded-full bg-brume inline-block" />
                     <span className="typing-dot w-2 h-2 rounded-full bg-brume inline-block" />
                   </div>
                 </div>
               )}
-              <div ref={finListe} />
+              <div ref={finListe} className="scroll-mb-28" />
             </div>
           )}
 
-          {/* Champ de réponse — immédiatement accessible sous le fil, pas besoin de
-              remonter le hero pour répondre à une clarification. Même logique. */}
-          {messages.length > 0 && !generationEnCours && composer}
-
-          {/* Confirmation du brief (doc 05, étape 4 : rien ne se génère sans accord) */}
+          {/* Confirmation explicite avant génération (doc 05, étape 4). */}
           {estComplet && !generationEnCours && !erreurGeneration && (
-            <div className="carte p-4 flex flex-col sm:flex-row items-center gap-3 border-laiton/40">
+            <div className="mt-6 rounded-2xl border border-laiton/40 bg-creme p-4 flex flex-col sm:flex-row items-center gap-3">
               <p className="text-sm text-encre-light flex-1">
-                Le brief te convient ? Tu peux encore corriger en écrivant ci-dessus.
+                Ton envie est prête. Tu peux encore l'ajuster avant de continuer.
               </p>
               <Bouton onClick={generer} className="whitespace-nowrap">
                 Construire mon parcours
@@ -203,42 +256,50 @@ export default function Envie() {
             </div>
           )}
 
-          {/* Le serveur ne renvoie qu'un résultat final (pas d'étapes intermédiaires
-              exposées à l'API) : on reste honnête sur ce qu'on sait — le parcours
-              se construit — sans mimer une progression par lots qu'on n'observe pas. */}
+          {/* Le serveur ne renvoie qu'un résultat final : on reste honnête — le
+              parcours se compose — sans mimer une progression qu'on n'observe pas. */}
           {generationEnCours && (
-            <div className="carte p-6 text-center" role="status" aria-live="polite">
+            <div className="mt-6 rounded-2xl border border-sable bg-creme p-6 text-center" role="status" aria-live="polite">
               <span className="inline-flex w-10 h-10 rounded-full bg-terracotta/10 items-center justify-center motion-safe:animate-pulse">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                   strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-terracotta">
                   <path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
                 </svg>
               </span>
-              <p className="titre-section mt-3">Construction du parcours…</p>
+              <p className="titre-section mt-3">On compose ton parcours…</p>
               <p className="texte-secondaire mt-1">
                 Moments, justifications, temps libres : quelques secondes, on ne quitte pas la page.
               </p>
             </div>
           )}
 
-          {/* Refus (422) ou panne technique (503) — jamais réduits à un toast qui disparaît. */}
+          {/* Refus (422) ou panne technique (503) — jamais réduits à un toast qui disparaît.
+              Rôles et aria-live gérés par BanniereStatutMetier ; aucun focus forcé. */}
           {erreurGeneration && (
-            <BanniereStatutMetier
-              statut={erreurGeneration.statut}
-              action={
-                <Bouton variante="secondaire" onClick={() => setErreurGeneration(null)}>
-                  {erreurGeneration.statut === 'refus' ? 'Reformuler' : 'Réessayer'}
-                </Bouton>
-              }
-            >
-              {erreurGeneration.message}
-            </BanniereStatutMetier>
+            <div className="mt-6">
+              <BanniereStatutMetier
+                statut={erreurGeneration.statut}
+                action={
+                  <Bouton variante="secondaire" onClick={() => setErreurGeneration(null)}>
+                    {erreurGeneration.statut === 'refus' ? 'Reformuler' : 'Réessayer'}
+                  </Bouton>
+                }
+              >
+                {erreurGeneration.message}
+              </BanniereStatutMetier>
+            </div>
           )}
 
-          {messages.length > 0 && !generationEnCours && (
-            <button className="text-xs text-brume hover:text-encre underline cursor-pointer" onClick={reinitialiser}>
-              Repartir d'une nouvelle envie
-            </button>
+          {/* Composer collant pendant le dialogue — dans le flux (sticky, jamais
+              fixed), fond opaque, respecte la safe-area, ne masque pas le dernier
+              message (voir scroll-mb-28 ci-dessus). Une seule instance à la fois. */}
+          {enDialogue && !generationEnCours && (
+            <div className="sticky bottom-0 mt-6 -mx-4 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-ivoire/95 backdrop-blur-sm">
+              {composer}
+              <button className="mt-2 text-xs text-brume hover:text-encre underline cursor-pointer" onClick={reinitialiser}>
+                Repartir d'une nouvelle envie
+              </button>
+            </div>
           )}
         </section>
       )}

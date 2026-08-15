@@ -48,13 +48,36 @@ describe('Envie', () => {
     expect(avancerDialogue).not.toHaveBeenCalled()
   })
 
-  it('affiche le hero immersif et les suggestions au premier contact', () => {
+  it('affiche le hero immersif (sous-titre + suggestions) au premier contact', () => {
     rendreEnvie()
     expect(screen.getByText('Vivre la NBA pendant 3 semaines')).toBeInTheDocument()
-    // Le hero rend une vraie photographie : la première ambiance porte l'alt d'émotion.
     expect(screen.getByRole('img', { name: /énergie d'une salle comble/i })).toBeInTheDocument()
-    // Le titre reste centré sur l'intention, jamais sur une destination.
     expect(screen.getByRole('heading', { name: /qu'as-tu envie de vivre/i })).toBeInTheDocument()
+    // Hero plein : le sous-titre est présent au premier contact.
+    expect(screen.getByText('Décris ton envie — pas une destination.')).toBeInTheDocument()
+  })
+
+  it('passe le hero en mode compact dès le premier échange (sous-titre et suggestions retirés)', () => {
+    useDialogueStore.setState({ messages: [{ id: 'm1', de: 'produit', texte: 'Tu pars quand ?' }] })
+    rendreEnvie()
+    expect(screen.getByRole('heading', { name: /qu'as-tu envie de vivre/i })).toBeInTheDocument()
+    expect(screen.queryByText('Décris ton envie — pas une destination.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Vivre la NBA pendant 3 semaines')).not.toBeInTheDocument()
+  })
+
+  it('n’affiche dans le récap que les champs confirmés du brief, jamais une valeur candidate', () => {
+    useDialogueStore.setState({
+      messages: [{ id: 'm1', de: 'produit', texte: 'On avance.' }],
+      brief: { intention: 'Vivre la NBA', avecQui: 'amis', duree: { valeur: 3, unite: 'semaines' } },
+      // Une date reste EN ATTENTE de confirmation : elle ne doit pas apparaître comme acquise.
+      etatDialogue: { champ: 'dates', valeurCandidate: { debut: '2026-10-02T00:00:00Z', fin: '2026-10-23T00:00:00Z' } },
+    })
+    rendreEnvie()
+    expect(screen.getByText('Entre amis')).toBeInTheDocument()
+    expect(screen.getByText('3 semaines')).toBeInTheDocument()
+    // Aucune date : ni le libellé « Quand », ni la valeur candidate 02/10/2026.
+    expect(screen.queryByText('Quand')).not.toBeInTheDocument()
+    expect(screen.queryByText(/02\/10\/2026/)).not.toBeInTheDocument()
   })
 
   it('affiche un état de construction honnête pendant la génération, sans inventer d’étapes', async () => {
@@ -65,7 +88,7 @@ describe('Envie', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Construire mon parcours' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent('Construction du parcours…')
+      expect(screen.getByRole('status')).toHaveTextContent('On compose ton parcours…')
     })
   })
 
@@ -146,5 +169,30 @@ describe('Envie', () => {
     await waitFor(() => {
       expect(avancerDialogue).toHaveBeenCalledWith({ intention: 'Vivre la NBA' }, 'En mars', undefined)
     })
+  })
+
+  it('affiche une indisponibilité (503) en status, non alarmant', async () => {
+    useDialogueStore.setState({ brief: { intention: 'Un week-end' }, estComplet: true })
+    vi.mocked(genererParcours).mockRejectedValue(new ErreurApi('Service momentanément injoignable.', 503))
+    rendreEnvie()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Construire mon parcours' }))
+
+    // La carte de génération (role=status) disparaît à l'échec : on attend le
+    // message d'indisponibilité, puis on vérifie qu'il est bien porté en status.
+    expect(await screen.findByText('Service momentanément injoignable.')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Service momentanément injoignable.')
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+  })
+
+  it('défile en instantané (sans animation) quand le mouvement réduit est demandé', () => {
+    window.matchMedia = vi.fn().mockImplementation((q: string) => ({
+      matches: q.includes('reduce'), media: q,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+    }))
+    useDialogueStore.setState({ messages: [{ id: 'm1', de: 'produit', texte: 'Tu pars quand ?' }] })
+    rendreEnvie()
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'end' })
   })
 })
