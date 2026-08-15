@@ -27,7 +27,7 @@ function rendreMesParcours() {
 }
 
 describe('MesParcours', () => {
-  it('affiche la carte avec un repli graphique décoratif, sans champ inventé', async () => {
+  it('affiche l’intention, la visibilité explicite et le lien Ouvrir, sans champ inventé', async () => {
     vi.mocked(listerParcours).mockResolvedValue({
       parcours: [{ id: 'p1', intention: 'Un week-end au vert', visibilite: 'prive', misAJourLe: new Date('2026-07-20') }],
     })
@@ -36,9 +36,29 @@ describe('MesParcours', () => {
     expect(await screen.findByText('Un week-end au vert')).toBeInTheDocument()
     expect(screen.getByText('Privé')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Ouvrir' })).toHaveAttribute('href', '/parcours/p1')
-    // La vignette n'a aucune vraie photo : le repli est purement décoratif (aria-hidden), pas d'alt trompeur.
-    // (le seul role="img" restant est le logo svg du header/footer, pas la vignette.)
-    expect(screen.getAllByRole('img')).toHaveLength(2)
+  })
+
+  it('affiche une intention longue en entier, jamais tronquée du DOM', async () => {
+    const longue = 'Un week-end romantique quelque part au bord de l’eau, sans trop savoir où l’on ira exactement'
+    vi.mocked(listerParcours).mockResolvedValue({
+      parcours: [{ id: 'p2', intention: longue, visibilite: 'partage', misAJourLe: new Date('2026-07-20') }],
+    })
+    rendreMesParcours()
+    expect(await screen.findByText(longue)).toBeInTheDocument()
+  })
+
+  it('distingue textuellement privé / partagé / surprise', async () => {
+    vi.mocked(listerParcours).mockResolvedValue({
+      parcours: [
+        { id: 'p1', intention: 'A', visibilite: 'prive', misAJourLe: new Date('2026-07-20') },
+        { id: 'p2', intention: 'B', visibilite: 'partage', misAJourLe: new Date('2026-07-20') },
+        { id: 'p3', intention: 'C', visibilite: 'surprise', misAJourLe: new Date('2026-07-20') },
+      ],
+    })
+    rendreMesParcours()
+    expect(await screen.findByText('Privé')).toBeInTheDocument()
+    expect(screen.getByText('Partagé')).toBeInTheDocument()
+    expect(screen.getByText('Surprise')).toBeInTheDocument()
   })
 
   it("affiche l'état vide sans halluciner de parcours", async () => {
