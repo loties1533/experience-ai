@@ -109,12 +109,37 @@ export default function Envie() {
     }
   }
 
+  // Une SEULE logique de saisie (`saisie`/`envoyer`/`enCours`/`generationEnCours`),
+  // deux positions visuelles : dans le hero au premier contact, puis dans la zone
+  // de dialogue dès qu'un échange a commencé — jamais les deux à la fois.
+  const composer = (
+    <form
+      className="w-full flex gap-2"
+      onSubmit={(e) => { e.preventDefault(); envoyer(saisie) }}
+    >
+      <label htmlFor="envie" className="sr-only">Décris ton envie</label>
+      <input
+        id="envie"
+        value={saisie}
+        onChange={(e) => setSaisie(e.target.value)}
+        placeholder={messages.length === 0 ? 'Ex. : voir un match NBA avec mon frère…' : 'Réponds ou corrige ici…'}
+        className="flex-1 min-w-0 px-4 py-3.5 rounded-xl bg-white text-encre shadow-card border border-sable
+                   placeholder:text-brume focus:outline-none focus:ring-2 focus:ring-laiton"
+        maxLength={500}
+        disabled={generationEnCours}
+      />
+      <Bouton type="submit" className="!py-3.5 shadow-card" disabled={enCours || generationEnCours || !saisie.trim()}>
+        Envoyer
+      </Bouton>
+    </form>
+  )
+
   return (
     <PageLayout piedDePage={false} heroImmersif>
       <Seo title="Experience AI — Qu'as-tu envie de vivre ?" />
 
-      {/* Hero immersif : plusieurs expériences derrière une question stable. Le
-          champ d'intention est le vrai point d'entrée — même logique qu'avant. */}
+      {/* Hero immersif : plusieurs expériences derrière une question stable. Au
+          premier contact, le hero porte le point d'entrée (champ + suggestions). */}
       <Hero ambiances={AMBIANCES_HERO}>
         <h1 className="font-heading font-semibold text-white text-4xl sm:text-5xl leading-[1.08] drop-shadow-[0_2px_12px_rgba(23,18,14,0.45)]">
           Qu'as-tu envie de vivre&nbsp;?
@@ -123,33 +148,16 @@ export default function Envie() {
           Décris ton envie — pas une destination.
         </p>
 
-        <form
-          className="mt-7 w-full max-w-xl flex gap-2"
-          onSubmit={(e) => { e.preventDefault(); envoyer(saisie) }}
-        >
-          <label htmlFor="envie" className="sr-only">Décris ton envie</label>
-          <input
-            id="envie"
-            value={saisie}
-            onChange={(e) => setSaisie(e.target.value)}
-            placeholder={messages.length === 0 ? 'Ex. : voir un match NBA avec mon frère…' : 'Réponds ou corrige ici…'}
-            className="flex-1 min-w-0 px-4 py-3.5 rounded-xl bg-white text-encre shadow-card
-                       placeholder:text-brume focus:outline-none focus:ring-2 focus:ring-laiton"
-            maxLength={500}
-            disabled={generationEnCours}
-          />
-          <Bouton type="submit" className="!py-3.5 shadow-card" disabled={enCours || generationEnCours || !saisie.trim()}>
-            Envoyer
-          </Bouton>
-        </form>
-
-        {/* Suggestions au premier contact — défilables horizontalement sur mobile */}
         {messages.length === 0 && (
-          <div className="hero-chips mt-5 w-full max-w-xl">
-            {SUGGESTIONS.map((s) => (
-              <button key={s} className="chip whitespace-nowrap shrink-0" onClick={() => envoyer(s)}>{s}</button>
-            ))}
-          </div>
+          <>
+            <div className="mt-7 w-full max-w-xl">{composer}</div>
+            {/* Suggestions au premier contact — défilables horizontalement sur mobile */}
+            <div className="hero-chips mt-5 w-full max-w-xl">
+              {SUGGESTIONS.map((s) => (
+                <button key={s} className="chip whitespace-nowrap shrink-0" onClick={() => envoyer(s)}>{s}</button>
+              ))}
+            </div>
+          </>
         )}
       </Hero>
 
@@ -179,11 +187,15 @@ export default function Envie() {
             </div>
           )}
 
+          {/* Champ de réponse — immédiatement accessible sous le fil, pas besoin de
+              remonter le hero pour répondre à une clarification. Même logique. */}
+          {messages.length > 0 && !generationEnCours && composer}
+
           {/* Confirmation du brief (doc 05, étape 4 : rien ne se génère sans accord) */}
           {estComplet && !generationEnCours && !erreurGeneration && (
             <div className="carte p-4 flex flex-col sm:flex-row items-center gap-3 border-laiton/40">
               <p className="text-sm text-encre-light flex-1">
-                Le brief te convient ? Tu peux encore corriger en écrivant plus haut.
+                Le brief te convient ? Tu peux encore corriger en écrivant ci-dessus.
               </p>
               <Bouton onClick={generer} className="whitespace-nowrap">
                 Construire mon parcours

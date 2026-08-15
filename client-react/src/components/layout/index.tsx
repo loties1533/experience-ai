@@ -19,7 +19,7 @@ interface EnteteImmersive {
   photoActive: boolean
   setPhotoActive: (v: boolean) => void
 }
-const EnteteContext = createContext<EnteteImmersive>({
+export const EnteteContext = createContext<EnteteImmersive>({
   immersif: false,
   photoActive: false,
   setPhotoActive: () => {},

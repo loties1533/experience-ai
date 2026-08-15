@@ -125,4 +125,26 @@ describe('Envie', () => {
     rendreEnvie()
     expect(screen.queryByText('© 2026 Experience AI')).not.toBeInTheDocument()
   })
+
+  it('offre un champ de réponse dans la zone dialogue une fois l’échange commencé, avec la même logique d’envoi', async () => {
+    // Dialogue déjà commencé : le champ ne doit pas rester coincé dans le hero.
+    useDialogueStore.setState({
+      messages: [{ id: 'm1', de: 'produit', texte: 'Tu pars quand ?' }],
+      brief: { intention: 'Vivre la NBA' },
+    })
+    vi.mocked(avancerDialogue).mockResolvedValue({
+      brief: { intention: 'Vivre la NBA' }, estComplet: false, reponse: 'Noté.',
+    })
+    rendreEnvie()
+
+    // Un seul champ « Décris ton envie » (pas de doublon hero + dialogue).
+    const champs = screen.getAllByRole('textbox', { name: 'Décris ton envie' })
+    expect(champs).toHaveLength(1)
+
+    fireEvent.change(champs[0], { target: { value: 'En mars' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }))
+    await waitFor(() => {
+      expect(avancerDialogue).toHaveBeenCalledWith({ intention: 'Vivre la NBA' }, 'En mars', undefined)
+    })
+  })
 })

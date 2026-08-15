@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Hero, type AmbianceHero } from './Hero'
+import { EnteteContext } from '../layout'
 
 const AMBIANCES: AmbianceHero[] = [
   { nom: 'a-un',    alt: 'Première ambiance', focusDesktop: 'center', focusMobile: 'center', largeur: 1280, hauteur: 853 },
@@ -71,5 +72,46 @@ describe('Hero', () => {
     act(() => { vi.advanceTimersByTime(14000) })
     // Première ambiance toujours affichée : aucune rotation.
     expect(indicateurs()[0]).toHaveAttribute('aria-current', 'true')
+  })
+})
+
+describe('Hero — contrat photoActive (header immersif)', () => {
+  beforeEach(() => simulerMouvement({ reduit: false }))
+
+  function rendreAvecContexte(setPhotoActive: (v: boolean) => void) {
+    return render(
+      <EnteteContext.Provider value={{ immersif: true, photoActive: false, setPhotoActive }}>
+        <Hero ambiances={AMBIANCES}><span>contenu</span></Hero>
+      </EnteteContext.Provider>,
+    )
+  }
+
+  it('signale une photo active quand la photo courante est réellement chargée', () => {
+    const setPhotoActive = vi.fn()
+    rendreAvecContexte(setPhotoActive)
+    fireEvent.load(screen.getByRole('img', { name: 'Première ambiance' }))
+    expect(setPhotoActive).toHaveBeenLastCalledWith(true)
+  })
+
+  it('reste en repli (pas de photo active) si la photo courante échoue', () => {
+    const setPhotoActive = vi.fn()
+    rendreAvecContexte(setPhotoActive)
+    fireEvent.error(screen.getByRole('img', { name: 'Première ambiance' }))
+    expect(setPhotoActive).not.toHaveBeenCalledWith(true)
+  })
+
+  it('suit la photo courante : repli au changement, puis actif une fois la nouvelle chargée', () => {
+    const setPhotoActive = vi.fn()
+    rendreAvecContexte(setPhotoActive)
+    fireEvent.load(screen.getByRole('img', { name: 'Première ambiance' }))
+    expect(setPhotoActive).toHaveBeenLastCalledWith(true)
+
+    // On passe à une ambiance pas encore chargée → repli honnête.
+    fireEvent.click(indicateurs()[1])
+    expect(setPhotoActive).toHaveBeenLastCalledWith(false)
+
+    // La nouvelle ambiance courante charge → immersif de nouveau autorisé.
+    fireEvent.load(screen.getByRole('img', { name: 'Deuxième ambiance' }))
+    expect(setPhotoActive).toHaveBeenLastCalledWith(true)
   })
 })

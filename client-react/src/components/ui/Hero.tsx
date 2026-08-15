@@ -35,6 +35,9 @@ export function Hero({ ambiances, children }: { ambiances: AmbianceHero[]; child
   const { setPhotoActive } = useEnteteImmersive()
   const [courant, setCourant] = useState(0)
   const [reduit, setReduit] = useState(prefereMouvementReduit)
+  // Suivi du chargement réel, par ambiance : ce qui a chargé, ce qui a échoué.
+  const [chargees, setChargees] = useState<Set<number>>(() => new Set())
+  const [erreurs, setErreurs] = useState<Set<number>>(() => new Set())
   const minuterie = useRef<number | null>(null)
 
   // On ne monte l'<img> que dans une fenêtre glissante autour de l'ambiance
@@ -43,6 +46,17 @@ export function Hero({ ambiances, children }: { ambiances: AmbianceHero[]; child
   const n = ambiances.length
   const estMontee = (i: number) =>
     i === courant || i === (courant + 1) % n || i === (courant - 1 + n) % n
+
+  const marquerChargee = (i: number) =>
+    setChargees((s) => (s.has(i) ? s : new Set(s).add(i)))
+  const marquerErreur = (i: number) =>
+    setErreurs((s) => (s.has(i) ? s : new Set(s).add(i)))
+
+  // Le header n'est immersif que si la photo RÉELLEMENT VISIBLE est chargée.
+  // Photo courante en erreur ou pas encore prête → repli honnête (header solide).
+  useEffect(() => {
+    setPhotoActive(chargees.has(courant))
+  }, [courant, chargees, setPhotoActive])
 
   // Respecte le réglage système, y compris s'il change en cours de session.
   useEffect(() => {
@@ -111,7 +125,9 @@ export function Hero({ ambiances, children }: { ambiances: AmbianceHero[]; child
             style={{ opacity: i === courant ? 1 : 0, transitionDuration: `${FONDU}ms` }}
             aria-hidden={i === courant ? undefined : true}
           >
-            {estMontee(i) && (
+            {/* Image montée seulement dans la fenêtre glissante et si elle n'a pas
+                échoué — une image cassée n'est jamais laissée visible. */}
+            {estMontee(i) && !erreurs.has(i) && (
               <picture>
                 <source
                   type="image/webp"
@@ -120,11 +136,12 @@ export function Hero({ ambiances, children }: { ambiances: AmbianceHero[]; child
                 />
                 <img
                   src={`/assets/hero/${a.nom}-1280.jpg`}
-                  alt={i === 0 ? a.alt : ''}
+                  alt={i === courant ? a.alt : ''}
                   width={a.largeur}
                   height={a.hauteur}
                   loading={i === 0 ? 'eager' : 'lazy'}
-                  onLoad={i === 0 ? () => setPhotoActive(true) : undefined}
+                  onLoad={() => marquerChargee(i)}
+                  onError={() => marquerErreur(i)}
                   className={`hero-img w-full h-full object-cover ${!reduit && i === courant ? 'hero-zoom' : ''}`}
                   style={{ ['--focus-desktop' as string]: a.focusDesktop, ['--focus-mobile' as string]: a.focusMobile }}
                 />
