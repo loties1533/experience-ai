@@ -168,3 +168,72 @@ describe('ParcoursDetail (rendu complet)', () => {
     expect(blocContenu?.className).toContain('sm:w-auto')
   })
 })
+
+describe('ParcoursDetail (UI-4 — carnet)', () => {
+  it('reformule le contexte avec un libellé français déterministe (jamais l’enum brut)', async () => {
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture() })
+    rendreParcoursDetail()
+    // avecQui « couple » → « En couple » ; durée reformulée.
+    expect(await screen.findByText(/En couple · 2 jours/)).toBeInTheDocument()
+  })
+
+  it('rend la provenance d’un élément vérifié lisible dans les détails, sans l’URL technique', async () => {
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture(null) })
+    rendreParcoursDetail()
+    await screen.findByText('Randonnée')
+    expect(screen.getByText(/Source vérifiée : Foursquare · consultée le 14\/08\/2026/)).toBeInTheDocument()
+    expect(screen.queryByText('https://api.foursquare.com/v3/places/fsq-1')).not.toBeInTheDocument()
+  })
+
+  it('garde Accepter et À remplacer accessibles, et place Retirer dans les détails', async () => {
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture(null) })
+    rendreParcoursDetail()
+    await screen.findByText('Randonnée')
+    expect(screen.getByRole('button', { name: 'Accepter' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'À remplacer' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retirer du parcours' })).toBeInTheDocument()
+  })
+
+  it('demande confirmation avant de retirer un élément (payload inchangé)', async () => {
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture(null) })
+    rendreParcoursDetail()
+    await screen.findByText('Randonnée')
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer du parcours' }))
+    expect(confirmer).toHaveBeenCalled()
+    expect(modifierParcours).not.toHaveBeenCalled()
+    confirmer.mockRestore()
+  })
+
+  it('affiche la plage d’un moment et d’un élément seulement si elles existent réellement', async () => {
+    const parcours = parcoursFixture(null)
+    parcours.timeline[0].plage = { debut: '2026-09-10T09:00:00Z', fin: '2026-09-10T12:00:00Z' }
+    parcours.timeline[0].elements[0].plage = { debut: '2026-09-10T14:00:00Z', fin: '2026-09-10T16:00:00Z' }
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours })
+    rendreParcoursDetail()
+    await screen.findByText('Randonnée')
+    expect(screen.getByText(/le 10\/09\/2026, 09h00–12h00/)).toBeInTheDocument()
+    expect(screen.getByText(/le 10\/09\/2026, 14h00–16h00/)).toBeInTheDocument()
+  })
+
+  it('ne fabrique aucune plage quand elle est absente', async () => {
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture(null) })
+    rendreParcoursDetail()
+    await screen.findByText('Randonnée')
+    // Aucun horaire HHhMM ne doit apparaître si aucune plage n'existe.
+    expect(screen.queryByText(/\d{2}h\d{2}/)).not.toBeInTheDocument()
+  })
+
+  it('traite honnêtement une timeline vide et un moment sans élément', async () => {
+    const vide = parcoursFixture(null); vide.timeline = []
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: vide })
+    const { unmount } = rendreParcoursDetail()
+    expect(await screen.findByText("Ce parcours n'a pas encore de moment.")).toBeInTheDocument()
+    unmount()
+
+    const momentVide = parcoursFixture(null); momentVide.timeline[0].elements = []
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: momentVide })
+    rendreParcoursDetail()
+    expect(await screen.findByText("Ce moment n'a pas encore d'élément.")).toBeInTheDocument()
+  })
+})

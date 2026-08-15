@@ -15,6 +15,20 @@ export function BadgeConfiance({ element }: { element: Element }) {
   return <BadgeStatutMetier statut={element.confiance.niveau} detail={detail} />
 }
 
+// Provenance lisible d'un élément vérifié — accessible SANS survol (le `title` du
+// badge ne suffit pas au tactile). On expose fournisseur + date de consultation,
+// formulation humaine, jamais l'URL technique de `confiance.source`, et jamais
+// une preuve de disponibilité ou de réservation.
+export function ProvenanceElement({ element }: { element: Element }) {
+  if (element.confiance.niveau !== 'verifie') return null
+  const { fournisseur, recupereLe } = element.confiance
+  return (
+    <p className="text-xs text-sauge-dark">
+      Source vérifiée : {fournisseur} · consultée le {new Date(recupereLe).toLocaleDateString('fr-FR')}
+    </p>
+  )
+}
+
 const LIBELLES_LIEN: Record<TypeLienExterne, string> = {
   officiel: 'Voir le site officiel',
   billetterie: 'Ouvrir la billetterie',
