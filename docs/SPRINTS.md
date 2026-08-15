@@ -243,6 +243,28 @@ F4 est désormais **terminé** : B1, B2, C1, C2 et C3 (a, b, c) posés en
 interne, puis D1, D2 et E qui les branchent réellement dans la génération, la
 modification, l'OpenAPI et le front.
 
+### Revue UI-4 — parcours généré et « Mes parcours » (15/08)
+
+PR : https://github.com/loties1533/experience-ai/pull/90
+
+- **Suite de la refonte « Papier & Lumière ».** UI-4 refond visuellement le
+  résultat (ParcoursDetail) et la bibliothèque (MesParcours), sans toucher au
+  métier ni inventer de donnée.
+- **ParcoursDetail** : contexte reformulé en français déterministe ; plages de
+  moment et d'élément affichées uniquement si réellement présentes ; budget en
+  bandeau à filets (garanties honnêtes inchangées) ; moments en sections,
+  éléments en entrées crème à filet — fin du carte-dans-carte ; provenance d'un
+  élément vérifié lisible dans les détails (fournisseur + date, jamais l'URL) ;
+  Retirer déplacé dans les détails, Accepter/À remplacer hiérarchisés ; composer
+  de modification ancré après la timeline (ni sticky ni fixed).
+- **MesParcours** : bibliothèque sobre à filets, intention entière, visibilité
+  explicite (mot + icône, accent neutre distinct de la confiance), suppression
+  discrète avec confirmation conservée. `ResumeParcours` respecté.
+- **Garanties** : aucun changement backend/API/store/domaine ; aucune donnée
+  inventée ; pas de menu « ⋯ ». Suite complète verte (2197), typecheck
+  serveur+client, lint, build, `diff --check`, plus une vérification visuelle
+  desktop/mobile.
+
 ### Revue UI-3 — dialogue « Papier & Lumière » (15/08)
 
 PR : https://github.com/loties1533/experience-ai/pull/89
