@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
 import { Bouton } from '../components/ui/Bouton'
-import { ImageContextuelle } from '../components/ui/ImageContextuelle'
+import { Hero, type AmbianceHero } from '../components/ui/Hero'
 import { BanniereStatutMetier } from '../components/ui/StatutMetier'
 import { useAuthStore, useDialogueStore } from '../store'
 import { avancerDialogue, genererParcours, type Brief } from '../lib/api'
@@ -18,6 +18,19 @@ const SUGGESTIONS = [
   'Un week-end surprise en amoureux',
   'Une soirée sympa ce soir avec 2 potes',
   'Un festival techno entre amis',
+]
+
+// Ambiances du hero — plusieurs expériences derrière une question stable. Les
+// `alt` décrivent une émotion, jamais un lieu présenté comme réel (loi produit).
+// Provenance et licences : public/assets/hero/PROVENANCE.md.
+const AMBIANCES_HERO: AmbianceHero[] = [
+  { nom: 'hero-1-sport',      alt: "L'énergie d'une salle comble, lumières en mouvement", focusDesktop: 'center',       focusMobile: 'center',     largeur: 1280, hauteur: 853 },
+  { nom: 'hero-2-amis',       alt: 'Des amis réunis sur un toit, en fin de journée',       focusDesktop: 'center 40%', focusMobile: 'center 45%', largeur: 1280, hauteur: 720 },
+  { nom: 'hero-3-concert',    alt: 'Une foule, mains levées, sous les lumières',           focusDesktop: 'center 42%', focusMobile: 'center 40%', largeur: 1280, hauteur: 853 },
+  { nom: 'hero-4-romantisme', alt: 'Deux personnes se tiennent la main pendant un dîner',  focusDesktop: 'center 60%', focusMobile: 'center 58%', largeur: 1280, hauteur: 1920 },
+  { nom: 'hero-5-aventure',   alt: 'Des amis autour d’un feu de camp, à la tombée du soir',focusDesktop: 'center 55%', focusMobile: 'center 52%', largeur: 1280, hauteur: 720 },
+  { nom: 'hero-6-culture',    alt: 'Une personne face à une grande installation',          focusDesktop: 'center 42%', focusMobile: 'left 42%',   largeur: 1280, hauteur: 853 },
+  { nom: 'hero-7-evasion',    alt: 'Des falaises et l’océan à perte de vue',               focusDesktop: 'center 42%', focusMobile: 'center 45%', largeur: 1280, hauteur: 1707 },
 ]
 
 /** L'envie écrite avant connexion, gardée le temps de l'aller-retour. */
@@ -96,92 +109,120 @@ export default function Envie() {
     }
   }
 
-  return (
-    <PageLayout piedDePage={false}>
-      <Seo title="Experience AI — Qu'as-tu envie de vivre ?" />
-      <section className="conteneur-etroit pt-6 sm:pt-10">
-        {/* Bande éditoriale : pose l'univers voyage avant le premier mot tapé,
-            hauteur bornée pour que le formulaire reste visible sans scroll. */}
-        <ImageContextuelle
-          alt="Bande éditoriale d'ouverture — sera remplacée par une photographie réelle du produit"
-          ratio="hero"
-          prioritaire
-          className="max-h-40 sm:max-h-56"
-        />
+  // Une SEULE logique de saisie (`saisie`/`envoyer`/`enCours`/`generationEnCours`),
+  // deux positions visuelles : dans le hero au premier contact, puis dans la zone
+  // de dialogue dès qu'un échange a commencé — jamais les deux à la fois.
+  const composer = (
+    <form
+      className="w-full flex gap-2"
+      onSubmit={(e) => { e.preventDefault(); envoyer(saisie) }}
+    >
+      <label htmlFor="envie" className="sr-only">Décris ton envie</label>
+      <input
+        id="envie"
+        value={saisie}
+        onChange={(e) => setSaisie(e.target.value)}
+        placeholder={messages.length === 0 ? 'Ex. : voir un match NBA avec mon frère…' : 'Réponds ou corrige ici…'}
+        className="flex-1 min-w-0 px-4 py-3.5 rounded-xl bg-white text-encre shadow-card border border-sable
+                   placeholder:text-brume focus:outline-none focus:ring-2 focus:ring-laiton"
+        maxLength={500}
+        disabled={generationEnCours}
+      />
+      <Bouton type="submit" className="!py-3.5 shadow-card" disabled={enCours || generationEnCours || !saisie.trim()}>
+        Envoyer
+      </Bouton>
+    </form>
+  )
 
-        <h1 className="text-3xl sm:text-5xl font-bold text-encre text-center leading-tight mt-6 sm:mt-8">
-          Qu'as-tu envie de <span className="text-terracotta">vivre</span> ?
+  return (
+    <PageLayout piedDePage={false} heroImmersif>
+      <Seo title="Experience AI — Qu'as-tu envie de vivre ?" />
+
+      {/* Hero immersif : plusieurs expériences derrière une question stable. Au
+          premier contact, le hero porte le point d'entrée (champ + suggestions). */}
+      <Hero ambiances={AMBIANCES_HERO}>
+        <h1 className="font-heading font-semibold text-white text-4xl sm:text-5xl leading-[1.08] drop-shadow-[0_2px_12px_rgba(23,18,14,0.45)]">
+          Qu'as-tu envie de vivre&nbsp;?
         </h1>
-        <p className="text-brume text-center mt-4 max-w-lg mx-auto">
-          Décris ton envie — pas une destination. On construit ensemble un parcours
-          de moments cohérents, que tu pourras ajuster élément par élément.
+        <p className="mt-4 text-ivoire/90 text-base sm:text-lg drop-shadow-[0_1px_8px_rgba(23,18,14,0.5)]">
+          Décris ton envie — pas une destination.
         </p>
 
-        {/* Suggestions au premier contact */}
         {messages.length === 0 && (
-          <div className="flex flex-wrap justify-center gap-2 mt-8">
-            {SUGGESTIONS.map((s) => (
-              <button key={s} className="chip" onClick={() => envoyer(s)}>{s}</button>
-            ))}
-          </div>
+          <>
+            <div className="mt-7 w-full max-w-xl">{composer}</div>
+            {/* Suggestions au premier contact — défilables horizontalement sur mobile */}
+            <div className="hero-chips mt-5 w-full max-w-xl">
+              {SUGGESTIONS.map((s) => (
+                <button key={s} className="chip whitespace-nowrap shrink-0" onClick={() => envoyer(s)}>{s}</button>
+              ))}
+            </div>
+          </>
         )}
+      </Hero>
 
-        {/* Fil du dialogue */}
-        {messages.length > 0 && (
-          <div className="carte mt-8 p-4 sm:p-6 space-y-3 max-h-[50vh] overflow-y-auto" role="log" aria-live="polite">
-            {messages.map((m) => (
-              <div key={m.id} className={`msg-enter flex ${m.de === 'utilisateur' ? 'justify-end' : 'justify-start'}`}>
-                <div className={m.de === 'utilisateur' ? 'bulle-utilisateur max-w-[85%]' : 'bulle-produit max-w-[85%]'}>
-                  {m.texte}
+      {/* Dialogue et suite du flux — sous le hero, quand il y a quelque chose à montrer */}
+      {(messages.length > 0 || estComplet || generationEnCours || erreurGeneration) && (
+        <section className="conteneur-etroit py-8 space-y-4">
+          {/* Fil du dialogue */}
+          {messages.length > 0 && (
+            <div className="carte p-4 sm:p-6 space-y-3 max-h-[60vh] overflow-y-auto" role="log" aria-live="polite">
+              {messages.map((m) => (
+                <div key={m.id} className={`msg-enter flex ${m.de === 'utilisateur' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={m.de === 'utilisateur' ? 'bulle-utilisateur max-w-[85%]' : 'bulle-produit max-w-[85%]'}>
+                    {m.texte}
+                  </div>
                 </div>
-              </div>
-            ))}
-            {enCours && (
-              <div className="flex justify-start">
-                <div className="bulle-produit inline-flex gap-1.5" aria-label="Le produit réfléchit">
-                  <span className="typing-dot w-2 h-2 rounded-full bg-brume inline-block" />
-                  <span className="typing-dot w-2 h-2 rounded-full bg-brume inline-block" />
-                  <span className="typing-dot w-2 h-2 rounded-full bg-brume inline-block" />
+              ))}
+              {enCours && (
+                <div className="flex justify-start">
+                  <div className="bulle-produit inline-flex gap-1.5" aria-label="Le produit réfléchit">
+                    <span className="typing-dot w-2 h-2 rounded-full bg-brume inline-block" />
+                    <span className="typing-dot w-2 h-2 rounded-full bg-brume inline-block" />
+                    <span className="typing-dot w-2 h-2 rounded-full bg-brume inline-block" />
+                  </div>
                 </div>
-              </div>
-            )}
-            <div ref={finListe} />
-          </div>
-        )}
+              )}
+              <div ref={finListe} />
+            </div>
+          )}
 
-        {/* Confirmation du brief (doc 05, étape 4 : rien ne se génère sans accord) */}
-        {estComplet && !generationEnCours && !erreurGeneration && (
-          <div className="carte mt-4 p-4 flex flex-col sm:flex-row items-center gap-3 border-laiton/40">
-            <p className="text-sm text-encre-light flex-1">
-              Le brief te convient ? Tu peux encore corriger en écrivant ci-dessous.
-            </p>
-            <Bouton onClick={generer} className="whitespace-nowrap">
-              Construire mon parcours
-            </Bouton>
-          </div>
-        )}
+          {/* Champ de réponse — immédiatement accessible sous le fil, pas besoin de
+              remonter le hero pour répondre à une clarification. Même logique. */}
+          {messages.length > 0 && !generationEnCours && composer}
 
-        {/* Le serveur ne renvoie qu'un résultat final (pas d'étapes intermédiaires
-            exposées à l'API) : on reste honnête sur ce qu'on sait — le parcours
-            se construit — sans mimer une progression par lots qu'on n'observe pas. */}
-        {generationEnCours && (
-          <div className="carte mt-4 p-6 text-center" role="status" aria-live="polite">
-            <span className="inline-flex w-10 h-10 rounded-full bg-terracotta/10 items-center justify-center motion-safe:animate-pulse">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-terracotta">
-                <path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
-              </svg>
-            </span>
-            <p className="titre-section mt-3">Construction du parcours…</p>
-            <p className="texte-secondaire mt-1">
-              Moments, justifications, temps libres : quelques secondes, on ne quitte pas la page.
-            </p>
-          </div>
-        )}
+          {/* Confirmation du brief (doc 05, étape 4 : rien ne se génère sans accord) */}
+          {estComplet && !generationEnCours && !erreurGeneration && (
+            <div className="carte p-4 flex flex-col sm:flex-row items-center gap-3 border-laiton/40">
+              <p className="text-sm text-encre-light flex-1">
+                Le brief te convient ? Tu peux encore corriger en écrivant ci-dessus.
+              </p>
+              <Bouton onClick={generer} className="whitespace-nowrap">
+                Construire mon parcours
+              </Bouton>
+            </div>
+          )}
 
-        {/* Refus (422) ou panne technique (503) — jamais réduits à un toast qui disparaît. */}
-        {erreurGeneration && (
-          <div className="mt-4">
+          {/* Le serveur ne renvoie qu'un résultat final (pas d'étapes intermédiaires
+              exposées à l'API) : on reste honnête sur ce qu'on sait — le parcours
+              se construit — sans mimer une progression par lots qu'on n'observe pas. */}
+          {generationEnCours && (
+            <div className="carte p-6 text-center" role="status" aria-live="polite">
+              <span className="inline-flex w-10 h-10 rounded-full bg-terracotta/10 items-center justify-center motion-safe:animate-pulse">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                  strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-terracotta">
+                  <path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
+                </svg>
+              </span>
+              <p className="titre-section mt-3">Construction du parcours…</p>
+              <p className="texte-secondaire mt-1">
+                Moments, justifications, temps libres : quelques secondes, on ne quitte pas la page.
+              </p>
+            </div>
+          )}
+
+          {/* Refus (422) ou panne technique (503) — jamais réduits à un toast qui disparaît. */}
+          {erreurGeneration && (
             <BanniereStatutMetier
               statut={erreurGeneration.statut}
               action={
@@ -192,37 +233,15 @@ export default function Envie() {
             >
               {erreurGeneration.message}
             </BanniereStatutMetier>
-          </div>
-        )}
+          )}
 
-        {/* Saisie */}
-        <form
-          className="mt-4 flex gap-2"
-          onSubmit={(e) => { e.preventDefault(); envoyer(saisie) }}
-        >
-          <label htmlFor="envie" className="sr-only">Décris ton envie</label>
-          <input
-            id="envie"
-            value={saisie}
-            onChange={(e) => setSaisie(e.target.value)}
-            placeholder={messages.length === 0 ? 'Ex. : revoir les lieux de mon enfance avec ma sœur…' : 'Réponds ou corrige ici…'}
-            className="flex-1 min-w-0 px-4 py-3 rounded-xl border border-encre/15 bg-white text-encre
-                       placeholder:text-brume transition-colors
-                       focus:border-laiton-dark focus:outline-none focus:ring-2 focus:ring-laiton/30"
-            maxLength={500}
-            disabled={generationEnCours}
-          />
-          <Bouton type="submit" disabled={enCours || generationEnCours || !saisie.trim()}>
-            Envoyer
-          </Bouton>
-        </form>
-
-        {messages.length > 0 && !generationEnCours && (
-          <button className="text-xs text-brume hover:text-encre mt-3 underline cursor-pointer" onClick={reinitialiser}>
-            Repartir d'une nouvelle envie
-          </button>
-        )}
-      </section>
+          {messages.length > 0 && !generationEnCours && (
+            <button className="text-xs text-brume hover:text-encre underline cursor-pointer" onClick={reinitialiser}>
+              Repartir d'une nouvelle envie
+            </button>
+          )}
+        </section>
+      )}
     </PageLayout>
   )
 }

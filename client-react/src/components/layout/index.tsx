@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore, useDialogueStore } from '../../store'
 import { logout } from '../../lib/api'
@@ -11,12 +11,50 @@ const LIENS = [
   { vers: '/preferences', libelle: 'Préférences', authRequise: true },
 ]
 
+// Contexte d'en-tête immersive : coordonne le header (dans le layout) et le hero
+// (dans la page). Le mode transparent n'existe QUE si la page est immersive ET
+// qu'une vraie photographie est réellement chargée — jamais au-dessus du repli.
+interface EnteteImmersive {
+  immersif: boolean
+  photoActive: boolean
+  setPhotoActive: (v: boolean) => void
+}
+export const EnteteContext = createContext<EnteteImmersive>({
+  immersif: false,
+  photoActive: false,
+  setPhotoActive: () => {},
+})
+export function useEnteteImmersive() {
+  return useContext(EnteteContext)
+}
+
 export function Header() {
   const { user, clearAuth } = useAuthStore()
   const { reinitialiser } = useDialogueStore()
+  const { immersif, photoActive } = useEnteteImmersive()
   const [menuOuvert, setMenuOuvert] = useState(false)
+  const [defile, setDefile] = useState(false)
   const queryClient = useQueryClient()
   const emplacement = useLocation()
+
+  // Le header devient solide dès que le hero est largement dépassé.
+  useEffect(() => {
+    if (!immersif) return
+    let brut = 0
+    const surScroll = () => {
+      if (brut) return
+      brut = requestAnimationFrame(() => {
+        setDefile(window.scrollY > window.innerHeight * 0.6)
+        brut = 0
+      })
+    }
+    surScroll()
+    window.addEventListener('scroll', surScroll, { passive: true })
+    return () => window.removeEventListener('scroll', surScroll)
+  }, [immersif])
+
+  // Transparent uniquement sur une page immersive, avec photo chargée, en haut.
+  const transparent = immersif && photoActive && !defile
 
   const gererDeconnexion = async () => {
     try { await logout() } catch { /* on déconnecte en local même si l'appel serveur échoue */ }
@@ -26,26 +64,43 @@ export function Header() {
     setMenuOuvert(false)
   }
 
-  const classeLien = (vers: string, mobile = false) =>
-    `${mobile ? 'px-4 py-3' : 'px-4 py-1.5'} rounded-xl text-sm font-medium transition-colors ${
-      emplacement.pathname === vers
-        ? 'text-white bg-terracotta-dark'
-        : 'text-brume hover:text-encre hover:bg-sable-dark'
-    }`
+  const classeLien = (vers: string, mobile = false) => {
+    const actif = emplacement.pathname === vers
+    if (mobile) {
+      return `px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+        actif ? 'text-encre bg-sable/60' : 'text-brume hover:text-encre hover:bg-sable/40'
+      }`
+    }
+    const base = 'px-1 py-1 text-sm font-medium border-b-2 transition-colors'
+    if (transparent) {
+      return `${base} ${actif ? 'border-laiton text-white' : 'border-transparent text-ivoire/85 hover:text-white'}`
+    }
+    return `${base} ${actif ? 'border-laiton text-encre' : 'border-transparent text-brume hover:text-encre'}`
+  }
 
   return (
-    <header className="sticky top-0 z-40 bg-white/70 backdrop-blur-md border-b border-encre/10">
+    <header
+      className={`fixed top-0 inset-x-0 z-40 transition-colors duration-200 ${
+        transparent
+          ? 'bg-transparent'
+          : 'bg-ivoire/95 backdrop-blur-md border-b border-sable shadow-[0_1px_0_rgba(46,36,27,0.04)]'
+      }`}
+    >
       <div className="conteneur h-16 flex items-center justify-between gap-4">
         <Link to="/" className="flex items-center gap-2.5" onClick={() => setMenuOuvert(false)}>
-          <Logo size={40} className="text-laiton" />
+          <Logo size={38} className="text-laiton" />
           <div className="flex flex-col">
-            <span className="font-heading font-bold text-encre text-xl leading-none tracking-tight">Experience AI</span>
-            <span className="hidden sm:block text-[10px] text-laiton-dark font-bold uppercase tracking-widest mt-1">Qu'as-tu envie de vivre ?</span>
+            <span className={`font-heading font-semibold text-xl leading-none tracking-tight ${transparent ? 'text-white' : 'text-encre'}`}>
+              Experience AI
+            </span>
+            <span className={`hidden sm:block text-[10px] font-bold uppercase tracking-widest mt-1 whitespace-nowrap ${transparent ? 'text-ivoire/80' : 'text-laiton-dark'}`}>
+              Qu'as-tu envie de vivre ?
+            </span>
           </div>
         </Link>
 
-        {/* Navigation — bureau */}
-        <nav className="hidden sm:flex items-center gap-1 bg-sable-dark/60 p-1 rounded-xl">
+        {/* Navigation — bureau : liens sobres, actif souligné laiton (plus de capsule) */}
+        <nav className="hidden md:flex items-center gap-6">
           {LIENS.filter((l) => !l.authRequise || user).map((l) => (
             <Link key={l.vers} to={l.vers} className={classeLien(l.vers)}>
               {l.libelle}
@@ -53,46 +108,58 @@ export function Header() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {user ? (
-            <div className="hidden sm:flex items-center gap-3 pl-3 border-l border-encre/10">
-              <span className="text-xs font-semibold text-encre">{user.name ?? user.email}</span>
+            <div className={`hidden md:flex items-center gap-3 pl-3 border-l ${transparent ? 'border-ivoire/30' : 'border-sable'}`}>
+              <span className={`text-xs font-semibold ${transparent ? 'text-white' : 'text-encre'}`}>{user.name ?? user.email}</span>
               <button
                 onClick={gererDeconnexion}
                 aria-label="Déconnexion"
-                className="w-9 h-9 rounded-xl bg-corail/10 text-corail border border-corail/20
-                           hover:bg-corail hover:text-white transition-colors flex items-center justify-center cursor-pointer"
+                className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-colors cursor-pointer ${
+                  transparent
+                    ? 'text-white border-ivoire/40 hover:bg-white/10'
+                    : 'text-corail border-corail/25 hover:bg-corail hover:text-white'
+                }`}
               >
                 <IconeDeconnexion />
               </button>
             </div>
           ) : (
-            <Link to="/login" className="hidden sm:inline-flex btn-primaire text-sm px-5 py-2">
+            <Link
+              to="/login"
+              className={`hidden md:inline-flex items-center rounded-full border px-4 py-1.5 text-sm font-semibold transition-colors ${
+                transparent
+                  ? 'text-white border-ivoire/50 hover:bg-white/10'
+                  : 'text-encre border-sable hover:border-laiton'
+              }`}
+            >
               Connexion
             </Link>
           )}
 
           <button
             onClick={() => setMenuOuvert((o) => !o)}
-            className="sm:hidden w-9 h-9 rounded-xl bg-sable-dark border border-encre/10
-                       flex items-center justify-center text-brume hover:text-encre transition-colors cursor-pointer"
+            className={`md:hidden w-10 h-10 rounded-xl border flex items-center justify-center transition-colors cursor-pointer ${
+              transparent ? 'text-white border-ivoire/40 hover:bg-white/10' : 'text-encre border-sable hover:bg-sable/50'
+            }`}
             aria-label="Menu"
+            aria-expanded={menuOuvert}
           >
             <IconeMenu ouvert={menuOuvert} />
           </button>
         </div>
       </div>
 
-      {/* Menu mobile */}
+      {/* Menu mobile — surface ivoire pleine, jamais transparent sur la photo */}
       {menuOuvert && (
-        <div className="sm:hidden bg-white/95 backdrop-blur-md border-t border-encre/10">
+        <div className="md:hidden bg-ivoire border-t border-sable">
           <nav className="flex flex-col gap-1 p-4">
             {LIENS.filter((l) => !l.authRequise || user).map((l) => (
               <Link key={l.vers} to={l.vers} onClick={() => setMenuOuvert(false)} className={classeLien(l.vers, true)}>
                 {l.libelle}
               </Link>
             ))}
-            <div className="h-px bg-encre/10 my-1" />
+            <div className="h-px bg-sable my-1" />
             {user ? (
               <button
                 onClick={gererDeconnexion}
@@ -135,27 +202,47 @@ function IconeMenu({ ouvert }: { ouvert: boolean }) {
   )
 }
 
-export function PageLayout({ children, piedDePage = true }: { children: React.ReactNode; piedDePage?: boolean }) {
+/**
+ * `heroImmersif` : la page fournit un hero photographique plein-cadre. Le header
+ * peut alors passer en mode transparent (si une vraie photo se charge) et le
+ * contenu démarre sous le header. Toute autre page reste en header solide ivoire
+ * dès le premier rendu, sans padding négatif ni flash.
+ */
+export function PageLayout({
+  children,
+  piedDePage = true,
+  heroImmersif = false,
+}: {
+  children: React.ReactNode
+  piedDePage?: boolean
+  heroImmersif?: boolean
+}) {
+  const [photoActive, setPhotoActive] = useState(false)
+
   return (
-    <div className="min-h-screen aurora">
-      <Header />
-      <main className="conteneur py-6 relative z-10">{children}</main>
-      {/* Absent sur l'écran de dialogue : longueur inutile sur mobile alors que
-          le formulaire de saisie doit rester la dernière chose atteignable. */}
-      {piedDePage && (
-        <footer className="mt-24 border-t border-encre/10 bg-sable-dark/60">
-          <div className="conteneur py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
-              <Logo size={28} className="text-laiton" />
-              <span className="font-heading font-bold text-encre">Experience AI</span>
+    <EnteteContext.Provider value={{ immersif: heroImmersif, photoActive, setPhotoActive }}>
+      <div className="min-h-screen aurora">
+        <Header />
+        {heroImmersif ? (
+          <main className="relative z-10">{children}</main>
+        ) : (
+          <main className="conteneur pt-20 pb-10 relative z-10">{children}</main>
+        )}
+        {piedDePage && (
+          <footer className="mt-24 border-t border-sable bg-creme">
+            <div className="conteneur py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Logo size={28} className="text-laiton" />
+                <span className="font-heading font-semibold text-encre">Experience AI</span>
+              </div>
+              <p className="text-brume text-sm text-center sm:text-left max-w-md">
+                Une envie, un contexte — et un parcours cohérent de moments, modifiable élément par élément.
+              </p>
+              <p className="text-brume text-xs">© 2026 Experience AI</p>
             </div>
-            <p className="text-brume text-sm text-center sm:text-left max-w-md">
-              Une envie, un contexte — et un parcours cohérent de moments, modifiable élément par élément.
-            </p>
-            <p className="text-brume text-xs">© 2026 Experience AI</p>
-          </div>
-        </footer>
-      )}
-    </div>
+          </footer>
+        )}
+      </div>
+    </EnteteContext.Provider>
   )
 }

@@ -97,6 +97,15 @@
   .scroll-hide { scrollbar-width: none; }
   .scroll-hide::-webkit-scrollbar { display: none; }
 
+  /* Hero — point focal adapté à l'écran (évite de couper le sujet). */
+  .hero-img { object-position: var(--focus-desktop, center); }
+
+  /* Ligne de suggestions du hero : défilable horizontalement sur mobile. */
+  .hero-chips {
+    @apply flex gap-2 overflow-x-auto scroll-hide max-w-full
+           justify-start sm:flex-wrap sm:justify-center sm:overflow-visible;
+  }
+
   /* Conteneurs — largeur/gutters partagés (remplace les max-w-* mx-auto px-4
      dupliqués entre Header, PageLayout et les pages). */
   .conteneur {
@@ -146,6 +155,17 @@
   50%      { opacity: 1; }
 }
 
+/* Slow zoom du hero — extrêmement léger (≤ 3 %), quasi imperceptible. */
+.hero-zoom { animation: heroZoom 12s ease-out both; }
+@keyframes heroZoom {
+  from { transform: scale(1); }
+  to   { transform: scale(1.03); }
+}
+
+@media (max-width: 767px) {
+  .hero-img { object-position: var(--focus-mobile, center); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .typing-dot, .msg-enter, .skeleton { animation: none; }
+  .typing-dot, .msg-enter, .skeleton, .hero-zoom { animation: none; }
 }

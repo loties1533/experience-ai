@@ -48,12 +48,13 @@ describe('Envie', () => {
     expect(avancerDialogue).not.toHaveBeenCalled()
   })
 
-  it('affiche les suggestions au premier contact et une bande éditoriale sans photo réelle', () => {
+  it('affiche le hero immersif et les suggestions au premier contact', () => {
     rendreEnvie()
     expect(screen.getByText('Vivre la NBA pendant 3 semaines')).toBeInTheDocument()
-    // Aucune vraie photo disponible dans le dépôt à ce stade : le repli graphique s'affiche
-    // (le seul <img> possible serait la bande éditoriale — le logo, lui, est un svg role="img").
-    expect(screen.queryByRole('img', { name: /bande éditoriale/i })).not.toBeInTheDocument()
+    // Le hero rend une vraie photographie : la première ambiance porte l'alt d'émotion.
+    expect(screen.getByRole('img', { name: /énergie d'une salle comble/i })).toBeInTheDocument()
+    // Le titre reste centré sur l'intention, jamais sur une destination.
+    expect(screen.getByRole('heading', { name: /qu'as-tu envie de vivre/i })).toBeInTheDocument()
   })
 
   it('affiche un état de construction honnête pendant la génération, sans inventer d’étapes', async () => {
@@ -123,5 +124,27 @@ describe('Envie', () => {
   it('n’affiche pas le pied de page — longueur inutile sur mobile alors que le formulaire doit rester la dernière chose atteignable', () => {
     rendreEnvie()
     expect(screen.queryByText('© 2026 Experience AI')).not.toBeInTheDocument()
+  })
+
+  it('offre un champ de réponse dans la zone dialogue une fois l’échange commencé, avec la même logique d’envoi', async () => {
+    // Dialogue déjà commencé : le champ ne doit pas rester coincé dans le hero.
+    useDialogueStore.setState({
+      messages: [{ id: 'm1', de: 'produit', texte: 'Tu pars quand ?' }],
+      brief: { intention: 'Vivre la NBA' },
+    })
+    vi.mocked(avancerDialogue).mockResolvedValue({
+      brief: { intention: 'Vivre la NBA' }, estComplet: false, reponse: 'Noté.',
+    })
+    rendreEnvie()
+
+    // Un seul champ « Décris ton envie » (pas de doublon hero + dialogue).
+    const champs = screen.getAllByRole('textbox', { name: 'Décris ton envie' })
+    expect(champs).toHaveLength(1)
+
+    fireEvent.change(champs[0], { target: { value: 'En mars' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer' }))
+    await waitFor(() => {
+      expect(avancerDialogue).toHaveBeenCalledWith({ intention: 'Vivre la NBA' }, 'En mars', undefined)
+    })
   })
 })
