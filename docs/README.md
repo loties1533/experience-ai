@@ -23,21 +23,23 @@
 | 05 | [product-journey](05-product-journey.md) | ✅ |
 | 06 | [modele-conceptuel](06-modele-conceptuel.md) | ✅ |
 | 07 | [capacites-produit](07-capacites-produit.md) | ✅ |
-| 08 | [architecture-ia](08-architecture-ia.md) | 🟡 actuel + cible en évolution |
-| 09 | [roadmap](09-roadmap.md) | 🟡 chantier fiabilité actif — F0→F3 terminés, F4 en cours |
+| 08 | [architecture-ia](08-architecture-ia.md) | ✅ architecture IA actuelle et principes d’évolution |
+| 09 | [roadmap](09-roadmap.md) | ✅ chantier fiabilité F0→F9 terminé ; suites produit à valider |
 | 10 | [business](10-business.md) | ✅ |
 | 11 | [decisions (index ADR)](11-decisions.md) | ✅ |
 | 12 | [glossaire](12-glossaire.md) | ✅ |
 | 13 | [principes-evolution](13-principes-evolution.md) | ✅ |
-| 14 | [fiabilite-parcours](14-fiabilite-parcours.md) | 🟡 chantier F4 en cours (C1/C2 internes, C3 à venir) |
+| 14 | [fiabilite-parcours](14-fiabilite-parcours.md) | ✅ chantier F0→F9 terminé ; limites restantes documentées |
+| 15 | [direction-ui](15-direction-ui.md) | ✅ historique UI-A→UI-D ; direction actuelle UI-1→UI-5 |
+| 16 | [recette-f9](16-recette-f9.md) | ✅ matrice de capacités et garanties de sortie |
 | 17 | [dettes et backlog](17-finitions-techniques.md) | 🟡 registre canonique courant |
 
-**Suivi d'exécution :** [SPRINTS](SPRINTS.md) — historique R1 → R8 et suivi
-des sprints de fiabilité F0 → F9.
+**Suivi d'exécution :** [SPRINTS](SPRINTS.md) — historique R1 → R8, fiabilité
+F0 → F9, préparation de génération et refontes UI.
 
 **Docs vivants :** [questions-ouvertes](questions-ouvertes.md) ·
 [audit F0 TripGenie → Experience AI](audits/tripgenie-vers-experience-ai.md) ·
-[decisions/ (ADR-0001 → 0008)](decisions/)
+[decisions/ (ADR-0001 → 0009)](decisions/)
 
 ## Rôle de chaque source (pour ne pas dupliquer)
 

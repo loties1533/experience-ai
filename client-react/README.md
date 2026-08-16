@@ -1,79 +1,104 @@
-# Experience AI — Frontend React
+# Experience AI — interface React
 
-Interface React pour Experience AI. Stack : **Vite + React 18 + TypeScript + Tailwind CSS + Zustand + React Query**.
+Interface de cadrage, de génération et de modification des parcours Experience
+AI. Stack : **Vite + React 18 + TypeScript + Tailwind CSS + Zustand + React
+Query**.
 
-## Installation
+Le produit commence par une envie, jamais par une destination imposée. Le
+client accompagne le dialogue jusqu'au brief confirmé, affiche le parcours
+construit et permet ensuite de le modifier, de le retrouver et de le partager.
+
+## Démarrage
+
+Depuis la racine du dépôt :
 
 ```bash
-# 1. Depuis la racine du projet TripGenie
-cd client-react
-
-# 2. Installer les dépendances
 npm install
+npm run dev:all
+```
 
-# 3. Lancer en développement (proxifie automatiquement vers localhost:3000)
+Le client tourne sur **http://localhost:3001** et Vite proxifie `/api/*` vers
+l'API Express sur **http://localhost:3000**.
+
+Pour lancer uniquement le client :
+
+```bash
+cd client-react
+npm install
 npm run dev
 ```
 
-Le frontend tourne sur **http://localhost:3001** et proxifie `/api/*` vers le backend Express sur le port 3000.
+## Écrans
+
+| Route | Écran | Rôle |
+|---|---|---|
+| `/` | `Envie` | Exprimer une envie, dialoguer, confirmer le brief et lancer la génération |
+| `/parcours` | `MesParcours` | Retrouver les parcours enregistrés |
+| `/parcours/:id` | `ParcoursDetail` | Lire et modifier un parcours élément par élément |
+| `/partage/:jeton` | `ParcoursPartage` | Consulter et commenter un parcours partagé, sans compte |
+| `/preferences` | `Preferences` | Gérer la mémoire simple utilisée par les générations suivantes |
+| `/login` | `Login` | Se connecter ou créer un compte |
 
 ## Structure
 
-```
+```text
 src/
 ├── components/
-│   ├── chat/
-│   │   ├── ChatWidget.tsx      ← Chat IA onboarding (Zustand)
-│   │   └── ModifyChat.tsx      ← Chat de modification post-génération (agentique)
-│   ├── results/
-│   │   ├── PackResults.tsx     ← Affichage complet du pack voyage
-│   │   ├── PackSkeleton.tsx    ← Skeleton loader pendant la génération
-│   │   ├── TripMap.tsx         ← Carte Leaflet (activités + hôtels géolocalisés)
-│   │   └── VoteButtons.tsx     ← Boutons vote collectif (mode groupe)
-│   ├── layout/
-│   │   └── index.tsx           ← Header + PageLayout
-│   └── ui/
-│       ├── index.tsx           ← Atomes réutilisables (Badge, Stars, Skeleton…)
-│       ├── GenerationLoader.tsx ← Loader animé pendant la génération IA
-│       └── Logo.tsx            ← Logo TripGenie
+│   ├── layout/                 # Header et structure de page
+│   ├── ui/                     # Boutons, états, hero, statuts métier, logo
+│   ├── AvisGroupe.tsx
+│   ├── ConfianceElement.tsx    # Confiance et provenance d'un élément
+│   ├── PanneauPartage.tsx
+│   └── Seo.tsx
 ├── pages/
-│   ├── Home.tsx               ← Hero + Chat onboarding + Résultats
-│   ├── Trips.tsx              ← Liste des voyages sauvegardés
-│   ├── TripDetail.tsx         ← Voyage partagé (lien public /share/:id)
-│   ├── Login.tsx              ← Connexion / Inscription
-│   └── Preferences.tsx        ← Préférences utilisateur (mode, ville, devise)
-├── store/
-│   └── index.ts               ← Zustand stores : useSearchStore · useChatStore · useAuthStore · useThemeStore
+│   ├── Envie.tsx
+│   ├── MesParcours.tsx
+│   ├── ParcoursDetail.tsx
+│   ├── ParcoursPartage.tsx
+│   ├── Preferences.tsx
+│   └── Login.tsx
 ├── lib/
-│   └── api.ts                 ← Toutes les requêtes vers l'API Express
-├── App.tsx                    ← Router + Providers
-├── main.tsx                   ← Point d'entrée React
-└── index.css                  ← Tailwind + design tokens + composants CSS
+│   ├── api.ts                  # Adaptateur HTTP et types partagés avec le serveur
+│   └── erreurAffichage.ts      # Refus métier, panne et erreurs génériques
+├── store/
+│   └── index.ts                # Dialogue en cours et utilisateur connecté
+├── App.tsx                     # Routes et fournisseurs React Query
+├── main.tsx
+└── index.css                   # Design « Papier & Lumière »
 ```
 
-## Stores Zustand
+## État local
 
-| Store | Rôle |
-|-------|------|
-| `useSearchStore` | État du formulaire de recherche + pack généré (persist destination) |
-| `useChatStore` | État du chatbot onboarding — messages, données extraites, quiz mode |
-| `useAuthStore` | Utilisateur connecté (persist, cookie httpOnly côté serveur) |
-| `useThemeStore` | Thème dark/light (persist) |
+- `useDialogueStore` conserve le fil, le brief partiel et l'état transitoire de
+  clarification. Une valeur candidate n'est jamais présentée comme acquise.
+- `useAuthStore` conserve uniquement l'utilisateur affiché. Le jeton
+  d'authentification reste dans un cookie `httpOnly`, inaccessible au code du
+  navigateur.
+- React Query porte les données serveur : parcours, partage et préférences.
 
-## Build production
+## Contrats d'affichage
+
+- `422` = refus métier : le produit ne peut pas construire honnêtement la
+  demande avec les preuves disponibles.
+- `503` = indisponibilité technique : une source ou la génération outillée ne
+  répond pas.
+- `verifie`, `estime` et `suggestion` restent visuellement distincts.
+- Une panne de chargement ne devient jamais un état vide.
+- Aucun message technique brut, jeton ou URL de provenance n'est exposé dans
+  l'interface.
+
+## Design
+
+La direction actuelle est **« Papier & Lumière »** : fond ivoire, surfaces
+crème, encre brune, terracotta pour l'action et laiton en détail. Le code de
+référence vit dans `tailwind.config.js` et `src/index.css`; la documentation
+associée est le
+[design system « Papier & Lumière »](../design-system/experience-ai/MASTER.md).
+
+## Build de production
 
 ```bash
 npm run build
-# Les fichiers sont dans dist/
-# À servir statiquement ou via nginx
 ```
 
-## Ajouter une origine au CORS backend
-
-Dans `server/index.ts`, ajouter l'origine de production :
-```ts
-origin: [
-  process.env.CLIENT_URL || 'http://localhost:3001',
-  'https://ton-domaine.com'
-]
-```
+Les fichiers compilés sont écrits dans `dist/`.

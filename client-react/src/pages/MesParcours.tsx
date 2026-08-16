@@ -38,7 +38,7 @@ export default function MesParcours() {
 
   return (
     <PageLayout>
-      <Seo title="Mes parcours — Experience AI" />
+      <Seo title="Mes parcours — Experience AI" noindex />
       <div className="flex items-center justify-between mb-8">
         <div>
           <p className="label-champ">Ta bibliothèque</p>

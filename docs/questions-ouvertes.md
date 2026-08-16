@@ -18,7 +18,6 @@
   provoquer un refus lorsqu'elles manquent ?
 - Quel seuil et quelle méthode de rapprochement prouvent qu'un résultat désigne
   le bon établissement, notamment pour les homonymes et succursales ?
-- Quel modèle gagne le benchmark F6 sur qualité, stabilité, coût et délai ?
 - Comment garder les **coûts IA / API soutenables** à l'échelle ?
 - Jusqu'où pousser la **fraîcheur des données** (horaires, dispos, prix) ?
 

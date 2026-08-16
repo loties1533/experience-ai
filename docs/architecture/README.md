@@ -17,7 +17,8 @@
 ```mermaid
 flowchart LR
     C["Client React"] --> API["API Express"]
-    API --> G["Génération du parcours"]
+    API --> PREP["Préparation planifiable<br/>villes ou ancres"]
+    PREP --> G["Génération du parcours"]
     G --> D["Domaine<br/>Zod + invariants"]
     G --> S["Services métier"]
     API --> P["Dépôts Prisma"]
@@ -28,14 +29,40 @@ flowchart LR
     S --> PHQ["PredictHQ<br/>identité des événements"]
     S --> METEO["Service météo"]
     S --> TAV["Tavily<br/>candidats de liens"]
-    S -. "F4-C1/C2, interne,<br/>non branché" .-> AMA["Amadeus<br/>aéroports et vols"]
+    S --> AMA["Amadeus<br/>résolution d'aéroports"]
+    S --> NAV["Navitia<br/>résolution de gares"]
+    S --> DEST["Destinations<br/>preuves géographiques"]
+    S -. "offres structurées<br/>encore internes" .-> VOL["Amadeus<br/>Flight Offers"]
 ```
 
-Foursquare, PredictHQ et Tavily alimentent la génération active (F2-A, F2-B5,
-F3-B). Amadeus (F4-C1, F4-C2) est implémenté et testé mais reste **interne** :
-aucun fichier hors `server/services/amadeus/` ne l'importe — il n'est appelé
-ni par la génération, ni par les routes publiques, ni par l'OpenAPI, ni par le
-front, ni par la persistance.
+Foursquare, PredictHQ et Tavily alimentent la génération active. La préparation
+peut conserver les villes déclarées, découvrir des destinations prouvées ou,
+pour une demande NBA sans ville, partir d'événements PredictHQ datés. Amadeus
+et Navitia résolvent ensuite les extrémités de transport avant la construction
+de liens de recherche. `rechercherVolsAeriens` reste interne : les offres de
+vol ne sont pas injectées dans les parcours.
+
+## Préparation de génération
+
+```mermaid
+flowchart TD
+    B["Brief confirmé"] --> N{"Demande NBA<br/>sans ville ?"}
+    N -->|"oui"| E["PredictHQ event-first"]
+    N -->|"non"| V{"Ville déclarée ?"}
+    V -->|"oui"| C["Contexte planifiable<br/>villes utilisateur"]
+    V -->|"non"| D["Découverte de destinations<br/>preuves géographiques"]
+    E -->|"événements vérifiés"| A["Étapes et ancres fournisseur"]
+    E -->|"vide"| R["Refus métier 422"]
+    E -->|"indisponible"| X["Panne technique 503"]
+    A --> C
+    D --> C
+```
+
+Le `Brief` reste la déclaration de l'utilisateur. Les villes découvertes et
+les ancres fournisseur vivent dans un `ContextePlanifiable` séparé : la
+préparation ne réécrit pas a posteriori ce que la personne a dit. Une
+localisation ambiguë produit une clarification ou un refus prudent, jamais une
+ville choisie arbitrairement.
 
 ---
 
@@ -149,20 +176,24 @@ contrat client strict qui empêche de forger confiance, provenance ou identité.
 flowchart LR
     B["Brief transport"] --> V["Validation fail-closed<br/>occupation, tronçons, dates"]
     V -->|"donnée essentielle manquante"| REF["Refus ou suggestion générique"]
-    V -->|"complet"| RES["Résolution Amadeus<br/>des lieux aériens (F4-C1)"]
-    RES -->|"ville ≠ aéroport<br/>candidat ≠ confirmé"| CAND["Candidats de vols structurés<br/>Amadeus Flight Offers (F4-C2)"]
-    CAND --> OBS["Observation fournisseur<br/>jamais une réservation"]
-    OBS -. "aucune sélection automatique,<br/>intégration active à venir (F4-D2)" .-> INT["Parcours utilisateur"]
+    V -->|"complet"| MODE{"Mode demandé"}
+    MODE -->|"avion"| AIR["Résolution unique<br/>Amadeus"]
+    MODE -->|"train"| RAIL["Résolution unique<br/>Navitia"]
+    AIR --> LIEN["Lien de recherche<br/>F4-D1"]
+    RAIL --> LIEN
+    LIEN --> INT["Parcours utilisateur<br/>F4-D2 / F4-E"]
 ```
 
-**Amadeus (F4-C1, F4-C2) est interne** : implémenté et testé, mais non appelé
-par la génération active, les routes publiques, l'OpenAPI, le front ou la
-persistance. Une ville n'est jamais automatiquement un aéroport, un candidat
-fournisseur n'est jamais automatiquement un lieu confirmé, et une heure locale
-sans fuseau fiable n'est jamais promue en instant absolu (aucun `Z`, offset ou
-fuseau IANA inventé). Aucun prix, billet, réservation ou disponibilité
-garantie n'est produit à ce stade. Prochain sous-lot : F4-C3 (trains et
-transports locaux), puis F4-D (liens et intégration) et F4-E (API et front).
+F4 est branché dans la génération et la modification. Une ville n'est jamais
+automatiquement un aéroport ou une gare : les deux extrémités doivent être
+résolues de façon unique. Toute ambiguïté, recherche vide ou panne produit
+l'absence de lien. La construction d'URL reste déterministe et les liens sont
+présentés comme des **recherches**, jamais comme des billets.
+
+Les offres structurées Amadeus (F4-C2) et les trajets Navitia via `/journeys`
+restent des observations internes. Une heure locale sans fuseau fiable n'est
+jamais promue en instant absolu ; aucun prix, horaire, opérateur, billet ou
+disponibilité n'est injecté comme garantie dans le parcours.
 
 > **Principe transverse.** Un service déterministe ne devient pas un agent
 > LLM sans besoin réel de raisonnement — construire une URL, résoudre un

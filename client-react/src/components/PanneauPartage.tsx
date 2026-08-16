@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { EtatChargement, EtatErreur } from './ui/Etats'
+import { Bouton } from './ui/Bouton'
 import {
   chargerPartage, changerVisibilite, ajouterParticipant, retirerParticipant,
   type Role, type Visibilite, type EtatPartage, type ReponsePartage,
@@ -27,7 +29,7 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
   const [nom, setNom] = useState('')
   const [role, setRole] = useState<Role>('participant')
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['partage', parcoursId],
     queryFn: () => chargerPartage(parcoursId),
   })
@@ -38,24 +40,25 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
     queryClient.setQueryData(['partage', parcoursId], reponse.partage)
     queryClient.setQueryData(['parcours', parcoursId], { parcours: reponse.parcours })
   }
-  const echec = (e: unknown) => toast.error((e as Error).message)
+  // Message fixe par action — jamais le message technique brut.
+  const echec = (message: string) => () => toast.error(message)
 
   const visibilite = useMutation({
     mutationFn: (v: Visibilite) => changerVisibilite(parcoursId, v),
     onSuccess: (r) => { apresAction(r); toast.success('Visibilité mise à jour') },
-    onError: echec,
+    onError: echec('Impossible de changer la visibilité. Réessaie dans un instant.'),
   })
 
   const ajout = useMutation({
     mutationFn: () => ajouterParticipant(parcoursId, { nom: nom.trim(), role }),
     onSuccess: (r) => { apresAction(r); setNom(''); toast.success('Participant ajouté') },
-    onError: echec,
+    onError: echec('Impossible d’ajouter ce participant. Réessaie dans un instant.'),
   })
 
   const retrait = useMutation({
     mutationFn: (participantId: string) => retirerParticipant(parcoursId, participantId),
     onSuccess: (r) => { apresAction(r); toast.success('Participant retiré') },
-    onError: echec,
+    onError: echec('Impossible de retirer ce participant. Réessaie dans un instant.'),
   })
 
   const copier = async (chemin: string) => {
@@ -69,11 +72,24 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
     }
   }
 
-  if (isLoading || !data) return <div className="skeleton h-40 mt-8" />
+  // Chargement, panne et absence de participant sont trois états distincts —
+  // une panne n'est jamais masquée en squelette permanent.
+  if (isLoading) return <div className="mt-8"><EtatChargement nombre={2} hauteur="h-16" /></div>
+  if (isError || !data) {
+    return (
+      <div className="mt-8">
+        <EtatErreur
+          titre="Impossible de charger le partage"
+          description="Un souci technique passager. Réessaie dans un instant."
+          action={<Bouton variante="secondaire" onClick={() => refetch()}>Réessayer</Bouton>}
+        />
+      </div>
+    )
+  }
   const partage: EtatPartage = data
 
   return (
-    <section className="carte p-5 mt-8">
+    <section className="mt-10 border-t border-sable pt-6">
       <h2 className="font-heading font-semibold text-lg text-encre">Partager au groupe</h2>
       <p className="text-sm text-brume mt-1">
         Chacun reçoit son propre lien : il pourra voir le parcours et dire ce qu'il en pense. Vous gardez la décision.
@@ -108,42 +124,47 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
         </div>
       </fieldset>
 
-      {/* Les participants et leurs liens */}
-      <ul className="mt-5 space-y-2">
-        {partage.liens.map((lien) => (
-          <li key={lien.participantId} className="flex flex-wrap items-center gap-2 rounded-xl border border-encre/10 p-3">
-            <span className="flex-1 min-w-0">
-              <span className="font-semibold text-encre text-sm">{lien.nom}</span>
-              <span className="text-xs text-brume"> · {LIBELLES_ROLE[lien.role]}</span>
-              {lien.chemin === null && (
-                <span className="block text-xs text-brume mt-0.5">
-                  {partage.visibilite === 'prive'
-                    ? 'Aucun lien tant que le parcours est privé'
-                    : 'Pas de lien : la surprise est pour lui'}
-                </span>
+      {/* Les participants et leurs liens — état honnête si le groupe est vide */}
+      {partage.liens.length === 0 && (
+        <p className="mt-5 text-sm text-brume">Personne dans le groupe pour l'instant.</p>
+      )}
+      {partage.liens.length > 0 && (
+        <ul className="mt-5 divide-y divide-sable border-y border-sable">
+          {partage.liens.map((lien) => (
+            <li key={lien.participantId} className="flex flex-wrap items-center gap-2 py-3">
+              <span className="flex-1 min-w-0">
+                <span className="font-semibold text-encre text-sm">{lien.nom}</span>
+                <span className="text-xs text-brume"> · {LIBELLES_ROLE[lien.role]}</span>
+                {lien.chemin === null && (
+                  <span className="block text-xs text-brume mt-0.5">
+                    {partage.visibilite === 'prive'
+                      ? 'Aucun lien tant que le parcours est privé'
+                      : 'Pas de lien : la surprise est pour lui'}
+                  </span>
+                )}
+              </span>
+              {lien.chemin && (
+                <button className="btn-secondaire min-h-[44px] text-xs" onClick={() => copier(lien.chemin as string)}>
+                  Copier le lien
+                </button>
               )}
-            </span>
-            {lien.chemin && (
-              <button className="btn-secondaire min-h-[44px] text-xs" onClick={() => copier(lien.chemin as string)}>
-                Copier le lien
-              </button>
-            )}
-            {lien.role !== 'organisateur' && (
-              <button
-                className="btn-secondaire min-h-[44px] text-xs !text-corail hover:!border-corail"
-                onClick={() => { if (window.confirm(`Retirer « ${lien.nom} » du parcours ?`)) retrait.mutate(lien.participantId) }}
-                disabled={retrait.isPending}
-              >
-                Retirer
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
+              {lien.role !== 'organisateur' && (
+                <button
+                  className="btn-secondaire min-h-[44px] text-xs !text-corail hover:!border-corail"
+                  onClick={() => { if (window.confirm(`Retirer « ${lien.nom} » du parcours ?`)) retrait.mutate(lien.participantId) }}
+                  disabled={retrait.isPending}
+                >
+                  Retirer
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Constituer le groupe */}
       <form
-        className="mt-4 flex flex-wrap gap-2 items-end"
+        className="mt-5 flex flex-wrap items-end gap-2 border-t border-sable pt-5"
         onSubmit={(e) => { e.preventDefault(); if (nom.trim()) ajout.mutate() }}
       >
         <div className="flex-1 min-w-[10rem]">

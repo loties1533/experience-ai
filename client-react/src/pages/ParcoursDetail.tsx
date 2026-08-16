@@ -132,7 +132,7 @@ export default function ParcoursDetail() {
 
   return (
     <PageLayout>
-      <Seo title={`${parcours.intention.texte} — Experience AI`} />
+      <Seo title={`${parcours.intention.texte} — Experience AI`} noindex />
 
       {/* En-tête : l'intention d'abord, toujours */}
       <header className="mb-6">

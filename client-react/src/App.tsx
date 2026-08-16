@@ -32,7 +32,7 @@ export default function App() {
         <Toaster
           position="top-center"
           richColors
-          toastOptions={{ style: { fontFamily: '"Open Sans", sans-serif', fontSize: '14px' } }}
+          toastOptions={{ style: { fontSize: '14px' } }}
         />
       </BrowserRouter>
     </QueryClientProvider>

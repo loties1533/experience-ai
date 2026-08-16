@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -85,5 +85,13 @@ describe('MesParcours', () => {
 
     expect(await screen.findByText('Impossible de charger tes parcours')).toBeInTheDocument()
     expect(screen.queryByText("Aucun parcours pour l'instant")).not.toBeInTheDocument()
+  })
+
+  it('demande aux moteurs de ne pas indexer cette route privée', async () => {
+    vi.mocked(listerParcours).mockResolvedValue({ parcours: [] })
+    rendreMesParcours()
+    await waitFor(() =>
+      expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, nofollow')
+    )
   })
 })

@@ -7,7 +7,7 @@
 **Ne dis pas où tu veux aller. Dis ce que tu veux vivre.**
 
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Node.js](https://img.shields.io/badge/Node.js-18.17+-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com)
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io)
@@ -29,6 +29,9 @@ Les plateformes de voyage commencent toutes par la même question : *où veux-tu
 L'utilisateur décrit son envie en langage naturel → l'IA dialogue jusqu'à comprendre l'intention et le contexte → elle génère un **parcours cohérent** de moments justifiés, construit à partir de **vrais lieux** :
 
 - Dialogue de cadrage qui ne pose que les questions manquantes, puis reformule pour validation
+- Préparation planifiable : une ville déclarée est respectée ; sans ville, le
+  moteur peut proposer des destinations prouvées ou, pour une envie NBA,
+  partir de vrais événements datés pour construire les étapes
 - Génération **outillée** : le modèle cherche de vrais lieux (Foursquare) et événements (PredictHQ) avant de répondre — il n'invente pas
 - Chaque élément porte sa **justification** (pourquoi il sert l'intention) et, quand il vient d'un vrai lieu, son adresse
 - **Modification chirurgicale** : remplacer un élément ne régénère pas le parcours, et ne recalcule que ses dépendances
@@ -45,7 +48,7 @@ Un week-end romantique, un EVG, un festival, un séjour NBA, une soirée improvi
 
 ## Ce qui distingue ce projet
 
-> Experience AI **succède** à [TripGenie](https://github.com/loties1533/tripgenie-app), dont il réutilise l'ossature technique (auth, Express, Prisma, la cascade de fournisseurs LLM) — **mais pas le modèle.** TripGenie généra un `pack` de voyage figé (vols, hôtels, itinéraire à 3 jours) ; regénérer entièrement était le seul moyen de le modifier. Voir [ADR-0001](docs/decisions/ADR-0001.md).
+> Experience AI **succède** à [TripGenie](https://github.com/loties1533/tripgenie-app), dont il réutilise l'ossature technique (auth, Express, Prisma, la cascade de fournisseurs LLM) — **mais pas le modèle.** TripGenie générait un `pack` de voyage figé (vols, hôtels, itinéraire à 3 jours) ; régénérer entièrement était le seul moyen de le modifier. Voir [ADR-0001](docs/decisions/ADR-0001.md).
 
 Le projet a été conçu **produit d'abord, technique ensuite** : philosophie, définition du parcours, histoires utilisateur, modèle de domaine et capacités ont été verrouillés (`docs/00` → `docs/13`) avant la première ligne de code serveur — voir [`docs/README.md`](docs/README.md).
 
@@ -80,7 +83,8 @@ server/
 ├── agents/                     ← les usages du LLM, un rôle par fichier
 │   ├── intake.ts               ← dialogue : n'extrait/ne pose que ce qui manque
 │   ├── brief.ts                ← reformulation + normalisation (dates, transport, etc.)
-│   ├── generation.ts           ← brief → parcours complet, outillé (recherche de vrais lieux)
+│   ├── generation.ts           ← contexte planifiable → parcours progressif par lots
+│   ├── generation/             ← préparation, destinations, plan, lots, assemblage, confiance
 │   └── modification.ts         ← langage naturel → demande structurée
 ├── services/
 │   ├── claude/
@@ -89,7 +93,9 @@ server/
 │   ├── tools/webSearch.ts       ← candidats Web structurés fournis par Tavily
 │   ├── liens.ts                 ← sélection métier puis contrôle réseau (branché en génération)
 │   ├── liens/                   ← contrat, validation URL, sélection, DNS et redirections
-│   ├── amadeus/                  ← aéroports (F4-C1) et vols (F4-C2) — **interne, non branché**
+│   ├── amadeus/                ← aéroports actifs ; offres de vols encore internes
+│   ├── navitia/                ← gares et trajets structurés
+│   ├── destinations/           ← preuves géographiques pour la découverte
 │   └── foursquare.ts · predictHQ.ts · weather.ts · modificationHotel.ts
 ├── depots/                     ← la seule frontière avec PostgreSQL
 │   ├── depotParcours.ts        ← valide à chaque lecture, projette à chaque écriture
@@ -112,7 +118,8 @@ sequenceDiagram
 
     U->>F: décrit son envie (dialogue de cadrage)
     F->>A: POST /api/parcours (brief validé)
-    loop jusqu'à 3 tours d'outils
+    A->>A: prépare les villes ou ancres vérifiables
+    loop par lot, jusqu'à 3 tours d'outils
         A->>LLM: brief + outils disponibles
         LLM->>Ext: chercher_lieux / chercher_evenements
         Ext-->>LLM: vrais lieux, en cache si déjà interrogés
@@ -160,14 +167,14 @@ un séjour et une occupation déclarés, puis accompagné d'un lien de
 **recherche** Booking qui ne prouve ni prix ni disponibilité. Les
 modifications hôtelières sont verrouillées contre toute donnée forgée.
 
-**Transport (en cours) :** le brief transport est validé en fail-closed (une
-donnée essentielle manquante refuse ou dégrade en suggestion générique,
-jamais un trajet inventé). Un connecteur Amadeus interne sait résoudre des
-aéroports réels (F4-C1) et rechercher des candidats de vols structurés
-(F4-C2) — **mais ces deux capacités sont internes et non branchées** : aucun
-appel depuis la génération active, les routes publiques, l'OpenAPI, le front
-ou la persistance. Aucun vol n'est donc encore présenté à un utilisateur.
-Prochain sous-lot : F4-C3 (trains et transports locaux). Détail complet dans
+**Transport (terminé pour le périmètre F4) :** le brief est validé en
+fail-closed : une donnée essentielle manquante refuse ou reste générique,
+jamais un trajet inventé. La génération et la modification savent résoudre
+prudemment les aéroports via Amadeus et les gares via Navitia, puis construire
+des liens de **recherche** seulement lorsque les deux extrémités sont uniques.
+Les offres structurées Amadeus (`rechercherVolsAeriens`) et les trajets
+Navitia restent des observations internes : aucun prix, billet ou horaire
+n'est présenté comme garanti. Le détail actuel est dans
 [le plan de fiabilité](docs/14-fiabilite-parcours.md) et
 [l'architecture](docs/architecture/README.md).
 
@@ -279,7 +286,7 @@ Les deux dernières routes sont les seules ouvertes du produit : un jeton permet
 
 La documentation produit vit dans le dépôt et fait foi ([`docs/`](docs/README.md)) — **repo as code**, pas de Notion ni de Drive séparé qui divergerait ([ADR-0006](docs/decisions/ADR-0006.md)) :
 
-- **[00 → 13](docs/README.md)** — de la philosophie au modèle conceptuel, aux histoires utilisateur et aux capacités
+- **[00 → 17](docs/README.md)** — de la philosophie au modèle conceptuel, à la fiabilité, à la direction UI et au registre des dettes
 - **[ADR](docs/11-decisions.md)** — chaque décision structurante : contexte, alternatives, pourquoi, conséquences
 - **[SPRINTS.md](docs/SPRINTS.md)** — le suivi de la refonte, sprint par sprint, chaque revue reliée à sa PR
 
@@ -291,29 +298,26 @@ Deux règles de gouvernance :
 
 ## État du projet
 
-Le modèle de domaine est **stable pour le MVP** : validé par crash-test contre six parcours très différents (passionné solo, couple avec surprise, soirée improvisée, famille, EVG, festival), puis par une recette manuelle de bout en bout qui a corrigé deux défauts réels (le brief qui perdait des informations, la génération qui échouait sur des dates de fin légitimes).
+Le modèle de domaine est **stable pour le MVP**. Les refontes R1 → R8 et le
+chantier de fiabilité F0 → F9 sont terminés : provenance persistée, génération
+progressive, transport prudent, refus `422`, panne `503`, modification
+atomique et partage sont couverts par la suite automatisée et la
+[recette F9](docs/16-recette-f9.md).
 
-Le backend de fiabilité est **avancé** : F0, F1, **F2 — lieux et événements**
-et **F3 — hébergements** sont terminés. Provenance persistée, niveaux de
-confiance visibles, suggestions génériques, refus métier et panne technique
-séparés (ADR-0008) ; liens réels intégrés à la génération (F2-B5) ; identité
-hôtelière Foursquare, séjour, occupation, lien de recherche Booking et
-verrouillage des modifications (F3-B à F3-D).
+Après F9, la préparation de génération a été renforcée : localisations
+déclarées typées, découverte de destinations prouvées, NBA event-first,
+vérité temporelle, dialogue stable, assemblage cohérent et liens externes
+actionnables uniquement lorsqu'ils sont suffisamment établis.
 
-**F4 — vols et transports** est **en cours**, jusqu'à F4-C2 : contrats de
-domaine, génération fail-closed et connecteur Amadeus (aéroports, candidats de
-vols) sont livrés, mais Amadeus reste **interne** — non appelé par la
-génération active, les routes, l'OpenAPI, le front ou la persistance. **Aucun
-vol n'est donc encore actif dans un parcours utilisateur.** Prochaine étape :
-F4-C3 (trains et transports locaux structurés), puis l'intégration active.
-Voir le
-[plan détaillé](docs/14-fiabilite-parcours.md) et
-[l'avancement par sprint](docs/SPRINTS.md).
+La refonte visuelle actuelle est **« Papier & Lumière »**. UI-1 à UI-4 sont
+fusionnées ; UI-5 couvre les écrans secondaires dans la PR #91. L'état exact
+des branches et des revues reste consigné dans
+[SPRINTS.md](docs/SPRINTS.md).
 
-**Ce projet n'est pas prêt pour un lancement public ou un démarchage
-sérieux** : la règle du chantier reste « aucun faux parcours présenté comme
-réel », et la recette de sortie (F9) n'est ouverte qu'une fois F4 à F8
-terminés. **Aucun vertical n'est retenu comme périmètre de validation.** Le
-scénario NBA servira d'abord de test de robustesse et l'EVG de test de
-valeur, après la fiabilisation. Le choix du premier marché reste une
-[question ouverte](docs/questions-ouvertes.md).
+La fin de F9 ne vaut pas validation marché. Deux recettes live restent
+bloquées par la disponibilité des fournisseurs, et plusieurs capacités sont
+encore classées **PARTIAL**, notamment les événements sportifs lorsque
+PredictHQ n'est pas disponible et les parcours internationaux longs. Le
+premier marché reste une [question ouverte](docs/questions-ouvertes.md) : le
+produit doit être présenté avec ses limites réelles, jamais comme une
+couverture universelle déjà démontrée.

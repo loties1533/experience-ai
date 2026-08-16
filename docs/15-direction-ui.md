@@ -1,11 +1,38 @@
-# Direction UI — refonte visuelle (UI-A → UI-D)
+# Direction UI — de UI-A → UI-D à « Papier & Lumière »
 
-> Référence de la refonte front. Ne remplace pas [doc 05](05-product-journey.md)
-> (parcours produit) ni [ADR-0008](decisions/ADR-0008.md) (niveaux de confiance) :
-> s'appuie dessus pour décider comment les rendre visibles.
-> Statut d'exécution : voir le board dans [`SPRINTS.md`](SPRINTS.md).
+> Ce document conserve l'audit UI-A → UI-D qui a posé les premiers composants
+> de fiabilité. Cette première direction « aventure » n'est plus l'état visuel
+> courant. UI-1 → UI-5 l'ont fait évoluer vers **« Papier & Lumière »**.
+> Le code Tailwind/CSS puis le
+> [`MASTER.md`](../design-system/experience-ai/MASTER.md) font foi pour les
+> tokens actuels ; l'exécution reste suivie dans [`SPRINTS.md`](SPRINTS.md).
 
-## 1. Pourquoi maintenant
+## 0. Direction actuelle — « Papier & Lumière »
+
+La promesse visuelle part de l'envie, pas de la destination. La photographie
+évoque des situations et des émotions (sport, amis, concert, romantisme,
+aventure, culture, évasion) ; elle ne sert jamais de preuve métier.
+
+- **UI-1 — fondations** : ivoire, crème, encre brune, terracotta d'action,
+  laiton en détail ; Fraunces pour les titres et Inter pour l'interface.
+- **UI-2 — hero et header** : hero immersif puis compact, photographies
+  éditoriales avec provenance, header transparent puis solide.
+- **UI-3 — dialogue** : colonne sans carte SaaS, bulles chaudes, récapitulatif
+  limité aux champs confirmés, composer collant dans le flux.
+- **UI-4 — parcours** : carnet à filets, moments en sections, provenance
+  lisible sans URL technique, bibliothèque sobre.
+- **UI-5 — écrans secondaires** : login, préférences et partage alignés ;
+  panne, chargement et vide ne sont jamais confondus.
+
+Les garanties d'ADR-0008 restent prioritaires sur l'esthétique : une
+suggestion est moins saillante qu'une donnée vérifiée, une panne n'est pas un
+état vide et aucune donnée absente n'est inventée pour remplir l'écran.
+
+---
+
+## Archive de conception — première phase UI-A → UI-D
+
+### 1. Pourquoi cette première phase a été lancée
 
 Le métier est fiable : génération vérifiée, statuts `verifie`/`estime`/`suggestion`,
 refus explicites, modification atomique (F0→F8 terminés). Le front, lui, date
@@ -13,7 +40,7 @@ essentiellement du sprint 7 (reprise visuelle) et n'a jamais été confronté à
 question « est-ce que l'interface rend visibles les garanties que le backend
 tient déjà ? ». C'est l'objet de cette phase, avant F9 (recette de sortie).
 
-## 2. Audit — état actuel
+### 2. Audit — état observé avant UI-A
 
 Périmètre inspecté : `client-react/src` (7 pages, layout, composants partagés,
 `index.css`, `tailwind.config.js`) et `client-react/public/assets/hero.png`.
@@ -92,7 +119,7 @@ Périmètre inspecté : `client-react/src` (7 pages, layout, composants partagé
 | Modification | Oui — description + `elementsARegenerer` bien remontés | Oui | Correct |
 | Partage (`PanneauPartage`) | Oui | Oui | Correct, dense sur mobile (formulaire + liste + fieldset) |
 
-## 3. Une image existante : `hero.png`
+### 3. Une image existante à l'époque : `hero.png`
 
 `client-react/public/assets/hero.png` est un triptyque (villa/piscine à Bali,
 skyline nocturne façon Tokyo, Santorin au coucher de soleil) monté avec des
@@ -110,7 +137,7 @@ modifier ni la garder comme référence de palette : ses couleurs (bleu nuit
 néon, orange saturé artificiel) ne correspondent pas aux tokens `soleil`/`lagon`
 déjà en place.
 
-## 4. Direction visuelle retenue
+### 4. Première direction visuelle retenue
 
 **Éditorial voyage, pas landing SaaS.** Grille asymétrique plutôt que colonnes de
 cartes identiques, grande photographie plutôt que pictogrammes, typographie qui
@@ -132,7 +159,7 @@ Principes concrets :
   ne mélange pas les deux registres sur un même élément (pas de texte sur image
   sans overlay contrôlé et testé en contraste).
 
-## 5. Architecture cible des écrans
+### 5. Architecture alors visée pour les écrans
 
 - **Accueil / dialogue** (`Envie`) — garder le dialogue conversationnel actuel
   comme mécanique ; ajouter une bande photographique en tête (pas plein écran :
@@ -153,7 +180,7 @@ Principes concrets :
   participant sur mobile (actuellement trois blocs `flex-wrap` qui se
   réorganisent de façon imprévisible sous 360px).
 
-## 6. Design system minimal
+### 6. Design system minimal de la première phase
 
 Pas de nouveaux tokens de couleur — la palette `soleil`/`lagon`/`sable`/`encre`/
 `brume`/`sauge`/`corail` suffit et couvre déjà primaire, secondaire, surfaces,
@@ -172,7 +199,7 @@ texte, succès, danger. Ajouts strictement nécessaires :
 Rien à ajouter au-delà de ce que UI-B viendra réellement consommer — pas de
 token créé par anticipation.
 
-## 7. Stratégie des statuts métier
+### 7. Stratégie des statuts métier
 
 | Statut | Origine | Traitement visuel proposé |
 |---|---|---|
@@ -187,7 +214,7 @@ Règle non négociable héritée d'ADR-0008 : aucune présentation ne doit rendr
 `suggestion` restera toujours le moins saillant des trois — c'est une contrainte
 de contraste à vérifier explicitement en UI-D, pas seulement une intention.
 
-## 8. Stratégie d'intégration des photos personnelles
+### 8. Stratégie d'intégration envisagée pour les photos
 
 Aucune image n'est ajoutée dans UI-A. Ce que UI-B doit préparer pour que UI-C
 puisse simplement déposer des fichiers :
@@ -207,7 +234,7 @@ puisse simplement déposer des fichiers :
   actuel, à reconsidérer seulement si le poids des pages devient un problème
   mesuré.
 
-## 9. Découpage des prochaines PR
+### 9. Découpage historique des PR UI-B → UI-D
 
 - **UI-B — fondations visuelles et composants.** `ImageContextuelle` (§8),
   refonte de la carte élément en deux niveaux de lecture (§5), bandeaux
@@ -223,7 +250,7 @@ puisse simplement déposer des fichiers :
 Ce découpage peut bouger si UI-B révèle qu'un composant doit être scindé — pas
 de réécriture du plan sans raison observée pendant le build.
 
-## 10. Hors périmètre de UI-A
+### 10. Hors périmètre de UI-A
 
 Aucun contrat backend, aucune route API, aucun schéma Zod modifié. F9 reste
 après cette phase UI (voir board dans [`SPRINTS.md`](SPRINTS.md)). Aucune image
