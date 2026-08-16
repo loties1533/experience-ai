@@ -16,7 +16,8 @@ import { listerParcours } from '../lib/api'
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 function rendreMesParcours() {
-  const queryClient = new QueryClient()
+  // Pas de retry en test : l'état d'erreur doit être atteint immédiatement.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <HelmetProvider>
       <QueryClientProvider client={queryClient}>
@@ -66,5 +67,23 @@ describe('MesParcours', () => {
     rendreMesParcours()
 
     expect(await screen.findByText('Aucun parcours pour l\'instant')).toBeInTheDocument()
+  })
+
+  it('n’affiche jamais « Privé » pour une visibilité inconnue', async () => {
+    vi.mocked(listerParcours).mockResolvedValue({
+      parcours: [{ id: 'p1', intention: 'Un parcours', visibilite: 'archivee', misAJourLe: new Date('2026-07-20') }],
+    } as unknown as { parcours: Awaited<ReturnType<typeof listerParcours>>['parcours'] })
+    rendreMesParcours()
+
+    expect(await screen.findByText('Visibilité inconnue')).toBeInTheDocument()
+    expect(screen.queryByText('Privé')).not.toBeInTheDocument()
+  })
+
+  it('affiche un état d’erreur, jamais une fausse liste vide, quand le chargement échoue', async () => {
+    vi.mocked(listerParcours).mockRejectedValue(new Error('panne réseau'))
+    rendreMesParcours()
+
+    expect(await screen.findByText('Impossible de charger tes parcours')).toBeInTheDocument()
+    expect(screen.queryByText("Aucun parcours pour l'instant")).not.toBeInTheDocument()
   })
 })

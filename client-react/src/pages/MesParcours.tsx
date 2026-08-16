@@ -3,22 +3,27 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
-import { EtatChargement, EtatVide } from '../components/ui/Etats'
+import { EtatChargement, EtatErreur, EtatVide } from '../components/ui/Etats'
+import { Bouton } from '../components/ui/Bouton'
 import { listerParcours, supprimerParcours } from '../lib/api'
 
 // Visibilité : texte explicite + petite icône. L'accent reste NEUTRE (surface
 // sable), pour ne pas se confondre avec les couleurs de confiance
 // (vérifié/estimé/suggestion). La distinction se fait par le mot et l'icône.
 type Visibilite = 'prive' | 'partage' | 'surprise'
-const VISIBILITE: Record<Visibilite, { libelle: string; icone: (p: { className?: string }) => JSX.Element }> = {
+type PresentationVisibilite = { libelle: string; icone: (p: { className?: string }) => JSX.Element }
+const VISIBILITE: Record<Visibilite, PresentationVisibilite> = {
   prive: { libelle: 'Privé', icone: IconeCadenas },
   partage: { libelle: 'Partagé', icone: IconeGroupe },
   surprise: { libelle: 'Surprise', icone: IconeCadeau },
 }
+// Une visibilité inconnue n'est JAMAIS présentée comme « Privé » : on l'annonce
+// honnêtement, sans exposer la valeur interne ni afficher le cadenas.
+const VISIBILITE_INCONNUE: PresentationVisibilite = { libelle: 'Visibilité inconnue', icone: IconeInconnu }
 
 export default function MesParcours() {
   const queryClient = useQueryClient()
-  const { data, isLoading } = useQuery({ queryKey: ['parcours'], queryFn: listerParcours })
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['parcours'], queryFn: listerParcours })
 
   const suppression = useMutation({
     mutationFn: supprimerParcours,
@@ -44,7 +49,17 @@ export default function MesParcours() {
 
       {isLoading && <EtatChargement nombre={3} hauteur="h-16" />}
 
-      {!isLoading && liste.length === 0 && (
+      {/* Une panne de chargement n'est jamais présentée comme une liste vide. */}
+      {isError && (
+        <EtatErreur
+          titre="Impossible de charger tes parcours"
+          description="Un souci technique passager. Réessaie dans un instant."
+          action={<Bouton variante="secondaire" onClick={() => refetch()}>Réessayer</Bouton>}
+        />
+      )}
+
+      {/* L'état vide n'apparaît qu'après une réponse réussie réellement vide. */}
+      {!isLoading && !isError && liste.length === 0 && (
         <EtatVide
           titre="Aucun parcours pour l'instant"
           description="Dis-nous ce que tu as envie de vivre, on construit le reste."
@@ -52,10 +67,10 @@ export default function MesParcours() {
         />
       )}
 
-      {liste.length > 0 && (
+      {!isError && liste.length > 0 && (
         <ul className="border-y border-sable divide-y divide-sable">
           {liste.map((p) => {
-            const visibilite = VISIBILITE[(p.visibilite as Visibilite)] ?? VISIBILITE.prive
+            const visibilite = VISIBILITE[(p.visibilite as Visibilite)] ?? VISIBILITE_INCONNUE
             return (
               <li key={p.id} className="py-4 flex items-start gap-4 group">
                 <Link to={`/parcours/${p.id}`} className="flex-1 min-w-0 cursor-pointer">
@@ -112,6 +127,14 @@ function IconeGroupe({ className }: { className?: string }) {
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
       <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  )
+}
+function IconeInconnu({ className }: { className?: string }) {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
+      <circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.5-2 2-2 3" /><line x1="12" y1="17" x2="12" y2="17.01" />
     </svg>
   )
 }

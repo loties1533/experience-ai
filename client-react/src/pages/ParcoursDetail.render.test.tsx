@@ -216,6 +216,15 @@ describe('ParcoursDetail (UI-4 — carnet)', () => {
     expect(screen.getByText(/le 10\/09\/2026, 14h00–16h00/)).toBeInTheDocument()
   })
 
+  it('affiche une plage multi-jours en conservant les heures réelles', async () => {
+    const parcours = parcoursFixture(null)
+    parcours.timeline[0].plage = { debut: '2026-09-10T20:00:00Z', fin: '2026-09-11T01:00:00Z' }
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours })
+    rendreParcoursDetail()
+    await screen.findByText('Randonnée')
+    expect(screen.getByText(/du 10\/09\/2026 à 20h00 au 11\/09\/2026 à 01h00/)).toBeInTheDocument()
+  })
+
   it('ne fabrique aucune plage quand elle est absente', async () => {
     vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture(null) })
     rendreParcoursDetail()

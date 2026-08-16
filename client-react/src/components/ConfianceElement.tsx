@@ -5,11 +5,11 @@ import { BadgeStatutMetier } from './ui/StatutMetier'
 // statuts métier). Ce composant garde ce qui lui est propre : le détail au
 // niveau élément (source, fournisseur, date de récupération).
 export function BadgeConfiance({ element }: { element: Element }) {
+  // Détail accessible (title + aria-label du badge) : formulation humaine
+  // uniquement — jamais l'URL technique de `confiance.source`.
   const detail =
     element.confiance.niveau === 'verifie'
-      ? `Source : ${element.confiance.source}. Fournisseur : ${
-          element.confiance.fournisseur
-        }. Récupérée le ${new Date(element.confiance.recupereLe).toLocaleDateString('fr-FR')}`
+      ? `Source vérifiée : ${element.confiance.fournisseur}. Consultée le ${new Date(element.confiance.recupereLe).toLocaleDateString('fr-FR')}.`
       : undefined
 
   return <BadgeStatutMetier statut={element.confiance.niveau} detail={detail} />

@@ -13,7 +13,7 @@ function elementAvecConfiance(confiance: Element['confiance']): Element {
 }
 
 describe('BadgeConfiance (régression — mutualisé avec StatutMetier)', () => {
-  it('affiche « Vérifié » avec la source et le fournisseur en détail', () => {
+  it('affiche « Vérifié » avec une provenance humaine (fournisseur + date), sans la source technique', () => {
     render(
       <BadgeConfiance
         element={elementAvecConfiance({
@@ -25,8 +25,25 @@ describe('BadgeConfiance (régression — mutualisé avec StatutMetier)', () => 
       />
     )
     const badge = screen.getByText('Vérifié')
-    expect(badge).toHaveAttribute('title', expect.stringContaining('Google Places'))
     expect(badge).toHaveAttribute('title', expect.stringContaining('foursquare'))
+    expect(badge).toHaveAttribute('title', expect.stringContaining('01/01/2026'))
+    expect(badge.getAttribute('title') ?? '').not.toContain('Google Places')
+    expect(badge.getAttribute('aria-label') ?? '').not.toContain('Google Places')
+  })
+
+  it('n’expose jamais l’URL technique de la source (ni texte, ni title, ni aria-label)', () => {
+    const url = 'https://api.foursquare.com/v3/places/fsq-1'
+    render(
+      <BadgeConfiance
+        element={elementAvecConfiance({
+          niveau: 'verifie', source: url, fournisseur: 'Foursquare', recupereLe: '2026-01-01T00:00:00.000Z',
+        })}
+      />
+    )
+    const badge = screen.getByText('Vérifié')
+    expect(screen.queryByText(url)).not.toBeInTheDocument()
+    expect(badge.getAttribute('title') ?? '').not.toContain(url)
+    expect(badge.getAttribute('aria-label') ?? '').not.toContain(url)
   })
 
   it('affiche « Estimé » sans détail de source', () => {

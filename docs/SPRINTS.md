@@ -261,7 +261,10 @@ PR : https://github.com/loties1533/experience-ai/pull/90
   explicite (mot + icône, accent neutre distinct de la confiance), suppression
   discrète avec confirmation conservée. `ResumeParcours` respecté.
 - **Garanties** : aucun changement backend/API/store/domaine ; aucune donnée
-  inventée ; pas de menu « ⋯ ». Suite complète verte (2197), typecheck
+  inventée ; pas de menu « ⋯ ». Corrections post-revue : provenance du badge
+  sans URL technique (ni title/aria-label), visibilité inconnue jamais présentée
+  comme « Privé », panne de chargement distincte d'une liste vide, plages
+  multi-jours avec heures réelles. Suite complète verte (2201), typecheck
   serveur+client, lint, build, `diff --check`, plus une vérification visuelle
   desktop/mobile.
 

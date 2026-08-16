@@ -49,7 +49,7 @@ const memeJour = (a: string, b: string) => a.slice(0, 10) === b.slice(0, 10)
 function formaterPlage(p: { debut: string; fin: string }): string {
   return memeJour(p.debut, p.fin)
     ? `le ${jourFr(p.debut)}, ${heureFr(p.debut)}–${heureFr(p.fin)}`
-    : `du ${jourFr(p.debut)} au ${jourFr(p.fin)}`
+    : `du ${jourFr(p.debut)} à ${heureFr(p.debut)} au ${jourFr(p.fin)} à ${heureFr(p.fin)}`
 }
 
 // Contexte reformulé : uniquement les champs réellement présents, libellés
