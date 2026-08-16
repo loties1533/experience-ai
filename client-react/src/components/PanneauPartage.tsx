@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { EtatChargement, EtatErreur } from './ui/Etats'
+import { Bouton } from './ui/Bouton'
 import {
   chargerPartage, changerVisibilite, ajouterParticipant, retirerParticipant,
   type Role, type Visibilite, type EtatPartage, type ReponsePartage,
@@ -27,7 +29,7 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
   const [nom, setNom] = useState('')
   const [role, setRole] = useState<Role>('participant')
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['partage', parcoursId],
     queryFn: () => chargerPartage(parcoursId),
   })
@@ -38,24 +40,25 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
     queryClient.setQueryData(['partage', parcoursId], reponse.partage)
     queryClient.setQueryData(['parcours', parcoursId], { parcours: reponse.parcours })
   }
-  const echec = (e: unknown) => toast.error((e as Error).message)
+  // Message fixe par action — jamais le message technique brut.
+  const echec = (message: string) => () => toast.error(message)
 
   const visibilite = useMutation({
     mutationFn: (v: Visibilite) => changerVisibilite(parcoursId, v),
     onSuccess: (r) => { apresAction(r); toast.success('Visibilité mise à jour') },
-    onError: echec,
+    onError: echec('Impossible de changer la visibilité. Réessaie dans un instant.'),
   })
 
   const ajout = useMutation({
     mutationFn: () => ajouterParticipant(parcoursId, { nom: nom.trim(), role }),
     onSuccess: (r) => { apresAction(r); setNom(''); toast.success('Participant ajouté') },
-    onError: echec,
+    onError: echec('Impossible d’ajouter ce participant. Réessaie dans un instant.'),
   })
 
   const retrait = useMutation({
     mutationFn: (participantId: string) => retirerParticipant(parcoursId, participantId),
     onSuccess: (r) => { apresAction(r); toast.success('Participant retiré') },
-    onError: echec,
+    onError: echec('Impossible de retirer ce participant. Réessaie dans un instant.'),
   })
 
   const copier = async (chemin: string) => {
@@ -69,7 +72,20 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
     }
   }
 
-  if (isLoading || !data) return <div className="skeleton h-40 mt-8" />
+  // Chargement, panne et absence de participant sont trois états distincts —
+  // une panne n'est jamais masquée en squelette permanent.
+  if (isLoading) return <div className="mt-8"><EtatChargement nombre={2} hauteur="h-16" /></div>
+  if (isError || !data) {
+    return (
+      <div className="mt-8">
+        <EtatErreur
+          titre="Impossible de charger le partage"
+          description="Un souci technique passager. Réessaie dans un instant."
+          action={<Bouton variante="secondaire" onClick={() => refetch()}>Réessayer</Bouton>}
+        />
+      </div>
+    )
+  }
   const partage: EtatPartage = data
 
   return (
@@ -108,7 +124,10 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
         </div>
       </fieldset>
 
-      {/* Les participants et leurs liens */}
+      {/* Les participants et leurs liens — état honnête si le groupe est vide */}
+      {partage.liens.length === 0 && (
+        <p className="mt-5 text-sm text-brume">Personne dans le groupe pour l'instant.</p>
+      )}
       <ul className="mt-5 space-y-2">
         {partage.liens.map((lien) => (
           <li key={lien.participantId} className="flex flex-wrap items-center gap-2 rounded-xl border border-encre/10 p-3">
