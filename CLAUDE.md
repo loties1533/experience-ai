@@ -23,12 +23,13 @@ Le glossaire complet fait foi :
 
 ## Sources de vérité
 
-- **Produit et fondations** → `docs/00` à `docs/14` et `docs/decisions/`.
+- **Produit et fondations** → `docs/00` à `docs/17` et `docs/decisions/`.
 - **Modèle conceptuel** → `docs/06-modele-conceptuel.md`.
 - **Avancement courant** → `docs/SPRINTS.md` pour le board et les revues de PR.
 - **Trajectoire générale** → `docs/09-roadmap.md`.
 - **Architecture technique** → `docs/architecture/README.md`.
 - **Politique de confiance des données** → [`ADR-0008`](docs/decisions/ADR-0008.md), seule source de vérité sur les niveaux de confiance.
+- **Direction visuelle actuelle** → code Tailwind/CSS, puis `design-system/experience-ai/MASTER.md` ; `docs/15-direction-ui.md` conserve aussi l'historique de la première phase UI.
 - **Décisions durables** → `docs/decisions/`.
 - **Mémoire de session Claude** → `~/.claude/.../memory/`, uniquement pour le contexte de travail temporaire.
 

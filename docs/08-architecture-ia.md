@@ -2,17 +2,17 @@
 
 > Principe ([ADR-0003](decisions/ADR-0003.md)) : les agents sont des
 > **modules**, pas des microservices. Peu d'agents, chacun justifié par une
-> tâche de raisonnement. L'état actuel est fonctionnel mais doit évoluer selon
-> le [plan de fiabilité](14-fiabilite-parcours.md).
+> tâche de raisonnement. Le chantier de fiabilité F0 → F9 est terminé ; les
+> évolutions suivantes restent soumises à une preuve technique ou utilisateur.
 
 ## Deux IA distinctes — à ne jamais confondre
 
 | | **L'orchestrateur** (`agents/generation.ts`) | **L'agent Modification** (`agents/modification.ts`) |
 |---|---|---|
-| Rôle | Brief confirmé → **parcours complet**, actuellement en une passe | Phrase → **une demande ciblée** dans un parcours existant |
+| Rôle | Contexte planifiable → **parcours complet**, progressivement par lots | Phrase → **une demande ciblée** dans un parcours existant |
 | Périmètre | Tout le parcours, une seule fois | Un élément et ses dépendances, jamais l'ensemble |
 | Vocabulaire de sortie | Moments + éléments (refs) | `DemandeModificationSchema` — rien d'autre : il **ne peut pas** régénérer tout |
-| Qui applique | Le domaine valide (`validerParcours`) avant de sortir | Le domaine applique **ou refuse** (`appliquerModification`) |
+| Qui applique | Le domaine valide (`validerParcours`) avant de sortir | Une copie de travail est régénérée, validée puis persistée atomiquement |
 
 S'y ajoute l'**intake** (`agents/intake.ts`) : le dialogue de cadrage (doc 05, étapes 1→4). Il extrait le brief, ne pose que les questions nécessaires, et reformule pour validation. Il ne génère rien.
 
@@ -37,7 +37,7 @@ La cascade Claude → Gemini → OpenRouter reste active pour les tâches sans
 outils. L'étendre à la génération suppose d'abord une vraie prise en charge des
 outils par chaque fournisseur, à mesurer en F6.
 
-## Architecture cible
+## Architecture actuelle
 
 L'orchestrateur central conserve le brief, la chronologie, les villes, le
 budget, les participants et les décisions. Il pilote :
@@ -49,10 +49,20 @@ budget, les participants et les décisions. Il pilote :
 - le LLM uniquement pour comprendre l'intention, sélectionner parmi des
   résultats réels, adapter le rythme, expliquer et interpréter une modification.
 
-La génération deviendra progressive : plan global, recherches spécialisées,
-sélection contrainte, assemblage puis validation finale. Les données porteront
-déjà une source et un niveau **Vérifié / Estimé / Suggestion** ; la suite doit
-appliquer ce contrat à chaque connecteur spécialisé et aux lots progressifs.
+La génération est progressive : préparation d'un contexte planifiable, plan
+global, lots bornés par ville et plage, recherches spécialisées, sélection
+contrainte, assemblage unique puis validation finale. Une panne `503` rejoue
+uniquement le lot concerné dans une limite fixée ; aucun parcours partiel n'est
+exposé.
+
+Avant ce plan, `preparerGeneration` distingue trois chemins : villes déclarées,
+découverte générique de destinations et NBA event-first. Les villes ou ancres
+fournisseur restent séparées du `Brief` utilisateur. Une clarification, un
+refus ou une panne sort avant la génération des lots.
+
+La modification utilise elle aussi une copie de travail : l'impact est calculé,
+les dépendants sont régénérés dans l'ordre topologique, l'agrégat complet est
+revalidé, puis une seule écriture est autorisée.
 
 Un sous-agent futur n'est accepté que si une fonction déterministe ne suffit
 pas et si son contrat, ses données d'entrée et sa validation sont explicites.

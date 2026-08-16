@@ -24,11 +24,39 @@
 | UI-B — Fondations visuelles | Composants et statuts métier (indisponible/refus) | Terminé |
 | UI-C — Écrans principaux + photos | Intégration des photographies personnelles | Terminé |
 | UI-D — Responsive / états / polish | Vérification mobile/tablette/desktop et contrastes | Terminé |
-| F9 — Recette de sortie | Robustesse NBA puis valeur EVG | Terminé |
+| F9 — Recette de sortie | Matrice de capacités et garanties de fiabilité | Terminé |
+| UI-1 — Fondations « Papier & Lumière » | Palette, typographie et contrastes | Terminé |
+| UI-2 — Hero et header | Photographies éditoriales et entrée immersive | Terminé |
+| UI-3 — Dialogue | Conversation chaleureuse et récapitulatif confirmé | Terminé |
+| UI-4 — Parcours | Carnet généré et bibliothèque | Terminé |
+| UI-5 — Écrans secondaires | Login, préférences et partage | En revue — PR #91 |
 
 ### Board — avancement du chantier
 
-**Préparation de génération — PR4 : NBA event-first de bout en bout** *(à relire)*
+**Préparation de génération — état consolidé après les PR #72 à #85** *(terminé)*
+
+- les contrats de préparation et le `ContextePlanifiable` séparent la
+  déclaration utilisateur des villes et ancres utilisées pour générer ;
+- PredictHQ event-first permet à une envie NBA sans ville de partir de vrais
+  événements datés ;
+- la découverte générique propose des destinations à partir de facettes et de
+  preuves géographiques, jamais d'une ville inventée par le LLM ;
+- les localisations déclarées sont typées et leur pays est borné ; aucun
+  parcours planifiable sans ville ne rejoint la génération ;
+- la vérité temporelle, l'intake multi-tours et l'assemblage ont été stabilisés
+  sans réintroduire de modèle concurrent ;
+- les liens externes ne deviennent actionnables qu'après les preuves et
+  contrôles déjà imposés par ADR-0008 ;
+- les dettes issues de ces lots sont consolidées dans le
+  [registre canonique](17-finitions-techniques.md).
+
+Les PR concernées sont #72 à #85, à l'exception des numéros occupés par les
+fusions intermédiaires. Les deux recettes live encore empêchées par la
+disponibilité fournisseur restent `DETTE-001` et `DETTE-002` : ce statut ne
+remet pas en cause la fusion du socle, mais interdit d'annoncer ces scénarios
+comme démontrés en conditions réelles.
+
+**Préparation de génération — PR4 : NBA event-first de bout en bout** *(fusionnée ; détail historique)*
 
 > Proposée par la [PR #75](https://github.com/loties1533/experience-ai/pull/75).
 
@@ -65,7 +93,7 @@ dans la génération de lots.
 Validation locale : 69 fichiers / 1 931 tests, TypeScript serveur et client,
 lint et build client.
 
-**Préparation de génération — PR3 : recherche PredictHQ event-first** *(à relire)*
+**Préparation de génération — PR3 : recherche PredictHQ event-first** *(fusionnée ; détail historique)*
 
 > Proposée par la [PR #74](https://github.com/loties1533/experience-ai/pull/74).
 
@@ -182,7 +210,7 @@ sécurisée et intégrée des liens (F2-B1 à B5).
   un appelant de forger directement une confiance, une provenance, une
   identité Foursquare ou un lien Booking
 
-**F4 — Vols et transports** *(en cours)*
+**F4 — Vols et transports** *(terminé)*
 
 **F4-A — Audit transport** — couvert par l'audit F0
 ([PR #22](https://github.com/loties1533/experience-ai/pull/22)), sans
@@ -251,6 +279,11 @@ PR : https://github.com/loties1533/experience-ai/pull/91
   ParcoursPartage. Aucun endpoint, contrat serveur, cookie, session ou règle
   d'autorisation modifié ; l'adaptateur HTTP client distingue désormais le 401
   du login des 401 de session expirée.
+- **Documentation remise au niveau du code** dans le même lot sur décision
+  explicite : README principal et front, roadmap, architecture, fiabilité,
+  index des ADR, direction UI et design system. Les anciens constats UI-A→UI-D
+  restent archivés, mais ne sont plus présentés comme l'état courant. Aucun
+  historique de décision ni aucune limite fournisseur n'a été effacé.
 - **Honnêteté des états** : Préférences ne monte plus un formulaire vide sur
   panne (risque d'écrasement des vraies données) → état d'erreur + Réessayer ;
   PanneauPartage distingue chargement, panne et groupe vide (fin du squelette
@@ -294,6 +327,43 @@ PR : https://github.com/loties1533/experience-ai/pull/90
   multi-jours avec heures réelles. Suite complète verte (2201), typecheck
   serveur+client, lint, build, `diff --check`, plus une vérification visuelle
   desktop/mobile.
+
+### Revue UI-1 — fondations « Papier & Lumière » (15/08)
+
+PR : https://github.com/loties1533/experience-ai/pull/87
+
+- **Nouvelle direction appliquée au code existant**, sans changement métier :
+  palette ivoire/crème/encre, terracotta pour l'action, laiton en détail et
+  sauge pour les états positifs.
+- **Typographie** : Fraunces porte les titres éditoriaux ; Inter devient la
+  police d'interface. Le fond animé « aventure » est remplacé par une surface
+  papier statique et très légère.
+- **Composants existants alignés** : boutons, champs, bulles, badges, layout,
+  login, préférences, partage et parcours utilisent les mêmes tokens. Le doré
+  reste un détail, jamais un aplat dominant.
+- **Accessibilité** : deux contrastes de petit texte ont été corrigés avant
+  fusion ; focus clavier, reduced-motion et cibles tactiles conservés.
+- Aucun endpoint, contrat serveur, domaine, fournisseur ni comportement de
+  génération modifié.
+
+### Revue UI-2 — hero et header éditoriaux (15/08)
+
+PR : https://github.com/loties1533/experience-ai/pull/88
+
+- **Sept familles d'envies**, pas sept destinations : sport, amis, concert,
+  romantisme, aventure, culture et évasion. Les images installent une émotion
+  et ne prouvent aucune disponibilité ni aucun lieu du parcours.
+- **Provenance documentée** pour chaque visuel, avec source, photographe,
+  licence et droits tiers restant à vérifier. Déclinaisons WebP desktop/mobile
+  et JPG de repli.
+- **Hero immersif sur l'entrée**, puis compact dès que le dialogue commence ;
+  rotation mesurée, points focaux mobile/desktop et zoom léger coupé par
+  `prefers-reduced-motion`.
+- **Header éditorial** transparent sur le hero puis solide sur le contenu,
+  navigation et état de connexion conservés.
+- Corrections avant fusion : champ de dialogue préservé pendant la transition
+  et état photographique du header synchronisé.
+- Aucun changement backend, API, domaine ou règle de confiance.
 
 ### Revue UI-3 — dialogue « Papier & Lumière » (15/08)
 

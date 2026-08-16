@@ -20,3 +20,4 @@ Chaque ADR tient sur une page : **Contexte · Décision · Alternatives envisag�
 | [0006](decisions/ADR-0006.md) | Le repo est la source de vérité (docs as code) | 2026-07-23 | Accepté |
 | [0007](decisions/ADR-0007.md) | Le parcours se persiste comme un agrégat (une table, contenu JSON validé) | 2026-07-23 | Accepté |
 | [0008](decisions/ADR-0008.md) | Toute donnée externe porte un niveau de confiance | 2026-07-28 | Accepté |
+| [0009](decisions/ADR-0009.md) | Modèle Anthropic de production : `claude-haiku-4-5` | 2026-08-01 | Accepté |

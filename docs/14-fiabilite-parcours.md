@@ -1,8 +1,9 @@
 # 14 — Fiabilité des parcours et vérité des données
 
-> **Chantier actif après la refonte R1 → R8.** Le domaine `Parcours` est
-> conservé. La priorité est désormais qu'aucun lieu, événement, hébergement,
-> prix ou lien non vérifié ne soit présenté comme une donnée réelle.
+> **Chantier F0 → F9 terminé.** Le domaine `Parcours` est conservé et la règle
+> reste active : aucun lieu, événement, hébergement, prix ou lien non vérifié
+> n'est présenté comme une donnée réelle. Les limites observées à la sortie
+> sont consignées dans la [recette F9](16-recette-f9.md).
 
 ## Pourquoi ce chantier existe
 
@@ -80,12 +81,12 @@ sa définition de terminé sont satisfaites.
 | **F1 — Vérité des données** | Politique de confiance, traçabilité et refus explicite | F0 | Terminé |
 | **F2 — Lieux et événements** | Liens fiables pour activités, restaurants et événements | F1 | Terminé |
 | **F3 — Hébergements** | Hébergements nommés vérifiés et liens correctement paramétrés | F1, F2 | Terminé |
-| **F4 — Vols et transports** | Recherches réelles avec IATA, dates et voyageurs | F0, F1 | En cours (jusqu'à F4-C2 ; C3 à venir) |
-| **F5 — Génération progressive** | Plan puis lots validés, reprise locale en cas d'échec | F1 | À faire |
-| **F6 — Benchmark modèles** | Choix du modèle par mesures comparables | F5 | À faire |
-| **F7 — Dialogue fiable** | Dates relatives, état de dialogue, aucune question répétée | F1 | À faire |
-| **F8 — Modification complète** | Régénération atomique des seuls dépendants concernés | F1, F5 | À faire |
-| **F9 — Recette de sortie** | Robustesse NBA puis validation de valeur EVG | F2 → F8 | À faire |
+| **F4 — Vols et transports** | Recherches réelles avec IATA, dates et voyageurs | F0, F1 | Terminé |
+| **F5 — Génération progressive** | Plan puis lots validés, reprise locale en cas d'échec | F1 | Terminé |
+| **F6 — Benchmark modèles** | Choix du modèle par mesures comparables | F5 | Terminé |
+| **F7 — Dialogue fiable** | Dates relatives, état de dialogue, aucune question répétée | F1 | Terminé |
+| **F8 — Modification complète** | Régénération atomique des seuls dépendants concernés | F1, F5 | Terminé |
+| **F9 — Recette de sortie** | Robustesse et matrice honnête des capacités | F2 → F8 | Terminé |
 
 ### F0 — Audit du portage
 
@@ -222,7 +223,7 @@ bonne ville, les bonnes dates et le bon nombre de voyageurs. *(Satisfait pour
 le périmètre F3-B à F3-D ; aucune disponibilité ni réservation n'est
 prétendue.)*
 
-### F4 — Vols et transports — En cours
+### F4 — Vols et transports — Terminé
 
 **F4-A — Audit transport.** Couvert par l'audit F0
 ([PR #22](https://github.com/loties1533/experience-ai/pull/22)) : la matrice
@@ -230,7 +231,7 @@ prétendue.)*
 vols et la logique IATA de TripGenie. F4-A ne correspond à aucun livrable, PR
 ou branche séparée — ce n'est pas un sprint autonome.
 
-Livré par les PR
+Les premières couches ont été livrées par les PR
 [#35](https://github.com/loties1533/experience-ai/pull/35) (F4-B1),
 [#36](https://github.com/loties1533/experience-ai/pull/36) (F4-B2),
 [#37](https://github.com/loties1533/experience-ai/pull/37) (F4-C1) et
@@ -256,21 +257,28 @@ Livré par les PR
   premier résultat. Une heure locale sans fuseau fiable n'est jamais promue en
   instant absolu (aucun `Z`, offset ou fuseau IANA inventé).
 
-> **F4-C1 et F4-C2 sont implémentés, testés et internes.** Ils ne sont pas
-> encore appelés par la génération active, les routes publiques, l'OpenAPI,
-> le front ou la persistance — cette séparation est volontaire, pour valider
-> chaque couche avant exposition.
+Les couches suivantes ont clos le sprint :
 
-**F4-C3 — trains et transports locaux structurés : non commencé.** C'est le
-prochain sous-lot. Suivront F4-D1 (liens de recherche transport), F4-D2
-(intégration des candidats dans la génération active) et F4-E (modifications,
-API et front pour le transport).
+- **F4-C3** — contrats, résolution de gares et trajets structurés Navitia ;
+- **F4-D1** — constructeurs déterministes de liens de recherche Google Flights
+  et Google Maps ;
+- **F4-D2** — intégration dans la génération : un lien n'est ajouté qu'après
+  résolution unique des deux extrémités par Amadeus ou Navitia ;
+- **F4-E** — même reconstruction prudente dans la modification, contrat API et
+  affichage front.
 
-**Terminé lorsque :** le clic ouvre une recherche avec les bons aéroports,
-dates et voyageurs sur les scénarios testés — non atteint tant que F4-C3 à
-F4-E ne sont pas livrés.
+La résolution d'aéroports F4-C1 est donc active via F4-D2. En revanche,
+`rechercherVolsAeriens` (offres Amadeus F4-C2) et les trajets Navitia structurés
+restent des observations internes : le parcours n'affiche aucun prix, billet,
+opérateur ou horaire comme garanti. Les liens produits restent des liens de
+**recherche**.
 
-### F5 — Génération progressive
+**Critère de fin atteint pour F4 :** les identités de transport et les liens
+sont reconstruits de façon prudente dans la génération et la modification.
+Une résolution ambiguë, vide ou indisponible produit l'absence de lien, jamais
+un premier résultat choisi arbitrairement.
+
+### F5 — Génération progressive — Terminé
 
 Créer un plan global, générer par ville ou lot de jours, valider chaque lot,
 assembler après validation et reprendre uniquement le lot en échec. Préserver
@@ -279,7 +287,11 @@ les dépendances entre lots et mesurer temps et coût.
 **Terminé lorsque :** un parcours multi-villes de trois semaines est généré
 sans troncature et sans perdre les lots déjà validés.
 
-### F6 — Benchmark des modèles
+**Résultat :** plan déterministe, génération par lots, refs namespacées,
+assemblage unique et reprise bornée du seul lot en échec. Aucun parcours
+partiel n'est exposé.
+
+### F6 — Benchmark des modèles — Terminé
 
 Comparer Haiku, un modèle Claude plus puissant disponible et, si utile, un
 autre fournisseur sur les mêmes entrées et avec les mêmes outils. Mesurer JSON
@@ -292,7 +304,11 @@ multi-villes de trois semaines.
 **Terminé lorsque :** le modèle de production est choisi sur des résultats
 reproductibles, pas uniquement sur son coût.
 
-### F7 — Dialogue fiable
+**Résultat :** `claude-haiku-4-5-20251001` retenu par
+[ADR-0009](decisions/ADR-0009.md). Les échecs NBA du benchmark restent des
+échecs honnêtes et ne valent pas validation du scénario.
+
+### F7 — Dialogue fiable — Terminé
 
 Introduire le contexte date/heure/fuseau, un résolveur temporel déterministe,
 un état explicite et le choix du prochain champ côté code. Tester des
@@ -301,7 +317,10 @@ conversations complètes, interruptions et corrections.
 **Terminé lorsque :** une information donnée une fois n'est pas redemandée sans
 raison et les dates relatives sont normalisées correctement.
 
-### F8 — Modification chirurgicale complète
+**Résultat :** résolution temporelle déterministe, prochain champ choisi côté
+serveur et état transitoire de clarification séparé du brief confirmé.
+
+### F8 — Modification chirurgicale complète — Terminé
 
 Consolider la capacité déjà existante : classer l'impact, régénérer les
 dépendants nécessaires, valider atomiquement et expliquer les changements.
@@ -309,14 +328,23 @@ dépendants nécessaires, valider atomiquement et expliquer les changements.
 **Terminé lorsque :** « change uniquement le restaurant » ne modifie aucun
 élément non dépendant, y compris après la génération progressive.
 
-### F9 — Recette de sortie
+**Résultat :** impact calculé, dépendants régénérés dans l'ordre topologique
+sur une copie de travail, validation complète puis une seule écriture.
 
-Le scénario NBA valide la robustesse technique ; le scénario EVG valide le
-groupe et la valeur produit. La recette ne commence qu'avec lieux, liens,
+### F9 — Recette de sortie — Terminé
+
+Le scénario NBA éprouve la robustesse technique ; le scénario EVG exerce les
+capacités de groupe. La validation de valeur auprès d'utilisateurs réels reste
+un chantier produit distinct. La recette ne commence qu'avec lieux, liens,
 hébergements, vols concernés, dates, repli et parcours longs fiabilisés.
 
-**Terminé lorsque :** les preuves de recette sont consignées et que les
-conditions de présentation publique sont satisfaites sans exception masquée.
+**Terminé lorsque :** les preuves techniques sont consignées et chaque capacité
+est classée sans exception masquée.
+
+**Résultat :** matrice SUPPORTED/PARTIAL et garanties consignées dans le
+[doc 16](16-recette-f9.md). La recette confirme l'absence de faux parcours,
+pas une couverture universelle ni une validation marché. Les recettes live
+bloquées par les fournisseurs restent suivies dans le [doc 17](17-finitions-techniques.md).
 
 ## Hors priorité pendant ce chantier
 

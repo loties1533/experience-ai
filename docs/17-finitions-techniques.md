@@ -5,8 +5,9 @@ Les ADR décrivent les décisions, `SPRINTS.md` conserve l’historique d’exé
 les descriptions de PR restent des instantanés : aucun de ces documents ne remplace
 le présent registre pour connaître l’état courant d’un sujet.
 
-Dernière consolidation : 14 août 2026, sur `main` à
-`50cc7d4d9daf87514567017f75b3a4625c905994` avant les corrections PR10.
+Dernière relecture documentaire : 16 août 2026, après `main`
+`cbf2118d29099bb04196f1f4751ea87083b91a6a` et pendant la PR #91. Aucun état
+de dette n'a été modifié sans nouvelle preuve technique ou recette réelle.
 
 ## Registre
 

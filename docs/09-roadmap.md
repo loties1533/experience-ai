@@ -1,54 +1,85 @@
 # 09 — Roadmap
 
-> Construire par couches et ne pas confondre **fonctionnel** avec **fiable**.
-> Le détail exécutable des sprints vit dans [`SPRINTS.md`](SPRINTS.md) ; le
-> plan détaillé de fiabilité dans [`14-fiabilite-parcours.md`](14-fiabilite-parcours.md).
+> Construire par couches et ne pas confondre **fonctionnel**, **fiable** et
+> **validé par le marché**. Le détail exécutable vit dans
+> [`SPRINTS.md`](SPRINTS.md), les limites techniques dans la
+> [recette F9](16-recette-f9.md) et le backlog courant dans
+> [`17-finitions-techniques.md`](17-finitions-techniques.md).
 
-## État au 29 juillet 2026
+## État au 16 août 2026
 
 ### 1. Cadre produit — terminé
 
-Vision, problème, parcours, histoires utilisateur, modèle conceptuel,
-capacités, décisions et principes d'évolution sont documentés.
+Vision, problème, définition du parcours, histoires utilisateur, modèle de
+domaine, capacités, décisions et principes d'évolution sont documentés. Le
+modèle reste générique : une envie et son contexte, jamais une destination ou
+un format imposé.
 
 ### 2. Refonte Pack → Parcours — terminée (R1 → R8)
 
-Le code porte désormais le domaine `Parcours`, ses invariants, la persistance,
-l'intake, la génération, les préférences, la modification ciblée et le partage
-au groupe. Ce socle n'est pas remis en cause.
+Le code porte un seul domaine `Parcours` : invariants, persistance, intake,
+génération, préférences, modification ciblée et partage. `Pack`, les modes
+figés et la régénération globale de TripGenie ont été supprimés.
 
-### 3. Fiabilité des parcours — chantier actif (F0 → F9)
+### 3. Fiabilité des parcours — terminée pour F0 → F9
 
-Le plan de fiabilité avance sprint par sprint (détail dans
-[`14-fiabilite-parcours.md`](14-fiabilite-parcours.md)) :
+Le chantier a livré :
 
-1. auditer le portage TripGenie — **terminé** (F0, couvre aussi le transport :
-   pas de sprint F4-A séparé) ;
-2. définir et appliquer **Vérifié / Estimé / Suggestion / Refus** — **terminé** (F1) ;
-3. fiabiliser lieux, événements et liens — **terminé** (F2) ;
-4. vérifier les hébergements — **terminé** (F3) ;
-5. reconstruire les liens vols et transports — **en cours** (F4 : contrats,
-   génération fail-closed et connecteur Amadeus livrés jusqu'à F4-C2, mais
-   **internes** — non appelés par la génération active, les routes, l'OpenAPI,
-   le front ou la persistance. Prochain sous-lot : **F4-C3**, trains et
-   transports locaux structurés. Puis F4-D — liens de recherche transport et
-   intégration dans la génération active — et F4-E — modifications, API et
-   front) ;
-6. générer progressivement les parcours longs — à faire (F5) ;
-7. benchmarker les modèles — à faire (F6) ;
-8. fiabiliser dialogue et modification — à faire (F7, F8) ;
-9. passer les recettes NBA et EVG — à faire (F9).
+1. l'audit du portage TripGenie ;
+2. les niveaux Vérifié / Estimé / Suggestion et les refus explicites ;
+3. l'identité des lieux, événements et hébergements ;
+4. la résolution sécurisée des liens ;
+5. les contrats et liens de recherche transport ;
+6. la génération progressive par lots ;
+7. le benchmark et le choix du modèle ;
+8. le dialogue déterministe ;
+9. la régénération atomique des dépendants ;
+10. la recette de sortie et sa matrice de capacités.
 
-**Règle de passage :** aucune présentation publique ou validation marché
-sérieuse avant la recette F9.
+F9 confirme la règle « aucun faux parcours présenté comme réel ». Il ne
+confirme pas une couverture universelle : vols, événements sportifs,
+international et multi-ville long conservent les limites détaillées dans le
+[doc 16](16-recette-f9.md).
 
-## Maturité produit après fiabilisation
+### 4. Préparation de génération — socle livré, recettes live à poursuivre
 
-- **A — Concrétisation** : ouvrir lorsqu'une envie doit devenir un parcours
-  fiable. C'est le MVP visé par F9.
-- **B — Fréquence** : inspiration et découverte, seulement après preuve du A.
+Après F9, la génération a été précédée d'un cadrage planifiable :
+
+- localisations utilisateur typées (ville, pays, zone ou inconnue) ;
+- découverte générique de destinations à partir de preuves géographiques ;
+- stratégie NBA event-first : les événements réels peuvent déterminer les
+  villes sans réécrire le brief utilisateur ;
+- clarification lorsqu'une période ou une localisation reste indispensable ;
+- vérité temporelle, intake stabilisé et assemblage sans répétitions ;
+- liens externes actionnables seulement lorsqu'ils restent compatibles avec
+  le contrat de confiance.
+
+Deux recettes live sont encore bloquées par la disponibilité des fournisseurs
+(`DETTE-001`, `DETTE-002`). Elles doivent être rejouées sur le pipeline réel,
+sans données synthétiques, avant d'affirmer que ces scénarios sont démontrés en
+conditions fournisseur.
+
+### 5. Interface — refonte « Papier & Lumière »
+
+- UI-1 : fondations visuelles — terminé ;
+- UI-2 : hero et header — terminé ;
+- UI-3 : dialogue — terminé ;
+- UI-4 : parcours généré et bibliothèque — terminé ;
+- UI-5 : login, préférences, partage et écrans secondaires — PR #91 en revue.
+
+Cette phase reste visuelle et front : elle ne change ni le domaine, ni les
+contrats serveur, ni les règles de vérité.
+
+## Maturité produit
+
+- **A — Concrétisation** : transformer une envie déjà présente en parcours
+  fiable. Le socle existe ; les recettes live restantes doivent encore être
+  démontrées avant une promesse publique large.
+- **B — Fréquence** : inspiration et découverte récurrente, seulement après
+  preuve d'usage du niveau A.
 - **C — Fidélisation** : mémoire contextuelle, recommandations proactives et
-  accompagnement.
+  accompagnement pendant/après.
 
-Inspiration, nouvelles verticales et mémoire avancée restent volontairement
-derrière le chantier fiabilité.
+Le prochain grand choix n'est pas une nouvelle fonctionnalité générale : c'est
+le premier périmètre de validation et le modèle économique, encore ouverts
+dans [`questions-ouvertes.md`](questions-ouvertes.md).

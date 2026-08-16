@@ -5,6 +5,12 @@
 > masquée. Voir [doc 14](14-fiabilite-parcours.md) pour le contrat de
 > confiance et [ADR-0008](decisions/ADR-0008.md) pour les niveaux persistés.
 
+> **Nature de ce document : instantané de clôture F9 du 2 août 2026.** Les
+> travaux ultérieurs de préparation (destinations, NBA event-first,
+> localisations typées) sont suivis dans `SPRINTS.md`. Ils n'effacent pas les
+> limites mesurées ici. La disponibilité actuelle d'un fournisseur se vérifie
+> en recette live, pas depuis cet instantané.
+
 ## Méthode
 
 Audit du code réel (services externes, `agents/generation.ts`,
