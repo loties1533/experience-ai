@@ -10,16 +10,53 @@ function normaliserTexte(texte: string): string {
     .trim();
 }
 
-const ARTICLE = String.raw`(?:(?:un|une|des|le|la|les|l)\s+)?`;
+const DETERMINANT = String.raw`(?:(?:un|une|des|le|la|les|ce|cet|cette|ces|l)\s+)?`;
+const CIBLE_AVEC_A = String.raw`(?:(?:a\s+${DETERMINANT})|au\s+|aux\s+)`;
+
+function decouperPropositions(texte: string): string[] {
+  return texte
+    .split(/[,.!?;:]+/u)
+    .flatMap((segment) =>
+      normaliserTexte(segment).split(
+        /\b(?:mais|puis|cependant|pourtant)\b/
+      )
+    )
+    .map((proposition) => proposition.trim())
+    .filter(Boolean);
+}
 
 function estMentionNiee(texte: string, objets: string): boolean {
   const negationDirecte = new RegExp(
-    String.raw`\b(?:sans|pas de|aucun(?:e)?)\s+${ARTICLE}${objets}\b`
+    String.raw`\b(?:sans|pas de|aucun(?:e)?)\s+${DETERMINANT}${objets}\b`
   );
   const negationVerbale = new RegExp(
     String.raw`\b(?:je\s+)?ne\s+(?:veux|souhaite)\s+pas(?:\s+[a-z0-9]+){0,5}\s+${objets}\b`
   );
   return negationDirecte.test(texte) || negationVerbale.test(texte);
+}
+
+function estActionNiee(avantAction: string): boolean {
+  return [
+    /\b(?:ne\s+pas|sans)\s*$/,
+    /\bne\s+(?:veux|souhaite|peux)(?:\s+[a-z0-9]+){0,2}\s+pas\s*$/,
+    /\bprefere(?:\s+[a-z0-9]+){0,2}\s+ne\s+pas\s*$/,
+    /\bimpossible\s+d\s*$/,
+    /\bpas\s+envie\s+d\s*$/,
+  ].some((negation) => negation.test(avantAction));
+}
+
+function contientPreuvePositive(
+  proposition: string,
+  preuves: readonly RegExp[]
+): boolean {
+  return preuves.some((preuve) => {
+    const occurrences = proposition.matchAll(new RegExp(preuve.source, 'g'));
+    return [...occurrences].some(
+      (occurrence) =>
+        occurrence.index !== undefined &&
+        !estActionNiee(proposition.slice(0, occurrence.index))
+    );
+  });
 }
 
 /**
@@ -33,24 +70,30 @@ const REGLES_CIBLAGE_CITY_FIRST = [
     objetsNies:
       String.raw`(?:matchs?|evenements? sportifs?|rencontres? sportives?|competitions? sportives?|tournois? sportifs?|nba)`,
     preuves: [
-      /\b(?:voir|assister a|aller voir|vivre)\s+(?:(?:un|une|des|le|la|les|l)\s+)?(?:matchs?|evenements? sportifs?|rencontres? sportives?|competitions? sportives?|tournois? sportifs?)\b/,
-      /\b(?:voir|vivre|suivre)\s+(?:de la\s+|la\s+)?nba\b/,
+      new RegExp(
+        String.raw`\b(?:assister\s+${CIBLE_AVEC_A}|(?:voir|aller voir|vivre)\s+${DETERMINANT})(?:matchs?|evenements? sportifs?|rencontres? sportives?|competitions? sportives?|tournois? sportifs?)\b`
+      ),
+      /\b(?:voir|vivre|suivre)\s+(?:(?:de la|la)\s+)?nba\b/,
     ],
   },
   {
     nature: 'concert',
     objetsNies: String.raw`concerts?`,
     preuves: [
-      /\b(?:assister a|aller a|aller au|aller voir|voir|vivre)\s+(?:(?:un|une|des|le|la|les|l)\s+)?concerts?\b/,
-      /\bbar\s+avec\s+(?:(?:un|le)\s+)?concert\b/,
-      /\b(?:(?:un|le|ce)\s+)?concert\s+me\s+plairait\b/,
+      new RegExp(
+        String.raw`\b(?:assister\s+${CIBLE_AVEC_A}|aller\s+${CIBLE_AVEC_A}|(?:aller voir|voir|vivre)\s+${DETERMINANT})concerts?\b`
+      ),
+      new RegExp(String.raw`\bbar\s+avec\s+${DETERMINANT}concert\b`),
+      new RegExp(String.raw`\b${DETERMINANT}concert\s+me\s+plairait\b`),
     ],
   },
   {
     nature: 'festival',
     objetsNies: String.raw`festivals?`,
     preuves: [
-      /\b(?:assister a|aller a|aller au|participer a|rejoindre|vivre)\s+(?:(?:un|une|des|le|la|les|l)\s+)?festivals?\b/,
+      new RegExp(
+        String.raw`\b(?:(?:assister|aller|participer)\s+${CIBLE_AVEC_A}|(?:rejoindre|vivre)\s+${DETERMINANT})festivals?\b`
+      ),
     ],
   },
   {
@@ -58,7 +101,9 @@ const REGLES_CIBLAGE_CITY_FIRST = [
     objetsNies:
       String.raw`(?:pieces?(?: de theatre)?|theatres?|spectacles?|operas?|ballets?|stand up|comedies? musicales?)`,
     preuves: [
-      /\b(?:assister a|aller voir|voir)\s+(?:(?:un|une|des|le|la|les|l)\s+)?(?:pieces?(?: de theatre)?|spectacles?|operas?|ballets?|stand up|comedies? musicales?)\b/,
+      new RegExp(
+        String.raw`\b(?:assister\s+${CIBLE_AVEC_A}|(?:aller voir|voir)\s+${DETERMINANT})(?:pieces?(?: de theatre)?|spectacles?|operas?|ballets?|stand up|comedies? musicales?)\b`
+      ),
     ],
   },
   {
@@ -66,7 +111,9 @@ const REGLES_CIBLAGE_CITY_FIRST = [
     objetsNies:
       String.raw`(?:evenements? communautaires?|fetes? de quartier|rencontres? communautaires?)`,
     preuves: [
-      /\b(?:participer a|rejoindre|vivre)\s+(?:(?:un|une|des|le|la|les|l)\s+)?(?:evenements? communautaires?|fetes? de quartier|rencontres? communautaires?)\b/,
+      new RegExp(
+        String.raw`\b(?:participer\s+${CIBLE_AVEC_A}|(?:rejoindre|vivre)\s+${DETERMINANT})(?:evenements? communautaires?|fetes? de quartier|rencontres? communautaires?)\b`
+      ),
     ],
   },
 ] as const satisfies readonly {
@@ -84,11 +131,14 @@ const REGLES_CIBLAGE_CITY_FIRST = [
 export function naturesEvenementiellesCityFirst(
   brief: Pick<Brief, 'intention'>
 ): NatureEvenementielle[] {
-  const intention = normaliserTexte(brief.intention);
+  const propositions = decouperPropositions(brief.intention);
   return REGLES_CIBLAGE_CITY_FIRST.flatMap(
     ({ nature, objetsNies, preuves }) =>
-      preuves.some((preuve) => preuve.test(intention)) &&
-      !estMentionNiee(intention, objetsNies)
+      propositions.some(
+        (proposition) =>
+          contientPreuvePositive(proposition, preuves) &&
+          !estMentionNiee(proposition, objetsNies)
+      )
         ? [nature]
         : []
   );

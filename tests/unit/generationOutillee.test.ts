@@ -404,6 +404,10 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
     ['ambiance de festival', 'Paris'],
     ['découvrir Paris sans concert', 'Paris'],
     ['visiter l’Opéra Garnier', 'Paris'],
+    ['ne pas assister à un concert', 'Paris'],
+    ['sans assister à un concert', 'Paris'],
+    ['je préfère ne pas aller à un concert', 'Paris'],
+    ['je ne souhaite pas assister au match ni au concert', 'Paris'],
   ])(
     'n’expose aucun outil événementiel pour l’intention générique « %s »',
     async (intention, ville) => {
@@ -435,8 +439,12 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
 
   it.each([
     ['assister à un stand-up', 'arts_de_la_scene'],
+    ['assister au concert', 'concert'],
+    ['assister au match', 'sport'],
+    ['participer au festival', 'festival'],
     ['Je veux voir un match de basket à Paris', 'sport'],
     ['je ne veux pas de concert, mais je veux voir un match', 'sport'],
+    ['sans assister à un concert, je souhaite participer au festival', 'festival'],
   ] as const)(
     'expose l’outil avec la seule nature positive pour « %s »',
     async (intention, nature) => {

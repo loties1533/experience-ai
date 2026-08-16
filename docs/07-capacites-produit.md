@@ -53,10 +53,12 @@ Un besoin de vocabulaire est apparu à l'usage : on parle de « parcours EVG »,
 
 **Ciblage événementiel city-first.** Ce ciblage ne crée pas un thème global.
 Quand une ville est déjà planifiée, le serveur n'expose la recherche
-événementielle que si l'intention confirmée nomme explicitement un match ou un
-événement sportif, un concert, un festival, des arts de la scène ou un
-événement communautaire. Une ville, des dates, « culture » ou « découvrir » ne
-suffisent pas. Les catégories techniques correspondantes restent traduites
+événementielle que si l'intention confirmée exprime positivement l'envie de
+vivre un événement, d'y assister, de le voir ou de le rejoindre. Le ciblage
+couvre un match ou un événement sportif, un concert, un festival, des arts de
+la scène ou un événement communautaire. Une mention, une ambiance, une visite
+de lieu, une intention niée, une ville, des dates, « culture » ou « découvrir »
+ne suffisent pas. Les catégories techniques correspondantes restent traduites
 dans l'adaptateur PredictHQ ; le modèle ne choisit ni catégorie libre ni mode
 de repli. Le vertical NBA event-first reste un chemin distinct. Un festival
 sans destination n'est donc pas encore rendu event-first par cette règle.
