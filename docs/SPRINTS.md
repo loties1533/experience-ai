@@ -284,6 +284,13 @@ PR : https://github.com/loties1533/experience-ai/pull/91
   index des ADR, direction UI et design system. Les anciens constats UI-A→UI-D
   restent archivés, mais ne sont plus présentés comme l'état courant. Aucun
   historique de décision ni aucune limite fournisseur n'a été effacé.
+- **Corrections d'alignement avant fusion** : le récapitulatif du dialogue lit
+  désormais les bornes du brief comme des dates civiles, sans conversion de
+  fuseau (`05/10` ne devient plus `06/10` à Paris). Les autres affichages ont
+  été contrôlés : les plages civiles sont déjà déterministes, tandis que les
+  dates de mise à jour, de consultation et de modification restent à juste
+  titre des horodatages locaux. La dernière police Open Sans imposée dans les
+  notifications a été retirée ; elles suivent maintenant l'interface Inter.
 - **Honnêteté des états** : Préférences ne monte plus un formulaire vide sur
   panne (risque d'écrasement des vraies données) → état d'erreur + Réessayer ;
   PanneauPartage distingue chargement, panne et groupe vide (fin du squelette
@@ -300,7 +307,7 @@ PR : https://github.com/loties1533/experience-ai/pull/91
   surfaces chaudes et des filets plutôt que des cartes SaaS empilées.
 - **Confidentialité** : noindex ajouté à Login, ParcoursPartage, MesParcours et
   ParcoursDetail ; aucun jeton dans les métadonnées.
-- Suite complète verte (2231), typecheck serveur+client, lint, build et
+- Suite complète verte (2232), typecheck serveur+client, lint, build et
   `diff --check`.
 
 ### Revue UI-4 — parcours généré et « Mes parcours » (15/08)

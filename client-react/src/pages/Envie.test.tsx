@@ -80,6 +80,31 @@ describe('Envie', () => {
     expect(screen.queryByText(/02\/10\/2026/)).not.toBeInTheDocument()
   })
 
+  it('conserve la date civile de fin dans le récapitulatif, sans décalage de fuseau', () => {
+    const fuseauInitial = process.env.TZ
+    process.env.TZ = 'Europe/Paris'
+    useDialogueStore.setState({
+      messages: [{ id: 'm1', de: 'produit', texte: 'Ton envie est prête.' }],
+      brief: {
+        intention: 'Vivre la NBA',
+        dates: {
+          debut: '2026-09-15T00:00:00.000Z',
+          fin: '2026-10-05T23:59:59.999Z',
+        },
+      },
+    })
+
+    try {
+      rendreEnvie()
+
+      expect(screen.getByText('du 15/09/2026 au 05/10/2026')).toBeInTheDocument()
+      expect(screen.queryByText(/06\/10\/2026/)).not.toBeInTheDocument()
+    } finally {
+      if (fuseauInitial === undefined) delete process.env.TZ
+      else process.env.TZ = fuseauInitial
+    }
+  })
+
   it('affiche un état de construction honnête pendant la génération, sans inventer d’étapes', async () => {
     useDialogueStore.setState({ brief: { intention: 'Un week-end' }, estComplet: true })
     vi.mocked(genererParcours).mockReturnValue(new Promise(() => {}))

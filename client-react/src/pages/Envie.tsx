@@ -25,13 +25,21 @@ function formaterDuree(d: { valeur: number; unite: 'heures' | 'jours' | 'semaine
   return `${d.valeur} ${d.valeur === 1 ? UNITE_SINGULIER[d.unite] : d.unite}`
 }
 
+// Les bornes du brief sont des dates civiles transportées dans des chaînes ISO.
+// On lit donc leur partie AAAA-MM-JJ sans conversion de fuseau : une fin de
+// journée à 23:59 UTC doit rester le même jour dans le récapitulatif.
+function formaterJourCivil(horodatageISO: string): string {
+  const [annee, mois, jour] = horodatageISO.slice(0, 10).split('-')
+  return `${jour}/${mois}/${annee}`
+}
+
 function resumeEnvie(brief: BriefPartiel): { label: string; valeur: string }[] {
   const lignes: { label: string; valeur: string }[] = []
   if (brief.avecQui) lignes.push({ label: 'Avec qui', valeur: LIBELLES_AVEC_QUI[brief.avecQui] })
   if (brief.duree) lignes.push({ label: 'Durée', valeur: formaterDuree(brief.duree) })
   if (brief.dates) lignes.push({
     label: 'Quand',
-    valeur: `du ${new Date(brief.dates.debut).toLocaleDateString('fr-FR')} au ${new Date(brief.dates.fin).toLocaleDateString('fr-FR')}`,
+    valeur: `du ${formaterJourCivil(brief.dates.debut)} au ${formaterJourCivil(brief.dates.fin)}`,
   })
   return lignes
 }
