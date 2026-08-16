@@ -79,12 +79,21 @@ describe('Login', () => {
     )
   })
 
-  it('signale un email déjà utilisé à l’inscription (message dédié)', async () => {
-    vi.mocked(signup).mockRejectedValue(new ErreurApi('Cet email est déjà utilisé', 409))
+  it.each([
+    [400, 'Données invalides'],
+    [409, 'Cet email est déjà utilisé'],
+  ] as const)('donne le même message générique à l’inscription pour le statut %i', async (statut, messageServeur) => {
+    vi.mocked(signup).mockRejectedValue(new ErreurApi(messageServeur, statut))
     rendreLogin()
     fireEvent.click(screen.getByRole('button', { name: 'Inscription' }))
     await soumettre(/Créer mon compte/)
-    expect(await screen.findByRole('alert')).toHaveTextContent('Un compte existe déjà avec cet email.')
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent(
+      'Inscription impossible. Vérifie les informations saisies ou essaie de te connecter.'
+    )
+    expect(alerte).not.toHaveTextContent(messageServeur)
+    expect(alerte).not.toHaveTextContent(String(statut))
+    expect(alerte).not.toHaveTextContent(/un compte existe/i)
   })
 
   it('demande aux moteurs de ne pas indexer la page', async () => {

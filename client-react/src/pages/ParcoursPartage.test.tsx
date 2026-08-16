@@ -105,6 +105,16 @@ describe('ParcoursPartage (UI-5 — carnet partagé, sécurité)', () => {
     return rendreParcoursPartage()
   }
 
+  it('annonce le chargement aux technologies d’assistance et reste noindex', async () => {
+    vi.mocked(chargerParcoursPartage).mockReturnValue(new Promise<never>(() => {}))
+    rendreParcoursPartage()
+
+    expect(screen.getByRole('status')).toHaveTextContent('Chargement en cours')
+    await waitFor(() =>
+      expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, nofollow')
+    )
+  })
+
   it('affiche le même message générique pour tout lien inutilisable (anti-énumération)', async () => {
     vi.mocked(chargerParcoursPartage).mockRejectedValue(new Error("peu importe la cause interne"))
     rendreParcoursPartage()

@@ -18,8 +18,9 @@ function messageErreurAuth(mode: ModeAuth, erreur: unknown): string {
     if (statut === 400 || statut === 401) return 'Connexion impossible. Vérifie ton email et ton mot de passe.'
     return 'Connexion momentanément impossible. Réessaie dans un instant.'
   }
-  if (statut === 409) return 'Un compte existe déjà avec cet email.'
-  if (statut === 400) return 'Inscription impossible. Vérifie les informations saisies.'
+  if (statut === 400 || statut === 409) {
+    return 'Inscription impossible. Vérifie les informations saisies ou essaie de te connecter.'
+  }
   return 'Inscription momentanément impossible. Réessaie dans un instant.'
 }
 
@@ -60,7 +61,10 @@ export default function Login() {
     <PageLayout>
       <Seo title="Connexion" description="Connecte-toi pour construire, retrouver et ajuster tes parcours." path="/login" noindex />
       <div className="max-w-sm mx-auto py-12 sm:py-16">
-        <form onSubmit={envoyer} className="carte p-8 shadow-card-lg">
+        <form
+          onSubmit={envoyer}
+          className="rounded-2xl border-y border-sable bg-creme/70 p-6 sm:border sm:p-8"
+        >
           <div className="text-center mb-6">
             <div className="w-12 h-12 rounded-xl bg-laiton/10 border border-laiton/20 flex items-center justify-center mx-auto mb-3">
               <Logo size={24} className="text-laiton" />

@@ -9,11 +9,18 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 vi.mock('../lib/api', async () => {
   const reel = await vi.importActual<typeof import('../lib/api')>('../lib/api')
-  return { ...reel, chargerPartage: vi.fn(), retirerParticipant: vi.fn() }
+  return {
+    ...reel,
+    chargerPartage: vi.fn(),
+    changerVisibilite: vi.fn(),
+    ajouterParticipant: vi.fn(),
+    retirerParticipant: vi.fn(),
+  }
 })
-import { chargerPartage, retirerParticipant } from '../lib/api'
+import { toast } from 'sonner'
+import { ajouterParticipant, changerVisibilite, chargerPartage, retirerParticipant } from '../lib/api'
 
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks() })
 
 function rendrePanneau() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -22,6 +29,14 @@ function rendrePanneau() {
       <PanneauPartage parcoursId="p1" />
     </QueryClientProvider>
   )
+}
+
+const PARTAGE_AVEC_PARTICIPANT = {
+  visibilite: 'partage' as const,
+  liens: [
+    { participantId: 'o1', nom: 'Ines', role: 'organisateur' as const, chemin: null },
+    { participantId: 'p2', nom: 'Marc', role: 'participant' as const, chemin: '/partage/jeton-marc' },
+  ],
 }
 
 describe('PanneauPartage — honnêteté des états', () => {
@@ -42,13 +57,7 @@ describe('PanneauPartage — honnêteté des états', () => {
 
   it('conserve la confirmation avant de retirer un participant (aucun retrait sans accord)', async () => {
     const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    vi.mocked(chargerPartage).mockResolvedValue({
-      visibilite: 'partage',
-      liens: [
-        { participantId: 'o1', nom: 'Ines', role: 'organisateur', chemin: null },
-        { participantId: 'p2', nom: 'Marc', role: 'participant', chemin: '/partage/jeton-marc' },
-      ],
-    })
+    vi.mocked(chargerPartage).mockResolvedValue(PARTAGE_AVEC_PARTICIPANT)
     rendrePanneau()
 
     await screen.findByText('Marc')
@@ -67,5 +76,47 @@ describe('PanneauPartage — honnêteté des états', () => {
     await screen.findByText('Ines')
     // chemin null → aucun bouton « Copier le lien » n'est proposé.
     expect(screen.queryByRole('button', { name: 'Copier le lien' })).not.toBeInTheDocument()
+  })
+
+  it('humanise l’échec d’un changement de visibilité, sans faux succès', async () => {
+    vi.mocked(chargerPartage).mockResolvedValue({ ...PARTAGE_AVEC_PARTICIPANT, visibilite: 'prive' })
+    vi.mocked(changerVisibilite).mockRejectedValue(new Error('SQL 500 visibility'))
+    rendrePanneau()
+
+    fireEvent.click(await screen.findByRole('radio', { name: /^Partagé/ }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      'Impossible de changer la visibilité. Réessaie dans un instant.'
+    ))
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringContaining('SQL 500'))
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('humanise l’échec d’un ajout de participant, sans faux succès', async () => {
+    vi.mocked(chargerPartage).mockResolvedValue(PARTAGE_AVEC_PARTICIPANT)
+    vi.mocked(ajouterParticipant).mockRejectedValue(new Error('API 503 participant'))
+    rendrePanneau()
+
+    fireEvent.change(await screen.findByLabelText("Ajouter quelqu'un"), { target: { value: 'Lea' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      'Impossible d’ajouter ce participant. Réessaie dans un instant.'
+    ))
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringContaining('API 503'))
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('humanise l’échec d’un retrait de participant, sans faux succès', async () => {
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(chargerPartage).mockResolvedValue(PARTAGE_AVEC_PARTICIPANT)
+    vi.mocked(retirerParticipant).mockRejectedValue(new Error('DB down retrait'))
+    rendrePanneau()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retirer' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      'Impossible de retirer ce participant. Réessaie dans un instant.'
+    ))
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringContaining('DB down'))
+    expect(toast.success).not.toHaveBeenCalled()
+    confirmer.mockRestore()
   })
 })

@@ -247,24 +247,28 @@ modification, l'OpenAPI et le front.
 
 PR : https://github.com/loties1533/experience-ai/pull/91
 
-- **Fin de la refonte visuelle** sur Login, Préférences, PanneauPartage,
-  ParcoursPartage, sans toucher au backend, à l'authentification ni aux
-  autorisations.
+- **Fin de la refonte visuelle** sur Login, Préférences, PanneauPartage et
+  ParcoursPartage. Aucun endpoint, contrat serveur, cookie, session ou règle
+  d'autorisation modifié ; l'adaptateur HTTP client distingue désormais le 401
+  du login des 401 de session expirée.
 - **Honnêteté des états** : Préférences ne monte plus un formulaire vide sur
   panne (risque d'écrasement des vraies données) → état d'erreur + Réessayer ;
   PanneauPartage distingue chargement, panne et groupe vide (fin du squelette
   permanent).
-- **Sécurité** : un 401 d'authentification remonte au formulaire au lieu de
-  rediriger ; messages d'erreur français fixes (jamais le message technique
-  brut) ; connexion sans distinction email inconnu / mot de passe erroné.
+- **Sécurité** : seul le 401 du login remonte au formulaire, les routes protégées
+  redirigent toujours vers la connexion ; messages français fixes (jamais le
+  détail technique brut) ; connexion sans distinction email inconnu / mot de
+  passe erroné ; inscription identique pour les statuts 400 et 409 afin de ne
+  pas confirmer l'existence d'un compte.
 - **ParcoursPartage** aligné sur le carnet UI-4 (contexte francisé, plages
-  réelles, provenance sans URL, états vides), message générique de lien
-  invalide préservé, noindex/nofollow dans tous les états.
+  réelles, provenance sans URL, états vides), chargement annoncé aux aides
+  techniques, message générique de lien invalide préservé, noindex/nofollow
+  dans tous les états. Login, Préférences et PanneauPartage utilisent des
+  surfaces chaudes et des filets plutôt que des cartes SaaS empilées.
 - **Confidentialité** : noindex ajouté à Login, ParcoursPartage, MesParcours et
   ParcoursDetail ; aucun jeton dans les métadonnées.
-- Suite complète verte (2224), typecheck serveur+client, lint, build,
-  `diff --check`, plus une vérification visuelle desktop/mobile par interception
-  locale (backend/auth non lancés en local).
+- Suite complète verte (2231), typecheck serveur+client, lint, build et
+  `diff --check`.
 
 ### Revue UI-4 — parcours généré et « Mes parcours » (15/08)
 

@@ -86,66 +86,66 @@ function Formulaire({ initiales }: { initiales: PreferencesParcours }) {
   })
 
   return (
-          <form
-            className="carte p-6 mt-6 space-y-5"
-            onSubmit={(e) => { e.preventDefault(); enregistrement.mutate(form) }}
-          >
-            <ChampListe
-              id="ambiances" libelle="Ambiances que j'aime"
-              aide="séparées par des virgules — ex. : festif, nature, gastronomique"
-              valeurs={form.ambiances}
-              onChange={(ambiances) => setForm((f) => ({ ...f, ambiances }))}
-            />
+    <form
+      className="mt-8 space-y-6 border-t border-sable pt-6"
+      onSubmit={(e) => { e.preventDefault(); enregistrement.mutate(form) }}
+    >
+      <ChampListe
+        id="ambiances" libelle="Ambiances que j'aime"
+        aide="séparées par des virgules — ex. : festif, nature, gastronomique"
+        valeurs={form.ambiances}
+        onChange={(ambiances) => setForm((f) => ({ ...f, ambiances }))}
+      />
 
-            <fieldset>
-              <legend className="text-sm font-semibold text-encre">Rythme préféré</legend>
-              <p className="text-xs text-brume mb-1.5">la densité des moments</p>
-              <div className="flex flex-wrap gap-2">
-                {RYTHMES.map((r) => (
-                  <button
-                    key={r.valeur} type="button" title={r.aide}
-                    aria-pressed={form.rythme === r.valeur}
-                    onClick={() => setForm((f) => ({ ...f, rythme: f.rythme === r.valeur ? undefined : r.valeur }))}
-                    className={`min-h-[44px] px-4 rounded-xl text-sm font-medium border transition-colors cursor-pointer ${
-                      form.rythme === r.valeur
-                        ? 'bg-terracotta-dark text-white border-terracotta-dark'
-                        : 'bg-white text-encre border-sable hover:border-laiton'
-                    }`}
-                  >
-                    {r.libelle}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-
-            <ChampListe
-              id="contraintes" libelle="Contraintes récurrentes"
-              aide="ex. : végétarien, mobilité réduite, pas de vol de nuit"
-              valeurs={form.contraintes}
-              onChange={(contraintes) => setForm((f) => ({ ...f, contraintes }))}
-            />
-
-            <ChampListe
-              id="lieux" libelle="Lieux favoris"
-              aide="villes ou régions où tu aimes retourner"
-              valeurs={form.lieuxFavoris}
-              onChange={(lieuxFavoris) => setForm((f) => ({ ...f, lieuxFavoris }))}
-            />
-
-            <div>
-              <label htmlFor="budget" className="block text-sm font-semibold text-encre">Budget habituel</label>
-              <p className="text-xs text-brume mb-1.5">en euros, laissé vide si ça dépend</p>
-              <input
-                id="budget" type="number" min={1} inputMode="numeric"
-                value={form.budgetHabituel ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, budgetHabituel: e.target.value ? Number(e.target.value) : undefined }))}
-                className="champ"
-              />
-            </div>
-
-            <button type="submit" className="btn-primaire w-full" disabled={enregistrement.isPending}>
-              {enregistrement.isPending ? 'Enregistrement…' : 'Enregistrer'}
+      <fieldset>
+        <legend className="text-sm font-semibold text-encre">Rythme préféré</legend>
+        <p className="text-xs text-brume mb-1.5">la densité des moments</p>
+        <div className="flex flex-wrap gap-2">
+          {RYTHMES.map((r) => (
+            <button
+              key={r.valeur} type="button" title={r.aide}
+              aria-pressed={form.rythme === r.valeur}
+              onClick={() => setForm((f) => ({ ...f, rythme: f.rythme === r.valeur ? undefined : r.valeur }))}
+              className={`min-h-[44px] px-4 rounded-xl text-sm font-medium border transition-colors cursor-pointer ${
+                form.rythme === r.valeur
+                  ? 'bg-terracotta-dark text-white border-terracotta-dark'
+                  : 'bg-white text-encre border-sable hover:border-laiton'
+              }`}
+            >
+              {r.libelle}
             </button>
-          </form>
+          ))}
+        </div>
+      </fieldset>
+
+      <ChampListe
+        id="contraintes" libelle="Contraintes récurrentes"
+        aide="ex. : végétarien, mobilité réduite, pas de vol de nuit"
+        valeurs={form.contraintes}
+        onChange={(contraintes) => setForm((f) => ({ ...f, contraintes }))}
+      />
+
+      <ChampListe
+        id="lieux" libelle="Lieux favoris"
+        aide="villes ou régions où tu aimes retourner"
+        valeurs={form.lieuxFavoris}
+        onChange={(lieuxFavoris) => setForm((f) => ({ ...f, lieuxFavoris }))}
+      />
+
+      <div>
+        <label htmlFor="budget" className="block text-sm font-semibold text-encre">Budget habituel</label>
+        <p className="text-xs text-brume mb-1.5">en euros, laissé vide si ça dépend</p>
+        <input
+          id="budget" type="number" min={1} inputMode="numeric"
+          value={form.budgetHabituel ?? ''}
+          onChange={(e) => setForm((f) => ({ ...f, budgetHabituel: e.target.value ? Number(e.target.value) : undefined }))}
+          className="champ"
+        />
+      </div>
+
+      <button type="submit" className="btn-primaire w-full" disabled={enregistrement.isPending}>
+        {enregistrement.isPending ? 'Enregistrement…' : 'Enregistrer'}
+      </button>
+    </form>
   )
 }

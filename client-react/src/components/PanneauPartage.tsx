@@ -89,7 +89,7 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
   const partage: EtatPartage = data
 
   return (
-    <section className="carte p-5 mt-8">
+    <section className="mt-10 border-t border-sable pt-6">
       <h2 className="font-heading font-semibold text-lg text-encre">Partager au groupe</h2>
       <p className="text-sm text-brume mt-1">
         Chacun reçoit son propre lien : il pourra voir le parcours et dire ce qu'il en pense. Vous gardez la décision.
@@ -128,41 +128,43 @@ export default function PanneauPartage({ parcoursId }: { parcoursId: string }) {
       {partage.liens.length === 0 && (
         <p className="mt-5 text-sm text-brume">Personne dans le groupe pour l'instant.</p>
       )}
-      <ul className="mt-5 space-y-2">
-        {partage.liens.map((lien) => (
-          <li key={lien.participantId} className="flex flex-wrap items-center gap-2 rounded-xl border border-encre/10 p-3">
-            <span className="flex-1 min-w-0">
-              <span className="font-semibold text-encre text-sm">{lien.nom}</span>
-              <span className="text-xs text-brume"> · {LIBELLES_ROLE[lien.role]}</span>
-              {lien.chemin === null && (
-                <span className="block text-xs text-brume mt-0.5">
-                  {partage.visibilite === 'prive'
-                    ? 'Aucun lien tant que le parcours est privé'
-                    : 'Pas de lien : la surprise est pour lui'}
-                </span>
+      {partage.liens.length > 0 && (
+        <ul className="mt-5 divide-y divide-sable border-y border-sable">
+          {partage.liens.map((lien) => (
+            <li key={lien.participantId} className="flex flex-wrap items-center gap-2 py-3">
+              <span className="flex-1 min-w-0">
+                <span className="font-semibold text-encre text-sm">{lien.nom}</span>
+                <span className="text-xs text-brume"> · {LIBELLES_ROLE[lien.role]}</span>
+                {lien.chemin === null && (
+                  <span className="block text-xs text-brume mt-0.5">
+                    {partage.visibilite === 'prive'
+                      ? 'Aucun lien tant que le parcours est privé'
+                      : 'Pas de lien : la surprise est pour lui'}
+                  </span>
+                )}
+              </span>
+              {lien.chemin && (
+                <button className="btn-secondaire min-h-[44px] text-xs" onClick={() => copier(lien.chemin as string)}>
+                  Copier le lien
+                </button>
               )}
-            </span>
-            {lien.chemin && (
-              <button className="btn-secondaire min-h-[44px] text-xs" onClick={() => copier(lien.chemin as string)}>
-                Copier le lien
-              </button>
-            )}
-            {lien.role !== 'organisateur' && (
-              <button
-                className="btn-secondaire min-h-[44px] text-xs !text-corail hover:!border-corail"
-                onClick={() => { if (window.confirm(`Retirer « ${lien.nom} » du parcours ?`)) retrait.mutate(lien.participantId) }}
-                disabled={retrait.isPending}
-              >
-                Retirer
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
+              {lien.role !== 'organisateur' && (
+                <button
+                  className="btn-secondaire min-h-[44px] text-xs !text-corail hover:!border-corail"
+                  onClick={() => { if (window.confirm(`Retirer « ${lien.nom} » du parcours ?`)) retrait.mutate(lien.participantId) }}
+                  disabled={retrait.isPending}
+                >
+                  Retirer
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Constituer le groupe */}
       <form
-        className="mt-4 flex flex-wrap gap-2 items-end"
+        className="mt-5 flex flex-wrap items-end gap-2 border-t border-sable pt-5"
         onSubmit={(e) => { e.preventDefault(); if (nom.trim()) ajout.mutate() }}
       >
         <div className="flex-1 min-w-[10rem]">

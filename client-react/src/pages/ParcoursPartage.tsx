@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { PageLayout } from '../components/layout'
 import Seo from '../components/Seo'
 import AvisGroupe from '../components/AvisGroupe'
+import { EtatChargement } from '../components/ui/Etats'
 import { BadgeConfiance, ProvenanceElement, LienExterneElement, LienRechercheHebergement, LienRechercheTransport } from '../components/ConfianceElement'
 import {
   chargerParcoursPartage, reagirSurElement,
@@ -81,7 +82,7 @@ export default function ParcoursPartage() {
     return (
       <PageLayout>
         <Seo title="Parcours partagé" noindex />
-        <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton h-28" />)}</div>
+        <EtatChargement nombre={3} hauteur="h-28" />
       </PageLayout>
     )
   }
