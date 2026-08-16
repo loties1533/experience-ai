@@ -5,14 +5,28 @@ import { BadgeStatutMetier } from './ui/StatutMetier'
 // statuts métier). Ce composant garde ce qui lui est propre : le détail au
 // niveau élément (source, fournisseur, date de récupération).
 export function BadgeConfiance({ element }: { element: Element }) {
+  // Détail accessible (title + aria-label du badge) : formulation humaine
+  // uniquement — jamais l'URL technique de `confiance.source`.
   const detail =
     element.confiance.niveau === 'verifie'
-      ? `Source : ${element.confiance.source}. Fournisseur : ${
-          element.confiance.fournisseur
-        }. Récupérée le ${new Date(element.confiance.recupereLe).toLocaleDateString('fr-FR')}`
+      ? `Source vérifiée : ${element.confiance.fournisseur}. Consultée le ${new Date(element.confiance.recupereLe).toLocaleDateString('fr-FR')}.`
       : undefined
 
   return <BadgeStatutMetier statut={element.confiance.niveau} detail={detail} />
+}
+
+// Provenance lisible d'un élément vérifié — accessible SANS survol (le `title` du
+// badge ne suffit pas au tactile). On expose fournisseur + date de consultation,
+// formulation humaine, jamais l'URL technique de `confiance.source`, et jamais
+// une preuve de disponibilité ou de réservation.
+export function ProvenanceElement({ element }: { element: Element }) {
+  if (element.confiance.niveau !== 'verifie') return null
+  const { fournisseur, recupereLe } = element.confiance
+  return (
+    <p className="text-xs text-sauge-dark">
+      Source vérifiée : {fournisseur} · consultée le {new Date(recupereLe).toLocaleDateString('fr-FR')}
+    </p>
+  )
 }
 
 const LIBELLES_LIEN: Record<TypeLienExterne, string> = {

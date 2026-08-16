@@ -16,7 +16,8 @@ import { listerParcours } from '../lib/api'
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 function rendreMesParcours() {
-  const queryClient = new QueryClient()
+  // Pas de retry en test : l'état d'erreur doit être atteint immédiatement.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <HelmetProvider>
       <QueryClientProvider client={queryClient}>
@@ -27,7 +28,7 @@ function rendreMesParcours() {
 }
 
 describe('MesParcours', () => {
-  it('affiche la carte avec un repli graphique décoratif, sans champ inventé', async () => {
+  it('affiche l’intention, la visibilité explicite et le lien Ouvrir, sans champ inventé', async () => {
     vi.mocked(listerParcours).mockResolvedValue({
       parcours: [{ id: 'p1', intention: 'Un week-end au vert', visibilite: 'prive', misAJourLe: new Date('2026-07-20') }],
     })
@@ -36,9 +37,29 @@ describe('MesParcours', () => {
     expect(await screen.findByText('Un week-end au vert')).toBeInTheDocument()
     expect(screen.getByText('Privé')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Ouvrir' })).toHaveAttribute('href', '/parcours/p1')
-    // La vignette n'a aucune vraie photo : le repli est purement décoratif (aria-hidden), pas d'alt trompeur.
-    // (le seul role="img" restant est le logo svg du header/footer, pas la vignette.)
-    expect(screen.getAllByRole('img')).toHaveLength(2)
+  })
+
+  it('affiche une intention longue en entier, jamais tronquée du DOM', async () => {
+    const longue = 'Un week-end romantique quelque part au bord de l’eau, sans trop savoir où l’on ira exactement'
+    vi.mocked(listerParcours).mockResolvedValue({
+      parcours: [{ id: 'p2', intention: longue, visibilite: 'partage', misAJourLe: new Date('2026-07-20') }],
+    })
+    rendreMesParcours()
+    expect(await screen.findByText(longue)).toBeInTheDocument()
+  })
+
+  it('distingue textuellement privé / partagé / surprise', async () => {
+    vi.mocked(listerParcours).mockResolvedValue({
+      parcours: [
+        { id: 'p1', intention: 'A', visibilite: 'prive', misAJourLe: new Date('2026-07-20') },
+        { id: 'p2', intention: 'B', visibilite: 'partage', misAJourLe: new Date('2026-07-20') },
+        { id: 'p3', intention: 'C', visibilite: 'surprise', misAJourLe: new Date('2026-07-20') },
+      ],
+    })
+    rendreMesParcours()
+    expect(await screen.findByText('Privé')).toBeInTheDocument()
+    expect(screen.getByText('Partagé')).toBeInTheDocument()
+    expect(screen.getByText('Surprise')).toBeInTheDocument()
   })
 
   it("affiche l'état vide sans halluciner de parcours", async () => {
@@ -46,5 +67,23 @@ describe('MesParcours', () => {
     rendreMesParcours()
 
     expect(await screen.findByText('Aucun parcours pour l\'instant')).toBeInTheDocument()
+  })
+
+  it('n’affiche jamais « Privé » pour une visibilité inconnue', async () => {
+    vi.mocked(listerParcours).mockResolvedValue({
+      parcours: [{ id: 'p1', intention: 'Un parcours', visibilite: 'archivee', misAJourLe: new Date('2026-07-20') }],
+    } as unknown as { parcours: Awaited<ReturnType<typeof listerParcours>>['parcours'] })
+    rendreMesParcours()
+
+    expect(await screen.findByText('Visibilité inconnue')).toBeInTheDocument()
+    expect(screen.queryByText('Privé')).not.toBeInTheDocument()
+  })
+
+  it('affiche un état d’erreur, jamais une fausse liste vide, quand le chargement échoue', async () => {
+    vi.mocked(listerParcours).mockRejectedValue(new Error('panne réseau'))
+    rendreMesParcours()
+
+    expect(await screen.findByText('Impossible de charger tes parcours')).toBeInTheDocument()
+    expect(screen.queryByText("Aucun parcours pour l'instant")).not.toBeInTheDocument()
   })
 })
