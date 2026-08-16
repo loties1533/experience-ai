@@ -233,6 +233,15 @@ describe('ParcoursDetail (UI-4 — carnet)', () => {
     expect(screen.queryByText(/\d{2}h\d{2}/)).not.toBeInTheDocument()
   })
 
+  it('demande aux moteurs de ne pas indexer cette route privée', async () => {
+    vi.mocked(chargerParcours).mockResolvedValue({ parcours: parcoursFixture(null) })
+    rendreParcoursDetail()
+    await screen.findByText('Randonnée')
+    await waitFor(() =>
+      expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, nofollow')
+    )
+  })
+
   it('traite honnêtement une timeline vide et un moment sans élément', async () => {
     const vide = parcoursFixture(null); vide.timeline = []
     vi.mocked(chargerParcours).mockResolvedValue({ parcours: vide })

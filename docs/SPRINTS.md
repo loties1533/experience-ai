@@ -243,6 +243,29 @@ F4 est désormais **terminé** : B1, B2, C1, C2 et C3 (a, b, c) posés en
 interne, puis D1, D2 et E qui les branchent réellement dans la génération, la
 modification, l'OpenAPI et le front.
 
+### Revue UI-5 — écrans secondaires « Papier & Lumière » (16/08)
+
+PR : (brouillon, lien ajouté à l'ouverture)
+
+- **Fin de la refonte visuelle** sur Login, Préférences, PanneauPartage,
+  ParcoursPartage, sans toucher au backend, à l'authentification ni aux
+  autorisations.
+- **Honnêteté des états** : Préférences ne monte plus un formulaire vide sur
+  panne (risque d'écrasement des vraies données) → état d'erreur + Réessayer ;
+  PanneauPartage distingue chargement, panne et groupe vide (fin du squelette
+  permanent).
+- **Sécurité** : un 401 d'authentification remonte au formulaire au lieu de
+  rediriger ; messages d'erreur français fixes (jamais le message technique
+  brut) ; connexion sans distinction email inconnu / mot de passe erroné.
+- **ParcoursPartage** aligné sur le carnet UI-4 (contexte francisé, plages
+  réelles, provenance sans URL, états vides), message générique de lien
+  invalide préservé, noindex/nofollow dans tous les états.
+- **Confidentialité** : noindex ajouté à Login, ParcoursPartage, MesParcours et
+  ParcoursDetail ; aucun jeton dans les métadonnées.
+- Suite complète verte (2224), typecheck serveur+client, lint, build,
+  `diff --check`, plus une vérification visuelle desktop/mobile par interception
+  locale (backend/auth non lancés en local).
+
 ### Revue UI-4 — parcours généré et « Mes parcours » (15/08)
 
 PR : https://github.com/loties1533/experience-ai/pull/90
