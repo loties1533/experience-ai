@@ -15,10 +15,6 @@ export interface JwtPayload {
   exp?: number;
 }
 
-// Orientation d'une recherche externe : elle oriente les requêtes envoyées aux
-// connecteurs (une soirée ne se cherche pas comme une après-midi tranquille).
-export type TravelMode = 'party' | 'student' | 'group' | 'relax' | 'surprise';
-
 // Événement réel renvoyé par un connecteur événementiel (PredictHQ).
 export interface EventSearchResult {
   id: string;
@@ -27,19 +23,6 @@ export interface EventSearchResult {
   start: string;
   venue: string;
   description: string;
-}
-
-// Lieu renvoyé par un connecteur de données (Foursquare, Yelp).
-export interface Activite {
-  name: string;
-  category: string;
-  description: string;
-  duration: string;
-  price: string | number;
-  price_range?: string;
-  best_time?: string;
-  booking_url?: string;  // lien carte (Google Maps) — localisation du lieu
-  reservation_url?: string | null;
 }
 
 // Liens de recherche d'hébergement construits par smartSearch.

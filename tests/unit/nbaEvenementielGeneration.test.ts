@@ -146,6 +146,14 @@ describe('NBA event-first — génération progressive depuis des ancres fournis
     expect(transports.every((element) => element.nom === 'Transport à organiser')).toBe(true);
     expect(transports.every((element) => element.lieu === undefined && element.plage === undefined)).toBe(true);
     expect(vi.mocked(callAIAvecOutils)).toHaveBeenCalled();
+    expect(
+      vi.mocked(callAIAvecOutils).mock.calls.every(
+        ([, , boite]) =>
+          !boite.definitions.some(
+            (outil) => outil.name === 'chercher_evenements'
+          )
+      )
+    ).toBe(true);
   });
 
   it('cherche des hôtels dans les villes moteur sans inventer séjour ni lien daté', async () => {

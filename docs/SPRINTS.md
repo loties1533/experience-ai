@@ -33,6 +33,20 @@
 
 ### Board — avancement du chantier
 
+**Alignement intention → événements city-first** *(terminé dans ce lot)*
+
+- l'ancien pont `genre → TravelMode → catégories PredictHQ` est supprimé ;
+- cinq natures événementielles fermées sont détectées déterministement depuis
+  l'intention confirmée, dans un ordre stable ;
+- sans preuve explicite, l'outil événementiel n'est pas exposé au modèle : ni
+  ville ni dates ne déclenchent un repli générique ;
+- la taxonomie PredictHQ reste dans son adaptateur, qui filtre aussi les
+  catégories inattendues rendues par le fournisseur ;
+- le vertical NBA event-first, les statuts `vide`/`indisponible`, les réponses
+  `422`/`503`, la provenance et la confiance restent inchangés ;
+- aucun event-first festival sans destination, correctif « ce soir » ou
+  nouveau fournisseur n'est inclus.
+
 **Préparation de génération — état consolidé après les PR #72 à #85** *(terminé)*
 
 - les contrats de préparation et le `ContextePlanifiable` séparent la

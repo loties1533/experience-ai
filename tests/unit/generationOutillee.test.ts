@@ -59,6 +59,17 @@ const brief = BriefSchema.parse({
   lieux: [{ nom: 'Bordeaux', type: 'ville' }],
 });
 
+const briefFestival = BriefSchema.parse({
+  intention: 'assister à un festival à Bordeaux',
+  avecQui: 'amis',
+  duree: { valeur: 3, unite: 'jours' },
+  dates: {
+    debut: '2026-09-04T00:00:00.000Z',
+    fin: '2026-09-06T23:59:59.999Z',
+  },
+  lieux: [{ nom: 'Bordeaux', type: 'ville' }],
+});
+
 const DATE_RECUPERATION = '2026-07-28T08:15:00.000Z';
 const CANDIDAT_POINT_ROUGE = {
   identifiantExterne: 'fsq-point-rouge',
@@ -385,6 +396,74 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
       typeLien: 'carte',
     });
     expect(resoudreLien).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['Je veux découvrir Lyon ce week-end', 'Lyon'],
+    ['Je veux une expérience culturelle à Paris pendant quatre jours', 'Paris'],
+  ])(
+    'n’expose aucun outil événementiel pour l’intention générique « %s »',
+    async (intention, ville) => {
+      const briefGenerique = BriefSchema.parse({
+        intention,
+        avecQui: 'solo',
+        duree: { valeur: ville === 'Lyon' ? 2 : 4, unite: 'jours' },
+        dates: {
+          debut: '2027-06-05T00:00:00.000Z',
+          fin: '2027-06-08T23:59:59.999Z',
+        },
+        lieux: [{ nom: ville, type: 'ville' }],
+      });
+      vi.mocked(callClaudeOutils).mockImplementationOnce(
+        async (_systeme, _messages, outils) => {
+          expect(outils?.map((outil) => outil.name)).toContain('chercher_lieux');
+          expect(outils?.map((outil) => outil.name)).not.toContain(
+            'chercher_evenements'
+          );
+          return tourReponse('Une expérience à choisir sur place', { ville });
+        }
+      );
+
+      await genererParcours(briefGenerique);
+
+      expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
+    }
+  );
+
+  it('cible exactement le sport pour un match explicite avec ville', async () => {
+    const briefSport = BriefSchema.parse({
+      intention: 'Je veux voir un match de basket à Paris',
+      avecQui: 'amis',
+      duree: { valeur: 1, unite: 'jours' },
+      dates: {
+        debut: '2027-06-05T00:00:00.000Z',
+        fin: '2027-06-05T23:59:59.999Z',
+      },
+      lieux: [{ nom: 'Paris', type: 'ville' }],
+    });
+    vi.mocked(callClaudeOutils)
+      .mockResolvedValueOnce(
+        tourOutil('chercher_evenements', {
+          ville: 'Paris',
+          dateDebut: '2027-06-05',
+          dateFin: '2027-06-05',
+        })
+      )
+      .mockResolvedValueOnce(
+        tourReponse('Un match à choisir', {
+          type: 'evenement',
+          ville: 'Paris',
+        })
+      );
+
+    await genererParcours(briefSport);
+
+    expect(rechercherEvenementsPredictHQ).toHaveBeenCalledWith(
+      'Paris',
+      '2027-06-05',
+      '2027-06-05',
+      ['sport']
+    );
   });
 
   it('ne contacte aucun fournisseur pour un transport F4-B2', async () => {
@@ -822,7 +901,7 @@ describe('la dégradation explicite des données réelles', () => {
         })
       );
 
-    await expect(genererParcours(brief)).rejects.toMatchObject({
+    await expect(genererParcours(briefFestival)).rejects.toMatchObject({
       statusCode: 422,
       message: 'Aucun événement fiable ne correspond aux dates.',
     });
@@ -851,7 +930,7 @@ describe('la dégradation explicite des données réelles', () => {
         })
       );
 
-    await expect(genererParcours(brief)).rejects.toMatchObject({
+    await expect(genererParcours(briefFestival)).rejects.toMatchObject({
       statusCode: 503,
       message: 'Les sources nécessaires pour vérifier ce parcours sont momentanément indisponibles',
     });
@@ -894,7 +973,7 @@ describe('la dégradation explicite des données réelles', () => {
         })
       );
 
-    await expect(genererParcours(brief)).rejects.toMatchObject({
+    await expect(genererParcours(briefFestival)).rejects.toMatchObject({
       statusCode: 422,
       message: 'Aucun événement fiable ne correspond aux dates.',
     });
@@ -1028,7 +1107,7 @@ describe('intégration F2-B5 — statuts du résolveur', () => {
         }),
       );
 
-    const [element] = (await genererParcours(brief)).timeline[0].elements;
+    const [element] = (await genererParcours(briefFestival)).timeline[0].elements;
 
     expect(resoudreLien).toHaveBeenCalledWith({
       identifiantExterne: 'evt-festival-port',
@@ -2342,6 +2421,36 @@ describe('les outils — l’entrée vient du modèle, donc elle est validée', 
     expect(boite.trouverLieuReel('Le Point Rouge')).toBeUndefined();
   });
 
+  it('retire la recherche événementielle sans preuve explicite, sans repli surprise', async () => {
+    const boite = creerBoiteAOutils();
+
+    expect(boite.definitions.map((outil) => outil.name)).not.toContain(
+      'chercher_evenements'
+    );
+    await expect(
+      boite.executer('chercher_evenements', {
+        ville: 'Lyon',
+        dateDebut: '2027-06-05',
+      })
+    ).resolves.toContain('aucune intention événementielle explicite');
+    expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
+  });
+
+  it('refuse l’ancien champ genre même lorsqu’un besoin explicite existe', async () => {
+    const boite = creerBoiteAOutils({
+      naturesEvenementielles: ['concert'],
+    });
+
+    await expect(
+      boite.executer('chercher_evenements', {
+        ville: 'Lyon',
+        dateDebut: '2027-06-05',
+        genre: 'fete',
+      })
+    ).resolves.toContain('Recherche impossible');
+    expect(rechercherEvenementsPredictHQ).not.toHaveBeenCalled();
+  });
+
   it('cherche les événements sur la période demandée et retient leur salle', async () => {
     vi.mocked(rechercherEvenementsPredictHQ).mockResolvedValue({
       statut: 'ok',
@@ -2356,19 +2465,20 @@ describe('les outils — l’entrée vient du modèle, donc elle est validée', 
         }),
       ],
     });
-    const boite = creerBoiteAOutils();
+    const boite = creerBoiteAOutils({
+      naturesEvenementielles: ['concert'],
+    });
     const reponse = await boite.executer('chercher_evenements', {
       ville: 'Bordeaux',
       dateDebut: '2026-09-04T00:00:00Z',
       dateFin: '2026-09-06T00:00:00Z',
-      genre: 'fete',
     });
 
     expect(rechercherEvenementsPredictHQ).toHaveBeenCalledWith(
       'Bordeaux',
       '2026-09-04',
       '2026-09-06',
-      'party'
+      ['concert']
     );
     expect(reponse).toContain('Rock School Barbey');
     // Un événement n'a pas de lien de carte : on retient sa salle, rien de plus.
@@ -2385,7 +2495,9 @@ describe('les outils — l’entrée vient du modèle, donc elle est validée', 
       resultats: [],
       recupereLe: DATE_RECUPERATION,
     });
-    const reponse = await creerBoiteAOutils().executer('chercher_evenements', {
+    const reponse = await creerBoiteAOutils({
+      naturesEvenementielles: ['festival'],
+    }).executer('chercher_evenements', {
       ville: 'Bordeaux',
       dateDebut: '2026-09-04',
       dateFin: '2026-09-06',
@@ -2552,7 +2664,9 @@ describe('le journal de candidats — rapprochement conservateur', () => {
       resultats: [premier, second],
       recupereLe: DATE_RECUPERATION,
     });
-    const boite = creerBoiteAOutils();
+    const boite = creerBoiteAOutils({
+      naturesEvenementielles: ['festival'],
+    });
     await boite.executer('chercher_evenements', {
       ville: 'Bordeaux',
       dateDebut: '2026-09-05',
