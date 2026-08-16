@@ -401,6 +401,9 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
   it.each([
     ['Je veux découvrir Lyon ce week-end', 'Lyon'],
     ['Je veux une expérience culturelle à Paris pendant quatre jours', 'Paris'],
+    ['ambiance de festival', 'Paris'],
+    ['découvrir Paris sans concert', 'Paris'],
+    ['visiter l’Opéra Garnier', 'Paris'],
   ])(
     'n’expose aucun outil événementiel pour l’intention générique « %s »',
     async (intention, ville) => {
@@ -430,41 +433,51 @@ describe('la boucle d’outils — le modèle cherche, puis écrit', () => {
     }
   );
 
-  it('cible exactement le sport pour un match explicite avec ville', async () => {
-    const briefSport = BriefSchema.parse({
-      intention: 'Je veux voir un match de basket à Paris',
-      avecQui: 'amis',
-      duree: { valeur: 1, unite: 'jours' },
-      dates: {
-        debut: '2027-06-05T00:00:00.000Z',
-        fin: '2027-06-05T23:59:59.999Z',
-      },
-      lieux: [{ nom: 'Paris', type: 'ville' }],
-    });
-    vi.mocked(callClaudeOutils)
-      .mockResolvedValueOnce(
-        tourOutil('chercher_evenements', {
-          ville: 'Paris',
-          dateDebut: '2027-06-05',
-          dateFin: '2027-06-05',
+  it.each([
+    ['assister à un stand-up', 'arts_de_la_scene'],
+    ['Je veux voir un match de basket à Paris', 'sport'],
+    ['je ne veux pas de concert, mais je veux voir un match', 'sport'],
+  ] as const)(
+    'expose l’outil avec la seule nature positive pour « %s »',
+    async (intention, nature) => {
+      const briefEvenementiel = BriefSchema.parse({
+        intention,
+        avecQui: 'amis',
+        duree: { valeur: 1, unite: 'jours' },
+        dates: {
+          debut: '2027-06-05T00:00:00.000Z',
+          fin: '2027-06-05T23:59:59.999Z',
+        },
+        lieux: [{ nom: 'Paris', type: 'ville' }],
+      });
+      vi.mocked(callClaudeOutils)
+        .mockImplementationOnce(async (_systeme, _messages, outils) => {
+          expect(outils?.map((outil) => outil.name)).toContain(
+            'chercher_evenements'
+          );
+          return tourOutil('chercher_evenements', {
+            ville: 'Paris',
+            dateDebut: '2027-06-05',
+            dateFin: '2027-06-05',
+          });
         })
-      )
-      .mockResolvedValueOnce(
-        tourReponse('Un match à choisir', {
-          type: 'evenement',
-          ville: 'Paris',
-        })
+        .mockResolvedValueOnce(
+          tourReponse('Un événement à choisir', {
+            type: 'evenement',
+            ville: 'Paris',
+          })
+        );
+
+      await genererParcours(briefEvenementiel);
+
+      expect(rechercherEvenementsPredictHQ).toHaveBeenCalledWith(
+        'Paris',
+        '2027-06-05',
+        '2027-06-05',
+        [nature]
       );
-
-    await genererParcours(briefSport);
-
-    expect(rechercherEvenementsPredictHQ).toHaveBeenCalledWith(
-      'Paris',
-      '2027-06-05',
-      '2027-06-05',
-      ['sport']
-    );
-  });
+    }
+  );
 
   it('ne contacte aucun fournisseur pour un transport F4-B2', async () => {
     const briefTransport = BriefSchema.parse({
