@@ -245,7 +245,7 @@ modification, l'OpenAPI et le front.
 
 ### Revue UI-5 — écrans secondaires « Papier & Lumière » (16/08)
 
-PR : (brouillon, lien ajouté à l'ouverture)
+PR : https://github.com/loties1533/experience-ai/pull/91
 
 - **Fin de la refonte visuelle** sur Login, Préférences, PanneauPartage,
   ParcoursPartage, sans toucher au backend, à l'authentification ni aux
