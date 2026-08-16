@@ -45,14 +45,21 @@ export class ErreurApi extends Error {
   }
 }
 
-async function request<T = unknown>(path: string, opts: RequestInit = {}): Promise<T> {
+// `redirigerSur401` : par défaut, un 401 signifie « session expirée » et
+// renvoie vers la connexion. Les routes d'authentification (login) le désactivent :
+// là, un 401 est « identifiants incorrects » et doit remonter au formulaire.
+async function request<T = unknown>(
+  path: string,
+  opts: RequestInit = {},
+  { redirigerSur401 = true }: { redirigerSur401?: boolean } = {},
+): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include', // cookie httpOnly envoyé automatiquement
     ...opts,
   })
 
-  if (res.status === 401) {
+  if (res.status === 401 && redirigerSur401) {
     window.location.href = '/login'
     throw new ErreurApi('Session expirée, veuillez vous reconnecter.', 401)
   }
@@ -71,9 +78,9 @@ export interface Utilisateur {
 }
 export const logout = () => request<{ message: string }>('/auth/logout', { method: 'POST' })
 export const login = (email: string, password: string) =>
-  request<{ user: Utilisateur }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+  request<{ user: Utilisateur }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, { redirigerSur401: false })
 export const signup = (email: string, password: string, name: string) =>
-  request<{ user: Utilisateur }>('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, name }) })
+  request<{ user: Utilisateur }>('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password, name }) }, { redirigerSur401: false })
 
 // ---- Dialogue de cadrage (doc 05, étapes 1→4) ----
 // `etatDialogue` : contexte transitoire de clarification (ex. une date en
