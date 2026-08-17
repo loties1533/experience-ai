@@ -12,6 +12,10 @@ function normaliserTexte(texte: string): string {
 
 const DETERMINANT = String.raw`(?:(?:un|une|des|le|la|les|ce|cet|cette|ces|l)\s+)?`;
 const CIBLE_AVEC_A = String.raw`(?:(?:a\s+${DETERMINANT})|au\s+|aux\s+)`;
+const INTENSIFICATEUR_NEGATION = String.raw`(?:(?:surtout|vraiment|absolument)\s+)?`;
+const MARQUEUR_NEGATION = String.raw`(?:pas|jamais|plus)`;
+const NEGATION_DIRECTE_ACTION = String.raw`ne\s+${INTENSIFICATEUR_NEGATION}${MARQUEUR_NEGATION}`;
+const NEGATION_MODALE_ACTION = String.raw`ne\s+(?:veux|souhaite|peux)\s+${INTENSIFICATEUR_NEGATION}${MARQUEUR_NEGATION}`;
 
 function decouperPropositions(texte: string): string[] {
   return texte
@@ -30,16 +34,15 @@ function estMentionNiee(texte: string, objets: string): boolean {
     String.raw`\b(?:sans|pas de|aucun(?:e)?)\s+${DETERMINANT}${objets}\b`
   );
   const negationVerbale = new RegExp(
-    String.raw`\b(?:je\s+)?ne\s+(?:veux|souhaite)\s+pas(?:\s+[a-z0-9]+){0,5}\s+${objets}\b`
+    String.raw`\b(?:je\s+)?${NEGATION_MODALE_ACTION}(?:\s+[a-z0-9]+){0,5}\s+${objets}\b`
   );
   return negationDirecte.test(texte) || negationVerbale.test(texte);
 }
 
 function estActionNiee(avantAction: string): boolean {
   return [
-    /\b(?:ne\s+pas|sans)\s*$/,
-    /\bne\s+(?:veux|souhaite|peux)(?:\s+[a-z0-9]+){0,2}\s+pas\s*$/,
-    /\bprefere(?:\s+[a-z0-9]+){0,2}\s+ne\s+pas\s*$/,
+    new RegExp(String.raw`\b(?:${NEGATION_DIRECTE_ACTION}|sans)\s*$`),
+    new RegExp(String.raw`\b${NEGATION_MODALE_ACTION}\s*$`),
     /\bimpossible\s+d\s*$/,
     /\bpas\s+envie\s+d\s*$/,
   ].some((negation) => negation.test(avantAction));
