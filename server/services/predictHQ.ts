@@ -1,7 +1,10 @@
 import 'dotenv/config';
 import { z } from 'zod';
-import type { TravelMode } from '../lib/types.js';
 import { encoderURL } from '../lib/url.js';
+import {
+  NatureEvenementielleSchema,
+  type NatureEvenementielle,
+} from './evenements/contrat.js';
 import {
   causeErreurHttp,
   estPlageEvenementiellePlanifiable,
@@ -19,14 +22,26 @@ const LIMITE_EVENT_FIRST_DEFAUT = 12;
 const LIMITE_EVENT_FIRST_MAX = 12;
 const NOMBRE_MAX_PAGES_EVENT_FIRST = 2;
 
-// Catégories PredictHQ selon le mode de voyage
-const CATEGORIES_PAR_MODE: Record<TravelMode, string> = {
-  party:    'concerts,festivals',
-  student:  'concerts,festivals,community,sports',
-  group:    'concerts,festivals,sports,community',
-  relax:    'performing-arts,community',
-  surprise: 'concerts,festivals,performing-arts,community',
+// La taxonomie fournisseur ne franchit jamais cet adaptateur. L'ordre de la
+// liste métier reçue est conservé dans le paramètre `category`.
+const CATEGORIE_PREDICTHQ_PAR_NATURE: Record<
+  NatureEvenementielle,
+  string
+> = {
+  sport: 'sports',
+  concert: 'concerts',
+  festival: 'festivals',
+  arts_de_la_scene: 'performing-arts',
+  communautaire: 'community',
 };
+
+const NaturesEvenementiellesCityFirstSchema = z
+  .array(NatureEvenementielleSchema)
+  .min(1)
+  .max(NatureEvenementielleSchema.options.length)
+  .refine((natures) => new Set(natures).size === natures.length, {
+    message: 'Les natures événementielles doivent être distinctes.',
+  });
 
 const ReponseLieuxPredictHQSchema = z.object({
   results: z.array(
@@ -332,8 +347,9 @@ export async function rechercherEvenementsPredictHQ(
   villeDemandee: string,
   dateDebut: string,
   dateFin: string,
-  mode: TravelMode
+  naturesRecues: readonly NatureEvenementielle[]
 ): Promise<ResultatRecherche<CandidatEvenementExterne>> {
+  const natures = NaturesEvenementiellesCityFirstSchema.parse(naturesRecues);
   const clePredictHQ = process.env.PREDICTHQ_API_KEY;
   if (!clePredictHQ) {
     console.warn('PredictHQ ignoré (PREDICTHQ_API_KEY manquante).');
@@ -346,12 +362,14 @@ export async function rechercherEvenementsPredictHQ(
 
     const villeTrouvee =
       rechercheVille.statut === 'ok' ? rechercheVille.resultats[0] : undefined;
-    const categories = CATEGORIES_PAR_MODE[mode] ?? 'concerts,festivals';
+    const categories = natures.map(
+      (nature) => CATEGORIE_PREDICTHQ_PAR_NATURE[nature]
+    );
 
     const parametresRequete = new URLSearchParams({
       'active.gte':   dateDebut,
       'active.lte':   dateFin || dateDebut,
-      category:       categories,
+      category:       categories.join(','),
       sort:           'local_rank',
       limit:          '6',
     });
@@ -388,6 +406,7 @@ export async function rechercherEvenementsPredictHQ(
 
     const evenementsValides = validation.data.results
       .filter((evenement) => evenementDansPeriode(evenement.start, dateDebut, dateFin))
+      .filter((evenement) => categories.includes(evenement.category))
       .map((evenement) => ({
         evenement,
         villeConfirmee:

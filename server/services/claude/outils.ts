@@ -9,7 +9,10 @@ import { rechercheIndisponible } from '../rechercheExterne.js';
 import { getRealWeather } from '../weather.js';
 import type { BoiteAOutilsLLM } from './core.js';
 import type { OutilLLM } from '../providers.js';
-import type { TravelMode } from '../../lib/types.js';
+import {
+  NatureEvenementielleSchema,
+  type NatureEvenementielle,
+} from '../evenements/contrat.js';
 import type {
   CandidatEvenementExterne,
   CandidatFoursquareExterne,
@@ -112,20 +115,22 @@ const EntreeEvenementsSchema = z.object({
   ville: z.string().min(1),
   dateDebut: z.string().min(8),
   dateFin: z.string().min(8).optional(),
-  genre: z.enum(['fete', 'sport', 'culture']).optional(),
-});
+}).strict();
 
 const EntreeMeteoSchema = z.object({
   ville: z.string().min(1),
   date: z.string().min(8).optional(),
 });
 
-// Le connecteur PredictHQ raisonne en « mode » (vocabulaire hérité) : on
-// traduit le genre demandé par le modèle, sans toucher au connecteur.
-const MODE_PAR_GENRE: Record<'fete' | 'sport' | 'culture', TravelMode> = {
-  fete: 'party',
-  sport: 'group',
-  culture: 'relax',
+const LIBELLE_NATURE_EVENEMENTIELLE: Record<
+  NatureEvenementielle,
+  string
+> = {
+  sport: 'sport',
+  concert: 'concert',
+  festival: 'festival',
+  arts_de_la_scene: 'arts de la scène',
+  communautaire: 'événement communautaire',
 };
 
 const DEFINITIONS: OutilLLM[] = [
@@ -159,14 +164,13 @@ const DEFINITIONS: OutilLLM[] = [
   {
     name: 'chercher_evenements',
     description:
-      "Cherche de VRAIS événements datés dans une ville sur une période : concerts, festivals, matchs, spectacles. À utiliser dès que le parcours porte des dates.",
+      "Cherche de VRAIS événements datés dans une ville sur une période, uniquement quand le besoin événementiel explicite du brief le justifie.",
     input_schema: {
       type: 'object',
       properties: {
         ville: { type: 'string', description: 'La ville où chercher' },
         dateDebut: { type: 'string', description: 'Premier jour, au format AAAA-MM-JJ' },
         dateFin: { type: 'string', description: 'Dernier jour, au format AAAA-MM-JJ' },
-        genre: { type: 'string', enum: ['fete', 'sport', 'culture'], description: 'Oriente la recherche' },
       },
       required: ['ville', 'dateDebut'],
     },
@@ -210,6 +214,11 @@ export function creerBoiteAOutils(
   options: {
     villesAutorisees?: string[];
     /**
+     * Besoins démontrés depuis le Brief par le serveur. Un tableau vide retire
+     * l'outil événementiel : le modèle ne choisit ni nature ni repli générique.
+     */
+    naturesEvenementielles?: NatureEvenementielle[];
+    /**
      * F5-B : les candidats déjà validés d'une tentative de lot précédente,
      * fusionnés explicitement dans la boîte d'agrégat utilisée pour la
      * résolution finale des liens. Une tentative en échec n'y contribue
@@ -221,6 +230,28 @@ export function creerBoiteAOutils(
   const journal = new Map<string, CandidatJournal>();
   const recherchesTracees: RechercheTracee[] = [];
   const villesAutorisees = new Set((options.villesAutorisees ?? []).map(cleNom));
+  const naturesEvenementielles = z
+    .array(NatureEvenementielleSchema)
+    .max(NatureEvenementielleSchema.options.length)
+    .refine((natures) => new Set(natures).size === natures.length, {
+      message: 'Les natures événementielles doivent être distinctes.',
+    })
+    .parse(options.naturesEvenementielles ?? []);
+  const definitions =
+    naturesEvenementielles.length === 0
+      ? DEFINITIONS.filter(
+          (definition) => definition.name !== 'chercher_evenements'
+        )
+      : DEFINITIONS.map((definition) =>
+          definition.name === 'chercher_evenements'
+            ? {
+                ...definition,
+                description: `${definition.description} Besoin établi : ${naturesEvenementielles
+                  .map((nature) => LIBELLE_NATURE_EVENEMENTIELLE[nature])
+                  .join(', ')}.`,
+              }
+            : definition
+        );
 
   function cleCandidat(candidat: CandidatJournal): string {
     return JSON.stringify([
@@ -336,20 +367,29 @@ export function creerBoiteAOutils(
   }
 
   async function chercherEvenements(entree: unknown): Promise<string> {
+    if (naturesEvenementielles.length === 0) {
+      return 'Recherche impossible : aucune intention événementielle explicite n’est établie par le brief.';
+    }
     const params = EntreeEvenementsSchema.safeParse(entree);
     if (!params.success) return 'Recherche impossible : il faut une ville et une date de début (AAAA-MM-JJ).';
 
-    const { ville, genre } = params.data;
+    const { ville } = params.data;
     if (!estVilleAutorisee(ville)) {
       return "Recherche impossible : la ville demandée ne fait pas partie du brief.";
     }
     const debut = jour(params.data.dateDebut);
     const fin = jour(params.data.dateFin ?? params.data.dateDebut);
-    const mode: TravelMode = genre ? MODE_PAR_GENRE[genre] : 'surprise';
+    const cleNatures = naturesEvenementielles.join(',');
 
     const recherche = await rechercherAvecCache(
-      `evenements:${cleNom(ville)}:${debut}:${fin}:${mode}`,
-      () => rechercherEvenementsPredictHQ(ville, debut, fin, mode),
+      `evenements:${cleNom(ville)}:${debut}:${fin}:${cleNatures}`,
+      () =>
+        rechercherEvenementsPredictHQ(
+          ville,
+          debut,
+          fin,
+          naturesEvenementielles
+        ),
       DUREE_EVENEMENTS_MS,
       'PredictHQ'
     );
@@ -398,7 +438,7 @@ export function creerBoiteAOutils(
   }
 
   return {
-    definitions: DEFINITIONS,
+    definitions,
 
     async executer(nom: string, entree: unknown): Promise<string> {
       try {

@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
 import { estCategorieFoursquareHebergementCompatible } from '../domaine/parcours/index.js';
-import type { Activite, TravelMode } from '../lib/types.js';
 import { lienGoogleMaps } from '../lib/url.js';
 import {
   causeErreurHttp,
@@ -23,18 +22,6 @@ const SOURCE_FOURSQUARE = `${URL_BASE_FOURSQUARE}/places/search`;
 // localement : le filtre fournisseur ne remplace jamais notre frontière de
 // confiance.
 const CATEGORIE_FOURSQUARE_HEBERGEMENT = '19009';
-
-const REQUETES_PAR_MODE: Record<TravelMode, string> = {
-  party:    'bar,nightclub,lounge',
-  student:  'restaurant,cafe,street food',
-  group:    'restaurant,brasserie,buffet',
-  relax:    'cafe,restaurant,tea room',
-  surprise: 'restaurant,bistro,fusion',
-};
-
-// Niveau de prix premium (indépendant du mode) → catégories haut de gamme,
-// quelle que soit la vibe. (Ancienne requête du mode « luxury ».)
-const REQUETE_PREMIUM = 'fine dining,restaurant,wine bar';
 
 const LieuFoursquareSchema = z.object({
   fsq_place_id: z.string().min(1),
@@ -163,17 +150,8 @@ function categorieCorrespondante(
   );
 }
 
-function etiquettePrix(price?: number): string {
-  return ['', '$', '$$', '$$$', '$$$$'][price ?? 2] ?? '$$';
-}
-
-function prixNumerique(price?: number): number {
-  return [0, 15, 35, 65, 120][price ?? 2] ?? 35;
-}
-
-
 /**
- * L'appel brut à Places, partagé par les deux usages du connecteur.
+ * L'appel brut à Places utilisé par la recherche typée du connecteur.
  *
  * Il ne confond plus une vraie recherche vide avec une indisponibilité :
  * l'appelant peut ainsi dégrader honnêtement le parcours et appliquer une
@@ -246,38 +224,9 @@ async function rechercherLieuxBruts(
   }
 }
 
-export async function foursquareRestaurantSearch(
-  city: string,
-  mode: TravelMode,
-  premium = false,
-): Promise<Activite[]> {
-  const recherche = await rechercherLieuxBruts(
-    city,
-    premium ? REQUETE_PREMIUM : (REQUETES_PAR_MODE[mode] ?? 'restaurant'),
-    3,
-  );
-  const lieux = recherche.statut === 'ok' ? recherche.resultats : [];
-
-  return lieux.map(p => ({
-    name:        p.name,
-    category:    p.categories[0]?.name ?? 'Restaurant',
-    description: [
-      p.categories[0]?.name ?? 'Restaurant',
-      p.location?.locality,
-      p.rating ? `note ${p.rating}/10` : null,   // affiché seulement si dispo (premium)
-    ].filter(Boolean).join(' · '),
-    duration:    '1h30',
-    price:       prixNumerique(p.price),
-    price_range: etiquettePrix(p.price),
-    booking_url: lienGoogleMaps(p.name, city),   // bouton « Carte » (Google Maps)
-  }));
-}
-
 /**
  * Recherche libre : c'est ce que l'orchestrateur appelle quand il cherche « un
- * bar à cocktails », « un escape game » ou « une brasserie ». Les catégories
- * figées par mode ne suffisaient pas — elles ne connaissent que le repas et la
- * fête, et le modèle a besoin de chercher ce que l'intention réclame.
+ * bar à cocktails », « un escape game » ou « une brasserie ».
  */
 export async function rechercherLieuxFoursquare(
   villeDemandee: string,

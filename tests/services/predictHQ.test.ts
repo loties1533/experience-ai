@@ -85,7 +85,7 @@ describe('rechercherEvenementsPredictHQ — identité et provenance', () => {
       'Bordeaux',
       '2026-09-04',
       '2026-09-06',
-      'relax'
+      ['arts_de_la_scene']
     );
 
     expect(recherche).toEqual({
@@ -120,7 +120,7 @@ describe('rechercherEvenementsPredictHQ — identité et provenance', () => {
       'Bordeaux',
       '2026-09-04',
       '2026-09-06',
-      'party'
+      ['arts_de_la_scene']
     );
 
     expect(recherche.statut).toBe('ok');
@@ -136,7 +136,7 @@ describe('rechercherEvenementsPredictHQ — identité et provenance', () => {
       'Bordeaux',
       '2026-09-04',
       '2026-09-06',
-      'party'
+      ['arts_de_la_scene']
     );
 
     const url = String(requeteFetch.mock.calls[1][0]);
@@ -146,6 +146,90 @@ describe('rechercherEvenementsPredictHQ — identité et provenance', () => {
     expect((requeteFetch.mock.calls[1][1] as RequestInit).headers).toMatchObject({
       Authorization: 'Bearer cle-predicthq-test',
     });
+  });
+
+  it.each([
+    ['sport', 'sports'],
+    ['concert', 'concerts'],
+    ['festival', 'festivals'],
+    ['arts_de_la_scene', 'performing-arts'],
+    ['communautaire', 'community'],
+  ] as const)(
+    'traduit uniquement la nature %s vers la catégorie PredictHQ %s',
+    async (nature, categorie) => {
+      requeteFetch
+        .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_VILLE })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            results: [
+              { ...REPONSE_EVENEMENTS.results[0], category: categorie },
+            ],
+          }),
+        });
+
+      const recherche = await rechercherEvenementsPredictHQ(
+        'Bordeaux',
+        '2026-09-04',
+        '2026-09-06',
+        [nature]
+      );
+
+      expect(recherche.statut).toBe('ok');
+      const url = new URL(String(requeteFetch.mock.calls[1][0]));
+      expect(url.searchParams.get('category')).toBe(categorie);
+    }
+  );
+
+  it('conserve l’ordre métier de plusieurs catégories sans multiplier les appels', async () => {
+    requeteFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_VILLE })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            { ...REPONSE_EVENEMENTS.results[0], category: 'concerts' },
+          ],
+        }),
+      });
+
+    await rechercherEvenementsPredictHQ(
+      'Bordeaux',
+      '2026-09-04',
+      '2026-09-06',
+      ['concert', 'festival']
+    );
+
+    const url = new URL(String(requeteFetch.mock.calls[1][0]));
+    expect(url.searchParams.get('category')).toBe('concerts,festivals');
+    expect(requeteFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('écarte une catégorie fournisseur qui ne faisait pas partie du ciblage', async () => {
+    requeteFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_VILLE })
+      .mockResolvedValueOnce({ ok: true, json: async () => REPONSE_EVENEMENTS });
+
+    await expect(
+      rechercherEvenementsPredictHQ(
+        'Bordeaux',
+        '2026-09-04',
+        '2026-09-06',
+        ['sport']
+      )
+    ).resolves.toMatchObject({ statut: 'vide' });
+  });
+
+  it('refuse un ciblage vide avant tout appel fournisseur', async () => {
+    await expect(
+      rechercherEvenementsPredictHQ(
+        'Bordeaux',
+        '2026-09-04',
+        '2026-09-06',
+        []
+      )
+    ).rejects.toBeDefined();
+    expect(requeteFetch).not.toHaveBeenCalled();
   });
 
   it('écarte localement un événement situé hors de la ville demandée', async () => {
@@ -171,7 +255,7 @@ describe('rechercherEvenementsPredictHQ — identité et provenance', () => {
       'Bordeaux',
       '2026-09-04',
       '2026-09-06',
-      'party'
+      ['arts_de_la_scene']
     );
 
     expect(recherche.statut).toBe('vide');
@@ -195,7 +279,7 @@ describe('rechercherEvenementsPredictHQ — identité et provenance', () => {
       'Bordeaux',
       '2026-09-04',
       '2026-09-06',
-      'party'
+      ['arts_de_la_scene']
     );
 
     expect(recherche.statut).toBe('vide');
@@ -212,7 +296,7 @@ describe('rechercherEvenementsPredictHQ — états de recherche', () => {
       'Bordeaux',
       '2026-09-04',
       '2026-09-06',
-      'party'
+      ['arts_de_la_scene']
     );
 
     expect(recherche.statut).toBe('vide');
@@ -222,7 +306,7 @@ describe('rechercherEvenementsPredictHQ — états de recherche', () => {
     process.env.PREDICTHQ_API_KEY = '';
 
     await expect(
-      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', ['arts_de_la_scene'])
     ).resolves.toEqual({
       statut: 'indisponible',
       fournisseur: 'PredictHQ',
@@ -235,7 +319,7 @@ describe('rechercherEvenementsPredictHQ — états de recherche', () => {
     requeteFetch.mockResolvedValueOnce({ ok: false, status: 401 });
 
     await expect(
-      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', ['arts_de_la_scene'])
     ).resolves.toEqual({
       statut: 'indisponible',
       fournisseur: 'PredictHQ',
@@ -253,7 +337,7 @@ describe('rechercherEvenementsPredictHQ — états de recherche', () => {
       .mockResolvedValueOnce({ ok: false, status: statut });
 
     await expect(
-      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', ['arts_de_la_scene'])
     ).resolves.toEqual({
       statut: 'indisponible',
       fournisseur: 'PredictHQ',
@@ -267,7 +351,7 @@ describe('rechercherEvenementsPredictHQ — états de recherche', () => {
     requeteFetch.mockRejectedValueOnce(erreur);
 
     await expect(
-      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', ['arts_de_la_scene'])
     ).resolves.toEqual({
       statut: 'indisponible',
       fournisseur: 'PredictHQ',
@@ -279,7 +363,7 @@ describe('rechercherEvenementsPredictHQ — états de recherche', () => {
     requeteFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
 
     await expect(
-      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', ['arts_de_la_scene'])
     ).resolves.toEqual({
       statut: 'indisponible',
       fournisseur: 'PredictHQ',
@@ -294,7 +378,7 @@ describe('rechercherEvenementsPredictHQ — états de recherche', () => {
     });
 
     await expect(
-      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', ['arts_de_la_scene'])
     ).resolves.toEqual({
       statut: 'indisponible',
       fournisseur: 'PredictHQ',
@@ -313,7 +397,7 @@ describe('rechercherEvenementsPredictHQ — états de recherche', () => {
       });
 
     await expect(
-      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', ['arts_de_la_scene'])
     ).resolves.toEqual({
       statut: 'indisponible',
       fournisseur: 'PredictHQ',
@@ -330,7 +414,7 @@ describe('rechercherEvenementsPredictHQ — états de recherche', () => {
     });
 
     await expect(
-      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', 'party')
+      rechercherEvenementsPredictHQ('Bordeaux', '2026-09-04', '2026-09-06', ['arts_de_la_scene'])
     ).resolves.toEqual({
       statut: 'indisponible',
       fournisseur: 'PredictHQ',

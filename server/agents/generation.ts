@@ -38,6 +38,7 @@ import {
   type ContextePlanifiable,
 } from './generation/contratPreparation.js';
 import { estDemandeNBAEvenementielle } from './generation/demandeNBA.js';
+import { naturesEvenementiellesCityFirst } from './generation/ciblageEvenementiel.js';
 import { destinationsResoluesParPreparation } from './generation/resolutionDestinations.js';
 import type { MomentGenere } from './generation/contratLLM.js';
 import {
@@ -324,6 +325,12 @@ async function genererEtAssemblerLots(
   const candidatsValides: CandidatJournal[] = [];
   const destinationsResoluesApresIntake =
     destinationsResoluesPourGeneration(brief, contextePlanifiable);
+  // Les ancres NBA event-first sont déjà vérifiées et injectées dans le lot :
+  // elles ne repassent jamais par le ciblage city-first de cette PR.
+  const naturesEvenementielles =
+    contextePlanifiable.strategie === 'decouverte_evenementielle'
+      ? []
+      : naturesEvenementiellesCityFirst(brief);
 
   for (let index = 0; index < plan.lots.length; index += 1) {
     const lot = plan.lots[index];
@@ -358,6 +365,7 @@ Consigne temporelle du lot : "intention" et "temporalite.voyageGlobal" décriven
       // peut techniquement porter que sur la ville de CE lot.
       const boiteLot = creerBoiteAOutils({
         villesAutorisees: villesAutoriseesDuLot,
+        naturesEvenementielles,
         candidatsInitiaux: lot.ancres.map(adapterEvenementEventFirstPourJournal),
       });
       const debut = Date.now();

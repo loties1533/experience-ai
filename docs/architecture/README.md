@@ -64,6 +64,20 @@ préparation ne réécrit pas a posteriori ce que la personne a dit. Une
 localisation ambiguë produit une clarification ou un refus prudent, jamais une
 ville choisie arbitrairement.
 
+## Ciblage événementiel pendant la génération
+
+La recherche city-first n'est pas déclenchée par la seule présence d'une ville
+ou de dates. Le serveur déduit depuis l'intention confirmée un contrat fermé de
+natures événementielles (`sport`, `concert`, `festival`, `arts_de_la_scene`,
+`communautaire`). Si cette liste est vide, l'outil événementiel n'est pas
+exposé au modèle. PredictHQ traduit seul ces natures vers sa taxonomie et
+contrôle aussi que la catégorie de chaque résultat appartenait au ciblage.
+
+Ce mécanisme ne modifie pas la préparation NBA event-first : ses événements et
+ses villes restent des preuves obtenues avant les lots, avec sa requête `NBA`,
+son filtre sportif et ses réponses `422`/`503`. La découverte event-first d'un
+festival sans ville reste hors du périmètre actuel.
+
 ---
 
 ## Pipeline de résolution des liens
